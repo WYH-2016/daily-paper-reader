@@ -164,6 +164,7 @@
   }
 
   function openSettingsPanel() {
+    if (window.DPR_ACCESS_MODE !== 'full') return;
     if (window.DPROpenSettingsPanel && typeof window.DPROpenSettingsPanel === 'function') {
       window.DPROpenSettingsPanel();
       return;
@@ -244,15 +245,32 @@
     quickBtn.addEventListener('click', function (e) {
       e.preventDefault();
       e.stopPropagation();
+      if (window.DPR_ACCESS_MODE !== 'full') return;
       requestQuickRunPanel();
     });
 
     document.body.appendChild(quickBtn);
   }
 
+  function updateAdminButtonVisibility() {
+    var isFull = window.DPR_ACCESS_MODE === 'full';
+    var adminBtns = document.querySelectorAll('#custom-toggle-btn, #custom-quick-run-btn');
+    for (var i = 0; i < adminBtns.length; i++) {
+      adminBtns[i].style.display = isFull ? '' : 'none';
+    }
+  }
+
+  document.addEventListener('dpr-access-mode-changed', function () {
+    updateAdminButtonVisibility();
+  });
+
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', createCustomButton);
+    document.addEventListener('DOMContentLoaded', function () {
+      createCustomButton();
+      updateAdminButtonVisibility();
+    });
   } else {
     createCustomButton();
+    updateAdminButtonVisibility();
   }
 })();

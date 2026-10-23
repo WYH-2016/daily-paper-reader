@@ -472,6 +472,7 @@ window.DPRWorkflowRunner = (function () {
   };
 
   const open = () => {
+    if (String(window.DPR_ACCESS_MODE || '') !== 'full') return;
     ensureOverlay();
     if (!overlay) return;
     overlay.style.display = 'flex';
@@ -1015,6 +1016,7 @@ window.DPRWorkflowRunner = (function () {
   };
 
   const runWorkflowByKey = async (workflowKey, extraInputs) => {
+    if (String(window.DPR_ACCESS_MODE || '') !== 'full') return false;
     const wf = getWorkflowByKey(workflowKey);
     if (!wf) {
       setStatus('未找到对应的工作流配置。', '#c00');

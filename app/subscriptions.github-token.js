@@ -479,6 +479,9 @@ window.SubscriptionsGithubToken = (function () {
 
   // 使用给定的 config 对象保存到远端 config.yaml（用于“保存”按钮）
   const saveConfig = async (configObject, commitMessage = 'chore: save dashboard config from panel') => {
+    if (String(window.DPR_ACCESS_MODE || '') !== 'full') {
+      throw new Error('当前为游客模式，无法修改配置。');
+    }
     if (isLocalDebugHost()) {
       return saveLocalConfigToDisk(configObject || {}, commitMessage);
     }

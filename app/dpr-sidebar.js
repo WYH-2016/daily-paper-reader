@@ -1745,6 +1745,7 @@
   }
 
   function openSettingsPanel() {
+    if (window.DPR_ACCESS_MODE !== 'full') return;
     dispatchNamedEvent('ensure-arxiv-ui');
     window.setTimeout(function () {
       dispatchNamedEvent('load-arxiv-subscriptions');
@@ -2830,12 +2831,25 @@
     }, SEARCH_DEBOUNCE_MS));
   }
 
+  function updateSettingsButtonVisibility() {
+    var isFull = window.DPR_ACCESS_MODE === 'full';
+    var settingsBtns = document.querySelectorAll('.dpr-sidebar-settings-btn');
+    for (var i = 0; i < settingsBtns.length; i++) {
+      settingsBtns[i].style.display = isFull ? '' : 'none';
+    }
+  }
+
+  document.addEventListener('dpr-access-mode-changed', function () {
+    updateSettingsButtonVisibility();
+  });
+
   function start() {
     state.filter = loadPersistedFilter();
     state.rootEl = ensureRoot();
     applySidebarWidth(loadPersistedSidebarWidth());
     state.rootEl.innerHTML = '<div class="dpr-sidebar-loading">加载中…</div>';
     loadAndRender();
+    updateSettingsButtonVisibility();
   }
 
   var DPRSidebarApi = {

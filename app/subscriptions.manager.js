@@ -1767,6 +1767,7 @@ window.SubscriptionsManager = (function () {
   };
 
   const openOverlay = () => {
+    if (String(window.DPR_ACCESS_MODE || '') !== 'full') return;
     ensureOverlay();
     if (!overlay) return;
     overlay.style.display = 'flex';
@@ -1996,6 +1997,7 @@ window.SubscriptionsManager = (function () {
       if (!document._arxivLoadSubscriptionsEventBound) {
         document._arxivLoadSubscriptionsEventBound = true;
         document.addEventListener('load-arxiv-subscriptions', () => {
+          if (String(window.DPR_ACCESS_MODE || '') !== 'full') return;
           ensureOverlay();
           loadSubscriptions();
           openOverlay();
