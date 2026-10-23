@@ -1,10 +1,30 @@
 {
   "date": "20261014-20261023",
   "date_label": "2026-10-14 ~ 2026-10-23",
-  "generated_at": "2026-10-23 06:42:41 UTC",
+  "generated_at": "2026-10-23 07:57:34 UTC",
   "recommend_exists": true,
-  "run_count": 2,
+  "run_count": 3,
   "papers": [
+    {
+      "paper_id": "2610.24328v1",
+      "route": "20261014-20261023/2610.24328v1-sigmatrace-library-agnostic-observability-for-cpugpu-initiated-rdma-communication",
+      "title": "SigmaTrace: Library-Agnostic Observability for CPU/GPU-Initiated RDMA Communication",
+      "section": "deep",
+      "tags": [
+        {
+          "kind": "query",
+          "label": "iommu"
+        },
+        {
+          "kind": "query",
+          "label": "lke"
+        }
+      ],
+      "score": 9.0,
+      "evidence": "面向大规模系统虚拟化通信的RDMA可观测性",
+      "first_seen_at": "2026-10-23 06:42:41 UTC",
+      "updated_at": "2026-10-23 07:57:34 UTC"
+    },
     {
       "paper_id": "2610.22716v1",
       "route": "20261014-20261023/2610.22716v1-cmm-mp-a-novel-memory-pooling-architecture-using-purpose-built-memory-device-with-cxl-and-ethernet",
@@ -36,6 +56,138 @@
       "evidence": "面向云服务器无服务LLM推理的GPU内存去重框架",
       "first_seen_at": "2026-10-23 06:42:41 UTC",
       "updated_at": "2026-10-23 06:42:41 UTC"
+    },
+    {
+      "paper_id": "2610.20962v3",
+      "route": "20261014-20261023/2610.20962v3-page404-breaking-gpu-isolation-through-hardware-assisted-page-migration",
+      "title": "PAGE404: Breaking GPU Isolation Through Hardware-assisted Page Migration",
+      "section": "deep",
+      "tags": [
+        {
+          "kind": "query",
+          "label": "lke"
+        }
+      ],
+      "score": 8.0,
+      "evidence": "硬件辅助页迁移机制影响统一内存架构下Linux内核内存管理的局部性与回收行为",
+      "first_seen_at": "2026-10-23 07:57:34 UTC",
+      "updated_at": "2026-10-23 07:57:34 UTC"
+    },
+    {
+      "paper_id": "2610.22890v1",
+      "route": "20261014-20261023/2610.22890v1-mailrail-mitigating-incast-congestion-with-user-space-node-based-flow-control",
+      "title": "MailRail: Mitigating Incast Congestion with User-Space, Node-Based Flow Control",
+      "section": "deep",
+      "tags": [
+        {
+          "kind": "query",
+          "label": "lke"
+        }
+      ],
+      "score": 8.0,
+      "evidence": "用户态节点级流控应对突发拥塞，提升Linux内核网络栈在不规则负载下的可扩展性",
+      "first_seen_at": "2026-10-23 07:57:34 UTC",
+      "updated_at": "2026-10-23 07:57:34 UTC"
+    },
+    {
+      "paper_id": "2610.23086v1",
+      "route": "20261014-20261023/2610.23086v1-pairsight-characterizing-and-predicting-operator-level-interference-in-gpu-sharing-for-dnn-inference",
+      "title": "PairSight: Characterizing and Predicting Operator-Level Interference in GPU Sharing for DNN Inference",
+      "section": "deep",
+      "tags": [
+        {
+          "kind": "query",
+          "label": "lke"
+        }
+      ],
+      "score": 8.0,
+      "evidence": "基于硬件计数器的GPU共享中算子级干扰表征",
+      "first_seen_at": "2026-10-23 07:57:34 UTC",
+      "updated_at": "2026-10-23 07:57:34 UTC"
+    },
+    {
+      "paper_id": "2610.24621v1",
+      "route": "20261014-20261023/2610.24621v1-a-mechanism-for-tcp-aware-active-queue-management-in-packet-forwarding-devices",
+      "title": "A mechanism for TCP-aware Active Queue Management in packet-forwarding devices",
+      "section": "deep",
+      "tags": [
+        {
+          "kind": "query",
+          "label": "lke"
+        }
+      ],
+      "score": 8.0,
+      "evidence": "面向TCP的主动队列管理机制，优化网络栈拥塞控制与丢包阈值协同",
+      "first_seen_at": "2026-10-23 07:57:34 UTC",
+      "updated_at": "2026-10-23 07:57:34 UTC"
+    },
+    {
+      "paper_id": "2610.25066v1",
+      "route": "20261014-20261023/2610.25066v1-ineffective-occupancy-in-heterogeneous-gpu-clusters-prediction-contribution-analysis-and-readiness-aware-scheduling",
+      "title": "Ineffective Occupancy in Heterogeneous GPU Clusters: Prediction, Contribution Analysis, and Readiness-Aware Scheduling",
+      "section": "deep",
+      "tags": [
+        {
+          "kind": "query",
+          "label": "lke"
+        }
+      ],
+      "score": 8.0,
+      "evidence": "面向异构GPU集群中作业就绪状态的调度优化",
+      "first_seen_at": "2026-10-23 07:57:34 UTC",
+      "updated_at": "2026-10-23 07:57:34 UTC"
+    },
+    {
+      "paper_id": "2610.26160v1",
+      "route": "20261014-20261023/2610.26160v1-holistic-buoyancy-driven-cloud-native-resource-management",
+      "title": "Holistic Buoyancy-Driven Cloud Native Resource Management",
+      "section": "quick",
+      "tags": [
+        {
+          "kind": "query",
+          "label": "lke"
+        }
+      ],
+      "score": 8.0,
+      "evidence": "基于运行时工作负载浮力的自适应资源管理适用于云原生Linux环境",
+      "first_seen_at": "2026-10-23 07:57:34 UTC",
+      "updated_at": "2026-10-23 07:57:34 UTC"
+    },
+    {
+      "paper_id": "2610.28620v2",
+      "route": "20261014-20261023/2610.28620v2-weight-placement-is-not-enough-synchronization-in-multi-node-cpu-decoding-of-ternary-llms",
+      "title": "Weight Placement Is Not Enough: Synchronization in Multi-Node CPU Decoding of Ternary LLMs",
+      "section": "quick",
+      "tags": [
+        {
+          "kind": "query",
+          "label": "lke"
+        }
+      ],
+      "score": 8.0,
+      "evidence": "CPU端LLM解码中的NUMA感知同步分析",
+      "first_seen_at": "2026-10-23 07:57:34 UTC",
+      "updated_at": "2026-10-23 07:57:34 UTC"
+    },
+    {
+      "paper_id": "2610.30868v1",
+      "route": "20261014-20261023/2610.30868v1-ugds-a-user-space-development-kit-for-high-performance-gpu-direct-storage",
+      "title": "uGDS: A User-Space Development Kit for High-Performance GPU Direct Storage",
+      "section": "quick",
+      "tags": [
+        {
+          "kind": "query",
+          "label": "iommu"
+        },
+        {
+          "kind": "query",
+          "label": "lke"
+        }
+      ],
+      "score": 8.0,
+      "evidence": "用户态GPU Direct Storage库支持SSD-GPU直传，与QEMU虚拟化I/O栈兼容",
+      "first_seen_at": "2026-10-23 06:42:41 UTC",
+      "updated_at": "2026-10-23 07:57:34 UTC"
     },
     {
       "paper_id": "2610.21436v1",
@@ -134,20 +286,100 @@
       "updated_at": "2026-10-23 06:42:41 UTC"
     },
     {
-      "paper_id": "2610.30868v1",
-      "route": "20261014-20261023/2610.30868v1-ugds-a-user-space-development-kit-for-high-performance-gpu-direct-storage",
-      "title": "uGDS: A User-Space Development Kit for High-Performance GPU Direct Storage",
+      "paper_id": "2610.20354v1",
+      "route": "20261014-20261023/2610.20354v1-understanding-nvidia-grace-blackwell-unified-memory-through-placement-controlled-microbenchmarks",
+      "title": "Understanding NVIDIA Grace-Blackwell Unified Memory Through Placement-Controlled Microbenchmarks",
       "section": "quick",
       "tags": [
         {
           "kind": "query",
-          "label": "iommu"
+          "label": "lke"
         }
       ],
-      "score": 8.0,
-      "evidence": "用户态GPU Direct Storage库支持SSD-GPU直传，与QEMU虚拟化I/O栈兼容",
-      "first_seen_at": "2026-10-23 06:42:41 UTC",
-      "updated_at": "2026-10-23 06:42:41 UTC"
+      "score": 7.0,
+      "evidence": "统一内存需求迁移与驱逐行为的微基准分析",
+      "first_seen_at": "2026-10-23 07:57:34 UTC",
+      "updated_at": "2026-10-23 07:57:34 UTC"
+    },
+    {
+      "paper_id": "2610.21249v1",
+      "route": "20261014-20261023/2610.21249v1-characterizing-predictability-latency-trade-offs-of-kv-cache-ssd-offloading-in-lmcache-for-llm-serving-systems",
+      "title": "Characterizing Predictability-Latency Trade-offs of KV-Cache SSD Offloading in LMCache for LLM Serving Systems",
+      "section": "quick",
+      "tags": [
+        {
+          "kind": "query",
+          "label": "lke"
+        }
+      ],
+      "score": 7.0,
+      "evidence": "刻画LMCache中内核页缓存行为对SSD卸载的影响",
+      "first_seen_at": "2026-10-23 07:57:34 UTC",
+      "updated_at": "2026-10-23 07:57:34 UTC"
+    },
+    {
+      "paper_id": "2610.21925v2",
+      "route": "20261014-20261023/2610.21925v2-benchmarking-and-enhancing-design-aware-code-review-in-the-linux-kernel",
+      "title": "Benchmarking and Enhancing Design-Aware Code Review in the Linux Kernel",
+      "section": "quick",
+      "tags": [
+        {
+          "kind": "query",
+          "label": "lke"
+        }
+      ],
+      "score": 7.0,
+      "evidence": "面向Linux内核的设计感知代码审查聚焦调度与内存等性能关键子系统的权衡分析",
+      "first_seen_at": "2026-10-23 07:57:34 UTC",
+      "updated_at": "2026-10-23 07:57:34 UTC"
+    },
+    {
+      "paper_id": "2610.25528v1",
+      "route": "20261014-20261023/2610.25528v1-heuristic-driven-resource-optimization-for-decoupled-memory-channels-on-fpgas",
+      "title": "Heuristic-Driven Resource Optimization for Decoupled Memory Channels on FPGAs",
+      "section": "quick",
+      "tags": [
+        {
+          "kind": "query",
+          "label": "lke"
+        }
+      ],
+      "score": 7.0,
+      "evidence": "基于LLVM的静态分析优化FPGA DAE架构内存通道深度",
+      "first_seen_at": "2026-10-23 07:57:34 UTC",
+      "updated_at": "2026-10-23 07:57:34 UTC"
+    },
+    {
+      "paper_id": "2610.27325v1",
+      "route": "20261014-20261023/2610.27325v1-xrust-detecting-logical-races-in-rust-linux-drivers",
+      "title": "XRust: Detecting Logical Races in Rust Linux Drivers",
+      "section": "quick",
+      "tags": [
+        {
+          "kind": "query",
+          "label": "lke"
+        }
+      ],
+      "score": 7.0,
+      "evidence": "Linux内核Rust驱动中内存安全与逻辑竞态检测，涉及内核子系统并发行为分析",
+      "first_seen_at": "2026-10-23 07:57:34 UTC",
+      "updated_at": "2026-10-23 07:57:34 UTC"
+    },
+    {
+      "paper_id": "2610.29787v1",
+      "route": "20261014-20261023/2610.29787v1-d-pingmesh-dynamic-probing-and-fault-localization-for-reconfigurable-datacenter-networks",
+      "title": "D-Pingmesh: Dynamic Probing and Fault Localization for Reconfigurable Datacenter Networks",
+      "section": "quick",
+      "tags": [
+        {
+          "kind": "query",
+          "label": "lke"
+        }
+      ],
+      "score": 7.0,
+      "evidence": "可重构数据中心网络中的探测与故障定位",
+      "first_seen_at": "2026-10-23 07:57:34 UTC",
+      "updated_at": "2026-10-23 07:57:34 UTC"
     },
     {
       "paper_id": "2610.20100v1",
@@ -198,22 +430,6 @@
       "updated_at": "2026-10-23 06:42:41 UTC"
     },
     {
-      "paper_id": "2610.24328v1",
-      "route": "20261014-20261023/2610.24328v1-sigmatrace-library-agnostic-observability-for-cpugpu-initiated-rdma-communication",
-      "title": "SigmaTrace: Library-Agnostic Observability for CPU/GPU-Initiated RDMA Communication",
-      "section": "quick",
-      "tags": [
-        {
-          "kind": "query",
-          "label": "iommu"
-        }
-      ],
-      "score": 7.0,
-      "evidence": "面向大规模系统虚拟化通信的RDMA可观测性",
-      "first_seen_at": "2026-10-23 06:42:41 UTC",
-      "updated_at": "2026-10-23 06:42:41 UTC"
-    },
-    {
       "paper_id": "2610.25033v1",
       "route": "20261014-20261023/2610.25033v1-planezip-lossless-bit-plane-compression-of-training-activations-offloaded-over-pcie",
       "title": "PlaneZip: Lossless Bit-Plane Compression of Training Activations Offloaded over PCIe",
@@ -228,6 +444,38 @@
       "evidence": "面向内存受限虚拟化训练的PCIe卸载压缩",
       "first_seen_at": "2026-10-23 06:42:41 UTC",
       "updated_at": "2026-10-23 06:42:41 UTC"
+    },
+    {
+      "paper_id": "2610.21064v1",
+      "route": "20261014-20261023/2610.21064v1-where-the-sram-goes-per-symbol-attribution-of-static-memory-in-freertos-c-and-embassy-rust-iot-firmware-on-a-64-kb-risc-v-microcontroller",
+      "title": "Where the SRAM Goes: Per-Symbol Attribution of Static Memory in FreeRTOS-C and Embassy-Rust IoT Firmware on a 64 KB RISC-V Microcontroller",
+      "section": "quick",
+      "tags": [
+        {
+          "kind": "query",
+          "label": "lke"
+        }
+      ],
+      "score": 6.0,
+      "evidence": "RTOS固件中按符号的静态内存归因方法可迁移至Linux内核内存布局分析",
+      "first_seen_at": "2026-10-23 07:57:34 UTC",
+      "updated_at": "2026-10-23 07:57:34 UTC"
+    },
+    {
+      "paper_id": "2610.23685v1",
+      "route": "20261014-20261023/2610.23685v1-hardeval-an-execution-verified-benchmark-for-ai-driven-security-hardening-and-compliance-remediation",
+      "title": "HardEval: An Execution-Verified Benchmark for AI-Driven Security Hardening and Compliance Remediation",
+      "section": "quick",
+      "tags": [
+        {
+          "kind": "query",
+          "label": "lke"
+        }
+      ],
+      "score": 6.0,
+      "evidence": "通过内核参数配置与审计规则实施操作系统级安全加固",
+      "first_seen_at": "2026-10-23 07:57:34 UTC",
+      "updated_at": "2026-10-23 07:57:34 UTC"
     },
     {
       "paper_id": "2610.19374v1",

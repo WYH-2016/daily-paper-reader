@@ -1,0 +1,470 @@
+Title: Benchmarking and Enhancing Design-Aware Code Review in the Linux Kernel
+
+URL Source: https://arxiv.org/pdf/2610.21925v2
+
+Published Time: Mon, 19 Oct 2026 00:37:03 GMT
+
+Number of Pages: 21
+
+Markdown Content:
+# Benchmarking and Enhancing Design-Aware Code Review in the Linux Kernel 
+
+ZHENHAO ZHOU, Fudan University, China 
+
+KAI YU, Fudan University, China 
+
+YING WANG, Fudan University, China 
+
+ZHIQIANG YUAN, Fudan University, China 
+
+JUNHAO ZENG, Fudan University, China 
+
+YIJIAN WU, Fudan University, China 
+
+CHONG WANG, Nanyang Technological University, Singapore 
+
+XIN PENG ∗, Fudan University, China Code review often requires reasoning beyond local correctness. In mature software systems, reviewers must recognize design trade-offs introduced by a proposed change, compare alternative solutions, and reason about their compatibility with project-specific constraints. We refer to this problem as design-aware code review .However, existing automated review approaches primarily focus on defects and correctness, while the design knowledge accumulated in historical review discussions remains difficult to reuse. To address these challenges, we present DesignLore, a knowledge-augmented approach that extracts design decisions from historical review discussions, organizes them into an adaptive design taxonomy, and reuses relevant historical knowledge to guide code review. We further construct DesignReviewBench, a benchmark derived from real patch-review histories for systematically evaluating design-aware code review. Our evaluation shows that design-aware review remains challenging for current coding agents, with the strongest baseline achieving an F1 of only 0.213 on design trade-off detection. In comparison, DesignLore achieves an F1 of 0.259, a 21.6% relative improvement, and consistently delivers gains across different agent systems and backbone. These results highlight the importance of design-aware review and demonstrate the potential of recovering and reusing historical design knowledge to support it. CCS Concepts: • Software and its engineering → Software evolution ; Software verification and validation ;• General and reference → Empirical studies .Additional Key Words and Phrases: code review, Linux kernel, design knowledge, LLM agents 
+
+1 Introduction 
+
+Code review is a central quality-assurance activity in software development, particularly in long-lived systems such as the Linux kernel, where reviewers examine proposed changes before inte-gration to identify and resolve potential problems [3]. With recent advances in large language models (LLMs) and LLM-based agents [13, 22, 41], a growing number of automated code-review approaches and benchmarks have been proposed [18–21, 40, 42]. These efforts, including the recent agent-based Sashiko [29], primarily focus on functional correctness or defects of the code changes. In practice, effective review often extends beyond detecting local defects or checking functional correctness to evaluating design trade-offs . A proposed change reflects one design choice, but alternative solutions may also satisfy the same functional requirements with different advantages. Reviewers therefore need to understand the trade-offs among viable alternatives and determine which choice better fits the project’s design principles and long-term needs. This consideration is particularly important in Linux kernel development, where development guidance explicitly asks contributors to consider how code will be maintained years after it is merged [35]. For example, when clearing huge pages in the memfd patch shown in Figure 1, reviewers suggested replacing 
+
+folio_zero_range() with folio_zero_user() . Both are functionally correct but make different    
+
+> ∗Corresponding author. arXiv:2610.21925v2 [cs.SE] 16 Oct 2026 2Zhenhao Zhou, Kai Yu, Ying Wang, Zhiqiang Yuan, Junhao Zeng, Yijian Wu, Chong Wang, and Xin Peng
+> Fig. 1. A motivating example from the Linux kernel mm subsystem.
+
+trade-offs: the former favors throughput, while the latter favors scheduling responsiveness. The choice depends on the preemption configuration rather than functional correctness alone. We refer to this problem as design-aware code review , which goes beyond local correctness checking to identify and reason about the design trade-offs underlying code changes. Such reasoning may draw on information recorded in historical review discussions [5, 39, 47]. In the Linux kernel, these discussions take place on public mailing lists and capture design considerations at multiple levels of granularity, including the alternatives considered, their advantages and disadvantages, and the reasoning behind the final decisions. They may therefore offer useful context when similar design problems arise in future patches. For example, as shown in Figure 1, an April 2025 discussion of a different patch series considered the trade-off between bulk clearing and scheduling responsiveness, with a reviewer proposing bounded clearing batches with periodic rescheduling. The discussion thus provides relevant context for the later choice in the memfd patch. However, whether this opportunity matters in practice remains unclear: how frequently code review entails design trade-offs and how often similar design problems recur in ways that make historical decisions relevant. To answer these questions, we conduct a formative study on the memory-management ( mm ) subsystem of the Linux kernel, whose public review process provides rich historical discussions and traceable patch revisions. Analyzing design decisions across many review threads through manual inspection alone is impractical. Relevant reasoning is often fragmented across multiple replies, interleaved with implementation details and procedural discussions, and expressed at different levels of abstraction. We therefore propose an automated pipeline that reconstructs each design decision discussed in a thread, together with the alternatives considered and their trade-offs, into a structured decision case . Applying it to 600 threads sampled between 2021 and 2026 yields 1,774 decision cases, whose quality we validate through human evaluation. Based on the mined cases, the study confirms that design trade-offs are common in practice: 
+
+60.29% of the sampled threads involve at least one design trade-off, and 33.91% contain a problem with a relevant historical precedent. It also shows that exploiting such precedents is non-trivial: the reasoning behind a decision must first be recovered from fragmented discussions, a relevant precedent often concerns different code and terminology than the new patch, and a historical resolution applies only if its conditions still hold in the current code. The challenge is therefore not the absence of historical design knowledge, but how to recover, organize, and reuse it effectively. Benchmarking and Enhancing Design-Aware Code Review in the Linux Kernel 3
+
+Guided by the findings, we present DesignLore, a knowledge-augmented approach for design-aware code review. DesignLore first applies the extraction pipeline to review history to build a knowledge base of decision cases, then organizes them into an adaptive, project-specific design taxonomy based on the code patterns that trigger each case, enabling precedents to be retrieved from a new patch’s code rather than surface text. At review time, DesignLore uses the taxonomy and relevant historical decisions to guide the analysis of a target patch, helping the agent identify and validate design trade-offs against the current code and project context. We construct DesignReviewBench from real patch-review histories of the Linux kernel, com-prising 72 patch series and 79 reference design trade-offs. Each benchmark instance pairs a proposed patch series with the codebase snapshot available at review time and captures the design trade-offs revealed by subsequent human review. We compare DesignLore with state-of-the-art general-purpose coding agents, specialized code-review systems, and retrieval-augmented agents that access raw historical review emails. The results show that design-aware code review remains challenging for current agents: the strongest baseline, Sashiko [29], achieves an F1 of 0.213. In contrast, DesignLore achieves the best trade-off detection performance, with an F1 of 0.259, a 21.6% relative improvement at roughly half of Sashiko’s review cost. The improvement persists across three agent systems and four backbone models. The cumulative ablation shows incremental F1 improvements, with the largest increase observed when adding the planning and validation workflow. In summary, this paper makes the following contributions: 
+
+• An empirical characterization of design-aware code review. We analyze historical Linux kernel reviews to characterize the prevalence and recurrence of design trade-offs and the challenges of reusing historical design knowledge. 
+
+• A knowledge-augmented agentic code review approach. We present DesignLore, which extracts design knowledge from historical reviews, organizes it into an adaptive design taxonomy, and reuses relevant decisions to guide new patch reviews. 
+
+• A benchmark for design-aware code review. We construct DesignReviewBench from real historical patch-review discussions to evaluate whether coding agents can identify design trade-offs exposed by proposed changes. 
+
+• A comprehensive empirical evaluation. We evaluate DesignLore against general-purpose, review-specialized, and retrieval-augmented coding agents, demonstrating its effectiveness across diverse agents and backbone models. 
+
+2 Formative Study 
+
+We conduct a formative study to understand what design-aware code review entails in practice and whether historical review discussions can support it. We aim to investigate three questions: 
+
+• FQ1 (Prevalence): How frequently do review decisions in Linux kernel patch review involve design trade-offs? 
+
+• FQ2 (Recurrence): How often have similar underlying design decisions already appeared in earlier, independent patch series? 
+
+• FQ3 (Implications): What challenges arise in reusing historical review discussions for code review, and what do they imply for automated support? FQ1 reflects the practical need for reasoning beyond local correctness, whereas FQ2 indicates whether historical review discussions can provide reusable precedents for future reviews. FQ3 is answered by reflecting on the difficulties encountered when constructing decision cases and identifying precedents for FQ1 and FQ2. 4 Zhenhao Zhou, Kai Yu, Ying Wang, Zhiqiang Yuan, Junhao Zeng, Yijian Wu, Chong Wang, and Xin Peng 
+
+> Fig. 2. Overview of Decision Case Mining.
+
+2.1 Motivation and Definition of Decision Cases 
+
+Raw review threads do not provide a consistent unit of analysis: one thread may contain several independent design questions, while reasoning about one question may span multiple reviewers and replies and patch revisions. We therefore reconstruct discussions into decision cases , analyze trade-offs and recurrence at the case level, and aggregate the results to the thread level. We define a decision case as a historical record of a design decision and the deliberation leading to it, including the alternatives considered and their trade-offs. Each case comprises: 
+
+• Problem: The technical question or design tension motivating the decision. 
+
+• Code-pattern trigger: The code context or recurring pattern giving rise to the problem. 
+
+• Options: The alternatives considered, each with a Description of the proposed action or position, Conditions under which it applies, Pros describing its expected benefits, and Cons 
+
+describing its limitations, risks, or trade-offs. 
+
+• Decision: The option ultimately agreed upon by the participants. 
+
+• Rationale: The justification for the decision. 
+
+2.2 Decision Case Mining 
+
+We propose a four-step mining pipeline that progressively transforms fine-grained atomic sugges-tions into coherent decision cases, as illustrated in Figure 2. 
+
+2.2.1 Atomic Suggestion Extraction. We first use an LLM to extract source-grounded atomic sug-gestions from review threads, where each suggestion addresses a single independently decidable technical concern. A suggestion may defend or refine the current design, object to an existing pro-posal, introduce an alternative, or raise a substantive design question. Each suggestion records the 
+
+Problem and Code-pattern trigger fields of a decision case, together with the Suggestion , Arguments 
+
+for or against it, and applicable Conditions .Review discussions are tree structured through email replies, which does not directly align with the sequential context expected by autoregressive LLMs. We therefore organize each thread into bounded local contexts before extraction. Formally, let a review thread be represented as a rooted reply tree 𝑇 = (𝑉 , 𝐸 ), where each node 𝑣 ∈ 𝑉 denotes an email and each directed edge 
+
+(𝑝 (𝑣 ), 𝑣 ) ∈ 𝐸 denotes that 𝑣 directly replies to its parent 𝑝 (𝑣 ). For each target email 𝑣 , a local window of size 𝑠 is constructed from the target email and its nearest ancestors along the reply path: 
+
+𝑊 (𝑣 ) = ⟨𝑣, 𝑝 (𝑣 ), 𝑝 2 (𝑣 ), . . . , 𝑝 𝑠 −1 (𝑣 )⟩ , where the sequence is truncated when the root of the thread is reached. In practice, 𝑠 = 2 is used to preserve local conversational context while keeping the extraction scope compact. Given a window 𝑊 (𝑣 ), zero or more atomic suggestions are extracted from the target email using the LLM. Only text newly written by the target author is treated as extractable evidence; the parent email and quoted text within the target email are provided as read-only context for resolving references and interpreting the discussion. The LLM is instructed to focus on substantive technical content and ignore purely procedural remarks, such as acknowledgements and requests to resend a patch. Each extracted suggestion retains provenance to its source email and supporting text, enabling subsequent relation construction and independent verification. Benchmarking and Enhancing Design-Aware Code Review in the Linux Kernel 5
+
+Table 1. Logical relations between atomic suggestions. 
+
+Relation Semantics 
+
+refined-from Addresses the same technical question and follows the same solution direction, while adding detail, evidence, clarification, or an applicability condition. 
+
+alternative-to Addresses the same technical question but proposes or defends a competing solution direction, including retaining the existing design. 
+
+caused-by Raises a distinct technical question that is exposed by the preceding discussion and requires an independent resolution. 
+
+2.2.2 Reply-Constrained Logical Relation Induction. The discussion process is recovered by identify-ing how suggestions relate to one another. The email reply structure is used as a strong prior to avoid comparing every pair of suggestions, restricting the candidate predecessors of each suggestion to those permitted by the reply topology. An LLM then identifies the most relevant parent suggestion among these candidates and classifies their logical relation into one of three types: refined-from ,
+
+alternative-to , or caused-by . Table 1 summarizes their semantics. Applying these relations across the thread produces a typed directed tree over atomic suggestions that captures both the reply structure and the inferred design-level relations. 
+
+Algorithm 1 Relation-guided suggestion clustering                                                      
+
+> Require: Typed atomic-suggestion tree 𝑇 =(𝑉 , 𝐸 )
+> Ensure: Issue clusters Cand causal edges 𝐸 𝐶
+> 1: create cluster 𝐶 0for root 𝑟
+> 2: assign 𝑟 to 𝐶 0
+> 3: C ← { 𝐶 0},𝐸 𝐶 ← ∅
+> 4: for each edge (𝑢, 𝑣 )in depth-first order do
+> 5: if rel (𝑢, 𝑣 ) ∈ { refined-from ,alternative-to }then
+> 6: assign 𝑣 to the cluster of 𝑢
+> 7: else if rel (𝑢, 𝑣 )=caused-by then
+> 8: create a new cluster 𝐶 𝑣 containing 𝑣
+> 9: C ← C ∪ { 𝐶 𝑣 }
+> 10: 𝐸 𝐶 ←𝐸 𝐶 ∪ { ( cluster (𝑢 ), 𝐶 𝑣 ) }
+> 11: end if
+> 12: end for
+> 13: return C, 𝐸 𝐶
+
+2.2.3 Decision Case Synthesis. As shown in Algorithm 1, suggestions concerning the same technical question are deterministically grouped by a depth-first traversal of the typed tree. A child linked by refined-from 
+
+or alternative-to continues the same de-cision problem and joins its parent’s cluster, whereas a caused-by child opens a new clus-ter and records a causal edge between the two clusters. The suggestions in each cluster are then synthesized into a single decision case. For each cluster, an LLM is given the con-stituent atomic suggestions together with their provenance and inferred relations, and is instructed to reconstruct the decision case following a fixed schema. The problem and code-pattern trigger are consolidated, and the suggestions are processed chronologically to recover the alternatives considered. Suggestions that duplicate, refine, or complement the same solution are consolidated into one option, whereas suggestions advocating different solution directions are retained as separate options. To preserve the completeness of the decision space, the initial proposal embodied by the reviewed patch is also recovered as an option. Arguments supporting an option are consolidated into its Pros , while objections and reported drawbacks are consolidated into its 
+
+Cons . Applicability conditions associated with the constituent suggestions are likewise propagated to the corresponding options. The final decision is identified as the adopted option based on explicit agreement or, when such agreement is absent, a subsequent revision that clearly implements the option. If neither provides sufficient evidence, the outcome remains unresolved. The rationale is reconstructed from the arguments supporting the adopted option. Finally, cluster-level caused-by 
+
+relations are transferred to the corresponding decision cases to construct the decision-case tree. All reconstructed fields retain links to their supporting suggestions and source messages. 
+
+2.2.4 Thread-Level Case Integrity Relection. An LLM is then given the reconstructed decision-case tree and is instructed to inspect the tree top-down for thread-level structural inconsistencies. The 6 Zhenhao Zhou, Kai Yu, Ying Wang, Zhiqiang Yuan, Junhao Zeng, Yijian Wu, Chong Wang, and Xin Peng 
+
+decision-case tree is traversed to check whether each case forms a coherent and independently resolvable decision problem, and whether the relations between cases are consistent with the overall discussion. When an inconsistency is detected, one of three structural repairs is applied. First, merge combines cases that were separated locally but in fact describe different parts of the same decision problem. Second, reparent introduces or corrects a caused-by relation when two cases were placed as siblings although one technical question was actually triggered by the other. Third, split partitions an overly broad case when it conflates multiple independently resolvable questions. Each repair preserves the provenance of the affected fields and relations, resulting in a decision-case tree that provides a thread-level consistent representation. 
+
+2.3 Mined Decision Cases and Annotation 
+
+We randomly sample 100 eligible review threads from each year from January 2021 through August 2026, yielding 600 threads in total. To account for differences in review volume across years, yearly estimates are weighted by the number of eligible threads in each year. Applying the pipeline with GPT-5.6 Luna as the underlying LLM to the 600 sampled threads yields 1,774 decision cases. Before using these cases for FQ1 and FQ2, their quality is first assessed through a human evaluation. 
+
+Manual Quality Assessment. Fifty decision cases are randomly sampled from the mined cases. Ten developers with at least three years of programming experience and basic familiarity with operating systems are recruited to independently assess the sampled cases. None of the participants had prior involvement in this work. Each case is rated on a four-point Likert scale (higher is better) along three dimensions: correctness (the content is faithfully supported by the original discussion), completeness 
+
+(the information needed to understand the problem and decision is captured), and conciseness 
+
+(irrelevant or redundant information is avoided). Ratings of 1 or 2 require a brief explanation. Correctness Completeness Conciseness 1234  
+
+> Rating
+> Mean 3.625 Mean 3.365 Mean 3.930
+> Fig. 3. Human ratings of decision case quality.
+
+As shown in Figure 3, the extracted deci-sion cases receive consistently high ratings. Conciseness receives the highest score, with a mean of 3.930, indicating that the extracted cases generally avoid irrelevant or redun-dant information. Correctness also achieves a high mean score of 3.625, suggesting that the reconstructed content is largely faithful to the original review discussions and patches. Completeness receives a slightly lower but still favorable mean score of 3.365, indicating that most key information is successfully cap-tured, although some details from complex review discussions may still be omitted. Overall, the ratings are concentrated toward the upper end of the four-point scale, providing evidence for the quality of the extracted decision cases. 
+
+LLM-Based Annotation. Manually labeling all 1,774 cases would be prohibitively costly. We therefore employ three independent LLM annotators, GPT-6 Sol, DeepSeek-V4.1 Flash, and Claude Opus 5.5, to label each decision case for FQ1 and FQ2, with majority vote determining the final label. We measure inter-annotator agreement using Fleiss’ 𝜅 [16]. 
+
+2.4 Prevalence of Design Trade-offs (FQ1) 
+
+We consider a decision case to involve a design trade-off when it presents multiple plausible alternatives whose resolution requires reasoning about technical considerations or project-specific constraints. Then a review thread is considered to involve a design trade-off if any extracted decision Benchmarking and Enhancing Design-Aware Code Review in the Linux Kernel 7
+
+case satisfies this definition. Using this criterion, the three LLM annotators independently label the sampled decision cases and achieve substantial agreement (Fleiss’ 𝜅 = 0.671) [16]. 2021 2022 2023 2024 2025 2026 (Jan–Aug) 020 40 60 80 100            
+
+> Share of threads (%)
+> 47% 61% 60% 63% 63% 64%
+> 23% 37% 34% 37% 38% 32% Design trade-offs Recurrent decisions Threads
+> 0500 1,000 1,500 2,000 2,500 3,000 3,500
+> Threads
+> 2,278 2,470 2,507 3,133 3,328 3,214
+
+Fig. 4. Yearly prevalence and recurrence. 
+
+Results. Overall, 60.29% of the sampled threads involve at least one design trade-off. As shown in Fig. 4, the yearly prevalence in-creases from 47% in 2021 to 61% in 2022 and remains around 60–64% thereafter. This pattern persists de-spite substantial variation in yearly review volume, suggesting that de-sign trade-offs are a recurring fea-ture of Linux kernel patch review rather than a phenomenon concen-trated in a particular period. 
+
+Example. In the memfd patch (Fig-ure 1, left), an allocation path could expose stale data in a huge page. Both folio_zero_range() 
+
+and folio_zero_user() clear the page, but the former can clear it with memset() when 
+
+CONFIG_HIGHMEM is disabled, whereas the latter processes constituent pages with explicit reschedul-ing. Which one is preferable depends on page size, architecture, and preemption configuration: functional equivalence does not imply design equivalence. 
+
+Finding 1: Design trade-offs are prevalent in Linux kernel patch review: about 60% of reviewed threads involve at least one decision among multiple plausible alternatives, and this proportion remains stable over time. Reviewing such changes requires reasoning beyond local correctness, motivating the need for design-aware code review. 
+
+2.5 Recurrence of Design Decisions (FQ2) 
+
+We consider a decision case recurrent when an earlier case from a different review thread addresses the same underlying problem and can inform the later review. For each sampled decision case, we retrieve the eight most semantically similar eligible historical cases and ask the same annotators whether any candidate constitutes such a precedent. A decision case is labeled recurrent if at least one such historical precedent is identified. We then consider a review thread recurrent if at least one of its extracted decision cases is recurrent. 
+
+Results. Overall, 33.91% of the sampled threads contain at least one recurrent decision case, with substantial inter-annotator agreement (Fleiss’ 𝜅 = 0.605). The yearly recurrence rate rises from 23% in 2021 and remains between 32% and 38% in subsequent years. Based on our manual inspection of some sampled threads, this LLM-based estimation is likely conservative. Annotators only examine the eight most semantically similar candidates, so precedents that concern different code or use different terminology, like the clearing discussion relative to the 
+
+memfd patch, may fall outside the candidate set and remain uncounted. 
+
+Example. An April 2025 patch series (Figure 1, right) proposed clearing multiple pages together to improve throughput, and a reviewer proposed bounded clearing batches that periodically allow rescheduling. Although it concerns a different change, it exposes the same design question as the later memfd patch: how aggressively memory can be cleared without compromising scheduling responsiveness. The code change is new, but the underlying design problem is not. 8 Zhenhao Zhou, Kai Yu, Ying Wang, Zhiqiang Yuan, Junhao Zeng, Yijian Wu, Chong Wang, and Xin Peng 
+
+Finding 2: Similar design decisions frequently recur across independent review threads: roughly one third of reviewed threads revisit a problem for which a relevant historical precedent exists, and this estimate is likely conservative. Historical review discussions thus offer a substantial opportunity for reusing design knowledge when reviewing new patches. 
+
+2.6 Implications (FQ3) 
+
+FQ1 motivates explicit support for reasoning about design trade-offs during review, as well as a benchmark for this capability, and FQ2 shows that historical discussions contain reusable precedents. These precedents, however, are not directly reusable. Our study surfaces three challenges, each motivating one stage of DesignLore. 
+
+C1: Recovering Coherent Design Decisions. A decision rarely appears in one place: in the clearing discussion, the proposal, the problematic preemption condition, and the bounded alternative appear in different replies, while the merged code records only the adopted solution. Historical review knowledge therefore needs to be reconstructed into decision-level units that connect the design problem, alternatives, trade-offs, and final decision, rather than treated as raw emails. 
+
+C2: Locating Relevant Precedents. Precedents may involve different files, features, and terminol-ogy, as in the clearing discussion and the memfd patch. Our recurrence analysis identifies similar problems from reviewer discussions, but at review time only the new patch is available. Relevant precedents therefore need to be indexed by the code situations that trigger them, rather than by surface-level similarity in the discussion. 
+
+C3: Applying Precedents to the Current Code. A historical resolution holds only if its con-ditions still hold: applying the clearing precedent requires checking page sizes and preemption configuration in the current code. Historical precedents therefore need to be treated as hypotheses to be checked against the current code rather than answers to be copied directly. 
+
+Finding 3: Historical review discussions cannot be reused as is. Effective reuse requires (C1) recovering decision-level knowledge from fragmented discussions, (C2) locating precedents from the code situation of a new patch rather than from surface text, and (C3) validating whether a precedent still applies to the current code. 
+
+3 DesignLore: Knowledge-Augmented Code Review 
+
+We propose DesignLore, a knowledge-augmented code review approach that recovers reusable design knowledge from historical review discussions and leverages it to support design-aware review of new patches. As illustrated in Figure 5, DesignLore consists of two stages, each addressing one of the chal-lenges identified in the formative study. First, it recovers structured decision cases from historical review threads through the mining pipeline introduced earlier in our formative study, which pro-gressively transforms fine-grained atomic suggestions into coherent design decisions (C1). Second, it organizes the recovered cases into a design taxonomy according to their code-pattern triggers, forming a reusable project-level knowledge base that can be navigated from the code of a new patch (C2). At review time, DesignLore uses the target patch to navigate the knowledge base, retrieves relevant historical precedents, synthesizes them into a decision-oriented review plan, and validates the plan against the code under review (C3). 
+
+3.1 Decision Knowledge Extraction 
+
+The first stage of DesignLore addresses challenge C1 by applying the mining pipeline of Section 2.2 to the entire historical review corpus rather than to a sample of threads. Each thread is thereby transformed into a decision-case tree, whose nodes are source-linked decision cases and whose Benchmarking and Enhancing Design-Aware Code Review in the Linux Kernel 9
+
+> Fig. 5. Overview of DesignLore.
+
+edges record how resolving one design question exposed another. These cases form the raw material organized and reused by the next two stages. 
+
+3.2 Design Taxonomy Construction 
+
+The decision cases recovered in the previous stage preserve the reasoning behind individual review discussions. A flat collection of such cases, however, provides no stable routing structure for a new patch. DesignLore therefore organizes historical decision cases into a hierarchical design taxonomy according to their Code-pattern trigger . The taxonomy provides a structured entry point for locating historical decisions that arise under similar code circumstances. Inspired by established taxonomy development methods [14, 24], DesignLore constructs the taxonomy using a round-based, top-down procedure that combines a pre-established seed schema with data-driven adaptation. Algorithm 2 summarizes the process. 
+
+3.2.1 Schema Initialization. Upper-level taxonomy dimensions are intended to capture relatively stable and fundamental properties of code changes, providing consistent routing semantics for subsequent construction. To establish such a stable structure, DesignLore initializes the upper 
+
+𝑘 levels through an iterative induction-and-validation process. An LLM-based annotation agent induces, for each level, a candidate routing dimension and its associated categories from a sampled subset of decision cases. The resulting schema is then validated and refined on disjoint batches until its dimensions and categories stabilize. Finally, the stabilized upper-level schema is manually reviewed and confirmed before being fixed as the seed taxonomy schema. Each routing node additionally maintains an unslotted bucket for cases that cannot be assigned to any existing category. 
+
+3.2.2 Batch-Wise Annotation and Settlement. Decision cases are processed in batches. At the beginning of each round, DesignLore freezes the current taxonomy as a snapshot so that all cases in the batch are annotated against the same schema, reducing sensitivity to processing order. An annotation agent routes each case top-down. At each node, the agent selects an existing category according to the node’s routing dimension. If no category is applicable, the case is placed in the 10 Zhenhao Zhou, Kai Yu, Ying Wang, Zhiqiang Yuan, Junhao Zeng, Yijian Wu, Chong Wang, and Xin Peng 
+
+Algorithm 2 Round-based adaptive taxonomy construction                                                                                                                          
+
+> Require: Decision cases C; seed schema T0; batch size
+> 𝑏 ; admission threshold 𝑎 ; overload threshold 𝜏 ; max rounds 𝐾 ; max depth 𝐷 ; max expansions 𝑅
+> Ensure: Design taxonomy T
+> ⊲Schema Initialization 1: T ← Initialize ( T 0)
+> 2: W1← C
+> 3: for round 𝑟 =1, . . . , 𝐾 do
+> ⊲Batch-Wise Annotation and Settlement 4: for each batch 𝐵 in Batches ( W 𝑟 , 𝑏 )do
+> 5: 𝑆 𝐵 ←Snapshot ( T )
+> 6: for all 𝑐 ∈𝐵 in parallel do
+> 7: (𝜋 𝑐 , 𝑞 𝑐 ) ← Annotate (𝑐, 𝑆 𝐵 )
+> 8: end for
+> 9: Z𝐵 ← { ( 𝑐, 𝜋 𝑐 , 𝑞 𝑐 ) | 𝑐 ∈𝐵 }
+> 10: T ← Settle_Batch ( T ,Z𝐵 , 𝑎 )
+> 11: end for
+> ⊲Iterative Structural Refinement 12: ¯𝑆 𝑟 ←Snapshot ( T )
+> 13: for each node 𝑛 in Postorder (¯𝑆 𝑟 )do
+> 14: if 𝑛 is a leaf and | C ( 𝑛 ) | >𝜏 and 𝑑 (𝑛 )<𝐷 then
+> 15: T ← Grow_Dimension ( T , 𝑛, 𝑅 )
+> 16: else if 𝑛 is a routing node and |𝑈 (𝑛 ) | >𝜏 then
+> 17: if Expansion_Count (𝑛 )<𝑅 then
+> 18: T ← Expand_Categories ( T , 𝑛 )
+> 19: Increment_Expansion_Count (𝑛 )
+> 20: else
+> 21: T ← Revise_Dimension ( T , 𝑛 )
+> 22: end if
+> 23: end if
+> 24: end for
+> 25: W𝑟 +1←AffectedCases (¯𝑆 𝑟 ,T )
+> 26: if W𝑟 +1=∅then
+> 27: break
+> 28: end if
+> 29: end for
+> 30: return T
+
+corresponding unslotted bucket and the agent proposes a candidate label that remains within the same routing dimension. To encourage consistent terminology, candidate labels are generated with reference to the vocabulary already associated with the routing node. At the end of each batch, DesignLore normalizes semantically equivalent candidate labels and aggregates their support. Candidate labels with sufficient recurring evidence are admitted as new categories, after which the corresponding unslotted cases are rerouted to the newly created nodes. 
+
+3.2.3 Iterative Structural Refinement. After batch settlement, the resulting taxonomy may still be too coarse to organize the accumulated cases effectively. DesignLore therefore examines overloaded nodes and applies three refinement operations. (1) Vertical growth handles overloaded leaf nodes by introducing a more specific routing dimension and its categories beneath the leaf. (2) Horizontal expansion handles routing nodes with large unslotted buckets by introducing additional categories under the existing dimension. (3) Dimension revision is triggered when repeated horizontal expansion fails to produce a meaningful partition; DesignLore then redefines the routing dimension of the affected adaptive subtree and repartitions its cases. Expert-seeded dimensions are never revised. A refinement agent performs these operations using two complementary forms of context. Path context contains the definitions and routing dimensions along the path from the root to the current node, ensuring that a newly introduced dimension is more specific than its ancestors. Peer context 
+
+contains the definitions and routing dimensions of nodes at comparable depth, helping maintain a consistent level of abstraction across the taxonomy. The agent is additionally provided with decision cases from the node being refined. After each structural change, all affected cases are re-annotated against the updated local subtree. Refinement continues until no overloaded node admits a valid structural improvement or a predefined refinement limit is reached, i.e., the maximum depth or retry count. 
+
+3.3 Design Knowledge-Augmented Code Review 
+
+The previous offline stages construct a reusable knowledge base of historical design decisions organized by the design taxonomy. In the online stage, DesignLore integrates this knowledge base into a coding agent through a set of knowledge-access skills. Specifically, DesignLore organizes Benchmarking and Enhancing Design-Aware Code Review in the Linux Kernel 11 
+
+the review process into two stages: knowledge-guided review planning and code-grounded review validation .
+
+3.3.1 Knowledge-Guided Review Planning. Given a target patch and the repository snapshot under review, DesignLore first instructs the agent to inspect the changed code and its surrounding context, identify salient code patterns, and formulate an initial characterization of the affected functionality and implementation mechanism. The agent then uses this characterization to explore the historical design knowledge base. To support this exploration, DesignLore provides three complementary knowledge-access skills: 
+
+• annotate : maps code patterns identified in the target patch to candidate taxonomy nodes using the same classification procedure employed during taxonomy construction. This provides an initial entry point into the historical knowledge space; 
+
+• navigate : explores structurally and semantically related taxonomy nodes. The agent can navi-gate parent, child, and sibling nodes, and follow the caused-by relation to reach historically related situations, while inspecting the associated case statistics and representative decisions; 
+
+• retrieve : retrieves historical decision cases using BM25-based ranking. Retrieval can be per-formed globally over the complete knowledge base or locally within taxonomy nodes selected during navigation, allowing the agent to progressively narrow or expand the search scope. Knowledge access proceeds iteratively through taxonomy navigation and case retrieval. The agent first maps the target code to relevant taxonomy nodes, then explores neighboring or causally related nodes and retrieves candidate decision cases. Based on the retrieved evidence, it can refine the search scope and continue exploring additional nodes as new relevant concerns emerge. This iterative process progressively focuses the search on historical design knowledge relevant to the current patch. From the retrieved cases, the agent identifies recurring design concerns, alternative solutions considered in prior reviews, their advantages and disadvantages, and the conditions under which different solutions were preferred. It synthesizes this information into a review plan , which contains a set of candidate design concerns for further examination. Each plan item records the relevant code region, the potential design issue, supporting historical precedents, possible alternative solutions, and the conditions to be validated in the current repository. At this stage, each plan item serves as a hypothesis for subsequent code-grounded validation. 
+
+3.3.2 Code-Grounded Review Validation. The second stage validates each planned concern against the current codebase. For every review-plan item, the agent traces the affected code, relevant control and data dependencies, and surrounding implementation context to determine whether the historically observed design situation actually applies to the target patch. The agent further checks whether the assumptions and applicability conditions associated with the historical cases hold in the current implementation, such as lifecycle assumptions and interface constraints. Plan items that are not supported by the current code are discarded. For the remaining items, the agent combines code evidence with the relevant historical precedents to produce concrete review findings . Each finding identifies the underlying design concern, explains why it applies to the current patch, and, when supported by both the historical evidence and the current context, recommends a corresponding resolution with its rationale. This validation stage prevents historically similar but contextually inapplicable cases from being directly propagated into review comments. 
+
+4 Evaluation 
+
+To comprehensively evaluate DesignLore, we formulate the following research questions: 12 Zhenhao Zhou, Kai Yu, Ying Wang, Zhiqiang Yuan, Junhao Zeng, Yijian Wu, Chong Wang, and Xin Peng 
+
+• Overall Effectiveness (RQ1): How effective is DesignLore in improving design-aware code review compared with existing code-review approaches? 
+
+• Generalizability (RQ2): To what extent does DesignLore retain its benefits across agent frameworks and backbone models? 
+
+• Component Contribution (RQ3): How much does each component of DesignLore contribute to its design-aware review performance? 
+
+• Reliability of Judgment (RQ4): To what extent does the LLM-based evaluation align with human judgments? 
+
+4.1 DesignReviewBench: A Design-Aware Code Review Benchmark 
+
+We introduce DesignReviewBench, a benchmark for evaluating design-aware code review. Whereas existing code-review tasks primarily assess whether a proposed patch contains correctness defects, DesignReviewBench focuses on the project-specific design trade-offs exposed by the patch. 
+
+4.1.1 Task Definition. We define design-aware code review as the task of identifying underlying design tensions or trade-offs exposed by a proposed code change. Formally, given a patch series 𝑃 ,that is, a set of related patches that collectively implement a change, and the codebase snapshot 
+
+𝐶 available at review time, a reviewer outputs a set of findings {𝑓 𝑖 }𝑚 𝑖 =1, each describing a design trade-off that may require further consideration during review. 
+
+4.1.2 Benchmark Construction. We construct DesignReviewBench through four phases: data collection, rule-based filtering, LLM-based verification, and manual inspection. 
+
+Step 1: Data Collection. We collect patch-review threads posted to the Linux kernel mm mailing list from January 2025 to August 2026. We retain only threads associated with patch submissions and containing substantive discussions among human reviewers, resulting in 6,542 threads. For each retained thread, we apply the Decision Case Extraction pipeline (Section 2.2), with GPT-5.6 Luna as the underlying LLM, to reconstruct the corresponding decision cases. These cases provide structured evidence for constructing realistic design-aware code-review instances grounded in historical review outcomes. Specifically, we use the recovered Problem field as a candidate design trade-off point. 
+
+Step 2: Rule-Based Filtering. We next apply deterministic filters to remove cases that cannot support a reliable code-review instance. Specifically, we require that (i) the recovered case contains at least two substantive alternatives, indicating that an actual design choice was considered; (ii) the reviewed patch can be linked to the corresponding kernel snapshot available at review time and can be applied to that snapshot, ensuring that the benchmark instance has a reproducible code context; and (iii) the patch series can be linked to its eventual mainline integration, providing downstream evidence for validating the recorded resolution. 
+
+Step 3: LLM-Based Verification. We then perform semantic verification of the remaining candi-dates. Each verifier is given the recovered case together with the original reviewed patch and the corresponding final patch integrated into mainline. It independently checks whether (i) the case captures a design trade-off rather than a purely mechanical or straightforward correctness issue, with multiple plausible alternatives under the available constraints; (ii) the recorded final decision and rationale are sufficiently explicit and supported by the review evidence; (iii) the eventual reso-lution differs meaningfully from the design embodied in the original patch; and (iv) the recorded resolution is reflected in the version ultimately integrated into mainline. We use GPT-6 Sol and DeepSeek-V4.1 Flash as independent verifier models and retain only candidates accepted by both. 
+
+Step 4: Manual Inspection. Finally, two human annotators independently inspect the surviving candidates and assess whether each case constitutes a valid design-aware code-review instance. A Benchmarking and Enhancing Design-Aware Code Review in the Linux Kernel 13 
+
+candidate is retained when both annotators agree that the design trade-off point, reference decision, and supporting rationale are sufficiently clear and well grounded in the historical evidence. The two annotators achieve substantial agreement, with Cohen’s 𝜅 = 0.637. This final curation yields DesignReviewBench, consisting of 72 patch series and 79 design trade-offs. 
+
+4.1.3 Evaluation Protocol. We evaluate the findings produced by a code-review agent against the reference design trade-offs in DesignReviewBench. Following the three-level detection scheme used in Sashiko [29], each pair of a prediction and a reference is independently evaluated by an LLM judge, which assigns one of three labels: Exact , Partial , or Miss . Exact indicates that the prediction identifies the same underlying design trade-off as the reference; Partial indicates that it captures part of the trade-off but does not fully characterize the underlying tension; and Miss indicates that the target trade-off is not identified. For quantitative evaluation, we map Exact , Partial , and Miss to graded scores of 1, 0 .5, and 0, respectively, and report graded precision, recall, and F1-score as the evaluation metrics. Formally, let 𝐹 denote the set of findings produced by an agent and 𝐺 the set of reference design trade-offs. For each pair of predictions and references (𝑓 , 𝑔 ), let ℓ (𝑓 , 𝑔 ) denote its assigned label and 𝑠 (𝑓 , 𝑔 ) = 𝑤 (ℓ (𝑓 , 𝑔 )) the corresponding graded score. We compute graded precision, recall, and F1-score as: 
+
+𝑃 = 1
+
+|𝐹 |∑︁ 𝑓 ∈𝐹 
+
+max  
+
+> 𝑔 ∈𝐺
+
+𝑠 (𝑓 , 𝑔 ), 𝑅 = 1
+
+|𝐺 |∑︁ 𝑔 ∈𝐺 
+
+max   
+
+> 𝑓 ∈𝐹
+
+𝑠 (𝑓 , 𝑔 ), 𝐹 1 = 2𝑃𝑅 𝑃 + 𝑅 .
+
+4.2 Experimental Setup 
+
+4.2.1 Baselines. We implement DesignLore on top of OpenCode [1] and compare it against six baselines. The first four represent general-purpose or review-specialized coding agents. The remaining two are retrieval-enhanced variants of OpenCode that directly access the raw historical review-email corpus. 
+
+• Sashiko [29] is an agentic reviewer developed by the Linux Foundation specifically for the Linux kernel, with kernel-specific prompts and a dedicated review protocol. 
+
+• OpenCodeReview [19] is a review-specialized agent combining rule-guided dispatch, tool-grounded file inspection, and independent reflection. 
+
+• Codex [26] is a general-purpose coding agent; we use its native review workflow. 
+
+• OpenCode [1] is an open-source coding agent; we use its native review workflow. 
+
+• OpenCode-RAG applies retrieval-augmented generation [17] over the raw historical review emails, providing semantically similar emails as additional context. 
+
+• OpenCode-Search lets OpenCode search the same raw-email corpus through keyword-based 
+
+grep queries and inspect the retrieved emails as needed. 
+
+4.2.2 Implementation Details. Temporal Data Cut-off. To prevent temporal data leakage, the histor-ical email corpus used by DesignLore and the retrieval-enhanced baselines contains only emails from 2021–2024, which strictly precede all benchmark patches (2025–2026). 
+
+Code Review. All baselines use GPT-5.6 Luna, controlling for the underlying model when com-paring review workflows. We also provide all agents with the same design-aware code-review instruction, asking them to identify design tensions or trade-offs exposed by the target patch. For OpenCode-RAG, we encode historical emails using sentence-transformers/all-MiniLM-L6-v2 
+
+and retrieve the top-8 most similar emails for each target patch. 
+
+LLM Judges. We use three SOTA LLMs from distinct model families, namely GPT-6 Sol, DeepSeek-V4.1 Flash, and Claude Opus 5.5, as independent judges. Each judge evaluates agent findings using 14 Zhenhao Zhou, Kai Yu, Ying Wang, Zhiqiang Yuan, Junhao Zeng, Yijian Wu, Chong Wang, and Xin Peng 
+
+the criteria defined in Section 4.1. We average the resulting graded scores across judges to obtain the final scores, reducing dependence on any single evaluator. 
+
+4.3 Results and Analysis 
+
+4.3.1 RQ1: Overall Effectiveness. We evaluate DesignLore against six baselines on design trade-off detection. Table 2 reports the results. Overall, DesignLore achieves the highest precision, recall, and F1 among all evaluated methods, with an F1 of 0.259.                                  
+
+> Table 2. Overall Results on DesignReviewBench.
+> Method Performance Cost
+> Precision Recall F1-Score $/item OpenCode 0.136 0.236 0.173 0.033 Codex 0.173 0.272 0.211 0.021 OpenCodeReview 0.087 0.274 0.132 0.119 Sashiko 0.151 0.363 0.213 0.101 OpenCode-Search 0.155 0.226 0.184 0.102 OpenCode-RAG 0.183 0.249 0.211 0.058 DesignLore 0.189 0.411 0.259 0.050
+
+Comparison with general-purpose agents. 
+
+DesignLore builds on OpenCode, making their comparison a direct assessment of the benefit introduced by our knowledge-augmented review workflow. DesignLore improves F1 from 0.173 to 0.259, a 49.7% relative gain, while improving both preci-sion and recall. It also outperforms Codex, the stronger general-purpose agent base-line, whose F1 reaches 0.211. These re-sults show that DesignLore benefits sub-stantially from augmenting its underlying agent with structured design knowledge. 
+
+Comparison with specialized reviewers. The specialized review systems still show limited capabil-ity in design-aware code review. Of the two, Sashiko is the stronger baseline, with an F1 of 0.213, while OpenCodeReview achieves only 0.132. This suggests that existing review-focused agents still struggle to reliably identify the design trade-offs captured by our benchmark. In contrast, Design-Lore outperforms both systems. Compared with Sashiko, it achieves an F1 of 0.259, corresponding to a 21.6% relative gain, while also attaining higher precision and recall. 
+
+Comparison with historical-email retrieval. To isolate the benefit of DesignLore’s knowledge workflow, we further compare against retrieval-augmented baselines that provide direct access to historical review discussions. Compared with the underlying OpenCode agent, the stronger retrieval baseline, OpenCode-RAG, improves F1 from 0.173 to 0.211, showing that historical review informa-tion is useful for design-aware review. DesignLore further increases F1 to 0.259, corresponding to a 22.7% relative gain over OpenCode-RAG. The improvement is particularly pronounced in recall, indicating that DesignLore more effectively exploits historical design knowledge to identify trade-offs in target patches. These results suggest that the gain comes not merely from access to raw historical emails, but from structuring and organizing historical knowledge for effective retrieval and reasoning. 
+
+Cost. The improved effectiveness of DesignLore comes with a moderate cost overhead over its underlying OpenCode agent, increasing the average review cost from $0.033 to $0.050 per patch. Nevertheless, DesignLore remains less expensive than the stronger retrieval baseline OpenCode-RAG ($0.058) and requires roughly half the cost of Sashiko ($0.101). The one-time offline cost of constructing the knowledge base is discussed in Section 5. 
+
+RQ1 Summary: Existing code-review agents still show limited capability in design-aware review, whereas DesignLore achieves the best design trade-off detection performance among all evaluated methods, with an F1 of 0.259, demonstrating its effectiveness for design-aware review. 
+
+4.3.2 RQ2: Generalizability. We examine the generalizability of DesignLore along two dimensions: the underlying agent system and the backbone LLM. First, we integrate DesignLore with multiple Benchmarking and Enhancing Design-Aware Code Review in the Linux Kernel 15 
+
+Table 3. Performance of DesignLore across different backbone models.                                        
+
+> Method GPT-5.6 Luna GPT-5.6 Terra Claude Haiku 4.5 DeepSeek-V4.1 Flash Precision Recall F1 Precision Recall F1 Precision Recall F1 Precision Recall F1 Sashiko 0.151 0.363 0.213 0.158 0.357 0.218 0.077 0.228 0.115 0.170 0.509 0.255 DesignLore 0.189 0.411 0.259 0.202 0.409 0.271 0.109 0.304 0.160 0.192 0.649 0.297
+
+coding agents and compare each augmented configuration against its corresponding vanilla agent. We then vary the backbone LLM and compare DesignLore with Sashiko, the strongest baseline in RQ1, to examine whether the observed advantage persists across backbones. OpenCode Codex Claude Code 0.0 0.1 0.2 0.3     
+
+> F1  0.173 0.211 0.236 0.259 0.240 0.245
+> +49.8% +13.7% +3.9%
+> Vanilla + DesignLore
+
+Fig. 6. F1 improvements from DesignLore across different underlying agents. 
+
+Generalizability across agent systems. 
+
+We first evaluate whether the benefit of DesignLore extends beyond its default OpenCode configuration. In addition to the default OpenCode configuration with GPT-5.6 Luna, we integrate DesignLore with Codex using the same GPT-5.6 Luna backbone, and with Claude Code [2] us-ing Claude Sonnet 5. Then we compare each augmented agent against its vanilla counterpart. Figure 6 reports the resulting F1 scores and relative gains. DesignLore improves F1 across all three agent config-urations, demonstrating its effectiveness. The largest gain is observed on OpenCode, while an improvement is also achieved on Claude Code with the Claude Sonnet 5 backbone, yielding a 3.9% relative F1 gain. Overall, the consistent gains across these configurations suggest that DesignLore can improve design-aware code review without relying on behaviors specific to a single harness. 
+
+Generalizability across backbone models. We next examine whether DesignLore retains its advantage when the backbone LLM changes. In addition to the default GPT-5.6 Luna configuration, we run both DesignLore and Sashiko with three additional backbone models: GPT-5.6 Terra, Claude Haiku 4.5, and DeepSeek-V4.1 Flash, while keeping the evaluation protocol unchanged. Table 3 reports the results. DesignLore consistently outperforms Sashiko across all three metrics with all four backbone models. The relative F1 gains range from 16.5% to 39.1%, showing that the advantage of DesignLore persists across models from different families and with substantially different absolute performance levels. 
+
+RQ2 Summary: DesignLore generalizes beyond its default configuration, yielding consistent performance gains across multiple agent systems and outperforming the strongest specialized-review baseline across all evaluated backbone models. 
+
+4.3.3 RQ3: Component Contribution. DesignLore consists of three sequential stages: Decision-Knowledge Extraction (Stage 1), Design Taxonomy Construction (Stage 2), and Design Knowledge-Augmented Code Review (Stage 3). Since each later stage builds on the artifacts produced by the preceding stages, we conduct a cumulative ablation study to quantify the incremental contribution of each stage. Starting from the full DesignLore pipeline, we progressively remove the three stages as follows: w/o Stage 3 removes the planning and validation workflow, letting OpenCode directly use the taxonomy and retrieval tools; w/o Stages 2–3 further removes the taxonomy, letting OpenCode directly retrieve decision cases; and w/o Stages 1–3 reduces the system to the original OpenCode baseline. 16 Zhenhao Zhou, Kai Yu, Ying Wang, Zhiqiang Yuan, Junhao Zeng, Yijian Wu, Chong Wang, and Xin Peng                
+
+> Table 4. Ablation results of DesignLore.
+> Method Precision Recall F1-Score DesignLore 0.189 0.411 0.259
+> w/o Stage 3 0.179 0.207 0.192
+> w/o Stages 2–3 0.159 0.217 0.184
+> w/o Stages 1–3 0.136 0.236 0.173
+
+Table 4 reports the cumulative ablation results. Removing stages from DesignLore leads to a monotonic decrease in F1, from 0.259 for the full system to 0.173 when all three stages are removed, indicating that each stage contributes to the overall design-aware review performance. Among the three stages, Stage 3, the design knowledge-augmented review workflow, pro-vides the largest gain, increasing F1 from 0.192 to 0.259. This result indicates that the planning and validation workflow helps the agent more effectively exploit the available design knowledge and identify additional design trade-offs. Stages 1 and 2 also provide consistent improvements. Making the extracted decision knowledge available to OpenCode increases F1 from 0.173 to 0.184, while further organizing this knowledge with the design taxonomy raises F1 to 0.192. These gains suggest that historical decision knowledge and its structured organization help the agent focus on more relevant design concerns. 
+
+RQ3 Summary: The cumulative ablation study shows that each stage of DesignLore contributes to its overall design-aware review performance. 
+
+4.3.4 RQ4: Reliability of Judgment. Our evaluation relies on LLM judges to assess agent-generated review findings. We therefore assess whether the LLM-based evaluation used in our experiments aligns with human judgments. We randomly sample 100 pairs of agent-generated review findings and reference design trade-offs, together with the averaged scores assigned by the three LLM judges. Following prior work [37], we use two independent human evaluators to construct the human reference scores. Each evaluator assesses every sampled pair using our three-level rubric, namely 
+
+Exact , Partial , and Miss . We first examine agreement between the two human evaluators using weighted Cohen’s 𝜅 , and then assess the alignment between the averaged human scores and the averaged LLM judge scores using Pearson’s 𝑅 , Spearman’s 𝜌 , and Kendall’s 𝜏 𝑏 .The two human evaluators achieve high agreement ( 𝜅 = 0.842), indicating that the human reference judgments are stable. The ensemble LLM scores also align closely with human evaluation, achieving Pearson’s 𝑅 = 0.945, Spearman’s 𝜌 = 0.944, and Kendall’s 𝜏 𝑏 = 0.890. The consistently high agreement and correlations provide evidence that the LLM-based evaluation reliably reflects human judgments on design trade-off identification. 
+
+RQ4 Summary: The LLM-based evaluation shows strong alignment with human judgments. 
+
+5 Discussion 
+
+Toward Design-Aware Code Review. Our results suggest that recognizing design trade-offs and reasoning about appropriate alternatives remain challenging for current review agents. Unlike defect detection, a design concern may involve multiple viable solutions whose suitability depends on project-specific constraints and rationale. This calls for review systems that go beyond identifying problematic code to explicitly reason about design decision points, competing alternatives, and their trade-offs. Historical design knowledge provides a promising source of such context, enabling review agents to relate a new patch to how similar design choices were previously discussed. 
+
+Toward an Evolving Project Memory. DesignLore currently reconstructs decision cases offline from historical review discussions. A natural extension is to incrementally incorporate newly completed reviews, allowing these cases to form a continuously evolving project-specific design memory. Such reuse, however, should remain context-sensitive: a historical decision reflects the constraints and assumptions under which it was made and should not be treated as a prescriptive Benchmarking and Enhancing Design-Aware Code Review in the Linux Kernel 17 
+
+rule. Future systems should therefore retrieve relevant precedents while also reasoning about whether their applicability conditions still hold in the current code and project context. 
+
+Offline Construction Cost. Building the project-specific design knowledge base incurs an upfront cost because DesignLore processes historical review discussions through multiple LLM-based stages. In our study, extracting decision cases from 8,382 review threads costs $307.9, while constructing the design taxonomy incurs an additional $16.7. This yields a total offline construction cost of $324.6. This cost is paid only during knowledge-base construction and can be amortized across subsequent reviews. Once the historical archive has been processed, newly arriving review discussions would only require incremental extraction and taxonomy updates. The practical trade-off is therefore between the one-time cost of constructing and maintaining project-specific design knowledge and its repeated reuse during future code reviews. 
+
+6 Related Work 6.1 Design Knowledge Extraction 
+
+Software development continuously involves design trade-offs and decisions, whose underlying knowledge is important for the long-term evolution of software systems. Prior work has therefore explored explicitly representing and preserving such knowledge to mitigate its loss over time. Jansen and Bosch modeled software architecture as a composition of explicit design decisions [12], while subsequent studies extended this view to capture alternatives, rationale, assumptions, context, and decision history, and further regarded architectural decisions as reusable knowledge assets [15, 48]. These studies establish the value and key elements of design knowledge, but largely assume that such knowledge is explicitly documented and maintained during development. Another line of research focuses on recovering design knowledge from development artifacts, motivated by the observation that important design decisions are often discussed and refined through informal communication rather than explicitly documented [4–7, 28, 30, 31, 39]. More recently, researchers have leveraged LLMs to recover increasingly structured forms of design knowledge from such artifacts. Dhaouadi et al. [8, 9] constructed rationale and decision graphs from development histories, while DRMiner [44, 45] combines LLMs with heuristic signals to recover proposed solutions together with supporting and opposing arguments from issue discussions. Yu et al. [38] extracted project-specific design constraints from code review discussions arising during issue resolution. Other recent studies further explore LLMs for generating or recovering architectural rationale from textual artifacts [46]. Collectively, these studies show that development artifacts provide a rich source for recovering otherwise implicit design knowledge. 
+
+6.2 Automated Code Review 
+
+Early learning-based approaches formulate code review as prediction over code changes and review comments. Tufano et al. [36] studied pre-review transformation and comment-guided refinement, while CodeReviewer [18] introduced review-specific pretraining for change-quality estimation, com-ment generation, and code refinement. Retrieval-based approaches such as CommentFinder [10] and LAURA [43] further exploit historical reviews to improve comment generation. More recent systems increasingly combine repository context, tool use, and multi-stage verification. CodeAgent [32], RovoDev [34], OpenCodeReview [19], and Sashiko [29] organize review around repository explo-ration, specialized guidance, and validation of generated findings. Historical discussions can also provide reusable review knowledge: FLINT [20] distills Linux review discussions into validation rules and retrieves relevant rules and source context for new patches. Existing benchmarks evaluate complementary aspects of automated code review. CodeRe-viewer [18] and CodeReviewQA [21] assess review generation, refinement, and comprehension, 18 Zhenhao Zhou, Kai Yu, Ying Wang, Zhiqiang Yuan, Junhao Zeng, Yijian Wu, Chong Wang, and Xin Peng 
+
+while DeepCRCEval [23], CRScore [25], and HalluJudge [33] focus on review quality and grounding. More recent benchmarks move toward realistic agent-level evaluation with broader repository con-text: SWR-Bench [40] evaluates issue coverage over complete pull requests, ContextCRBench [11] incorporates issue and program context, CR-Bench [27] evaluates defect detection together with review usefulness and noise, and c-CRAB [42] evaluates code-review agents on real pull requests by converting human-identified review concerns into executable tests. Our work focuses on implicit design trade-offs, requiring the reviewer to recognize the design trade-off exposed by a patch and reason about it under project-specific constraints. While FLINT distills historical Linux review knowledge into validation rules, DesignLore reconstructs decision cases that preserve the problem, competing alternatives, and their underlying trade-offs. Accord-ingly, DesignReviewBench focuses on whether an agent can identify such design trade-offs from a proposed patch. 
+
+7 Threats to Validity 
+
+Internal Validity. A key threat is the reliance on LLMs in multiple stages. We mitigate it by using multiple independent LLMs for verification and evaluation, and validate both the extracted decision cases (Section 2.3) and the LLM-based evaluation (RQ4) through human assessment. Second, the candidate trade-offs in DesignReviewBench are recovered by the same extraction pipeline that builds the knowledge base of DesignLore, which may favor its representation. To reduce this risk, every reference is verified against the original and mainline patches by two LLM verifiers and two human annotators, and the knowledge base contains only discussions that precede all benchmark patches. Third, the backbone LLMs may have been exposed to the benchmark discussions during pre-training; since all methods share the same backbone, this exposure affects them equally. 
+
+External Validity. Our study focuses on the Linux kernel memory-management subsystem (mm ), a representative and mature software system with long-running patch-review discussions and traceable patch evolution. The prevalence of design trade-offs and the effectiveness of DesignLore may differ across other repositories. However, we believe that the underlying principle of recovering and reusing historical design knowledge can generalize to other projects with rich developer discussions, including pull-request-based development platforms. Further validation on additional repositories is left for future work. In addition, although the main experiments use GPT-5.6 Luna as the backbone model, we evaluate DesignLore with additional LLMs, such as DeepSeek-V4.1 Flash, and observe consistent improvements, suggesting that the approach is not tied to a single model. 
+
+Construct Validity. The reference design trade-offs in DesignReviewBench are derived from documented developer discussions and subsequent patch evolution. Therefore, they may not cap-ture implicit design considerations that were never explicitly discussed or recorded. Consequently, our benchmark measures observable design reasoning rather than the complete set of design con-siderations involved in software maintenance. Nevertheless, it provides a practical and reproducible approximation of design-aware code review beyond conventional correctness checking. 
+
+8 Conclusion 
+
+A formative study of Linux kernel mm review discussions shows that design trade-offs are prevalent and that similar problems frequently recur across independent patch series. Building on these findings, we develop DesignLore, which recovers, organizes, and reuses historical decision cases, and construct DesignReviewBench for systematic evaluation. Existing coding agents show limited capability in design-aware review, whereas DesignLore achieves the strongest performance and generalizes across agent systems and backbone models. These results underscore the importance of design-aware review and demonstrate that explicitly reco vering and structuring historical design knowledge can improve automated code review beyond local correctness checking. Benchmarking and Enhancing Design-Aware Code Review in the Linux Kernel 19 
+
+References 
+
+[1] Anomaly. 2026. OpenCode: The Open Source Coding Agent. GitHub repository. https://github.com/anomalyco/ opencode Accessed September 16, 2026. [2] Anthropic. 2026. Claude Code: Overview. Official product documentation. https://code.claude.com/docs/en/overview Accessed September 29, 2026. [3] Alberto Bacchelli and Christian Bird. 2013. Expectations, Outcomes, and Challenges of Modern Code Review. In 
+
+Proceedings of the 35th International Conference on Software Engineering . IEEE, Piscataway, NJ, USA, 712–721. doi:10. 1109/ICSE.2013.6606617 [4] Manoj Bhat, Klym Shumaiev, Andreas Biesdorf, Uwe Hohenstein, and Florian Matthes. 2017. Automatic Extraction of Design Decisions from Issue Management Systems: A Machine Learning Based Approach. In Software Architecture (Lecture Notes in Computer Science, Vol. 10475) . Springer, Cham, Switzerland, 138–154. doi:10.1007/978-3-319-65831-5_10 [5] Tingting Bi, Wei Ding, Peng Liang, and Antony Tang. 2021. Architecture Information Communication in Two OSS Projects: The Why, Who, When, and What. Journal of Systems and Software 181 (2021), 111035. doi:10.1016/j.jss.2021. 111035 [6] João Brunet, Gail C. Murphy, Ricardo Terra, and Jorge Figueiredo. 2014. Do Developers Discuss Design?. In Proceedings of the 11th Working Conference on Mining Software Repositories . ACM, New York, NY, USA, 340–343. doi:10.1145/ 2597073.2597115 [7] Davor Čubranić and Gail C. Murphy. 2003. Hipikat: Recommending Pertinent Software Development Artifacts. In 
+
+Proceedings of the 25th International Conference on Software Engineering . IEEE, Los Alamitos, CA, USA, 408–418. doi:10.1109/ICSE.2003.1201219 [8] Mouna Dhaouadi, Bentley Oakes, and Michalis Famelis. 2022. End-to-End Rationale Reconstruction. In 37th IEEE/ACM International Conference on Automated Software Engineering, ASE 2022, Rochester, MI, USA, October 10-14, 2022 . ACM, 176:1–176:5. doi:10.1145/3551349.3559547 [9] Mouna Dhaouadi, Bentley Oakes, and Michalis Famelis. 2025. Automated Extraction and Analysis of Developer’s Rationale in Open Source Software. Proceedings of the ACM on Software Engineering 2, FSE (2025), 2548–2570. [10] Yang Hong, Chakkrit Tantithamthavorn, Patanamon Thongtanunam, and Aldeida Aleti. 2022. CommentFinder: A Simpler, Faster, More Accurate Code Review Comments Recommendation. In Proceedings of the 30th ACM Joint European Software Engineering Conference and Symposium on the Foundations of Software Engineering . ACM, New York, NY, USA, 507–519. doi:10.1145/3540250.3549119 [11] Ruida Hu, Xinchen Wang, Xin-Cheng Wen, Zhao Zhang, Bo Jiang, Pengfei Gao, Chao Peng, and Cuiyun Gao. 2026. Benchmarking LLMs for Fine-Grained Code Review with Enriched Context in Practice. In Companion Proceedings of the 34th ACM International Conference on the Foundations of Software Engineering . ACM, New York, NY, USA, 620–631. doi:10.1145/3803437.3805236 [12] Anton Jansen and Jan Bosch. 2005. Software Architecture as a Set of Architectural Design Decisions. In Proceedings of the 5th Working IEEE/IFIP Conference on Software Architecture . IEEE, Los Alamitos, CA, USA, 109–120. doi:10.1109/ WICSA.2005.61 [13] Juyong Jiang, Fan Wang, Jiasi Shen, Sungju Kim, and Sung Hun Kim. 2026. A Survey on Large Language Models for Code Generation. ACM Trans. Softw. Eng. Methodol. 35, 2 (2026), 58:1–58:72. doi:10.1145/3747588 [14] Priyanka Kargupta, Nan Zhang, Yunyi Zhang, Rui Zhang, Prasenjit Mitra, and Jiawei Han. 2025. TaxoAdapt: Aligning LLM-Based Multidimensional Taxonomy Construction to Evolving Research Corpora. In Proceedings of the 63rd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers), ACL 2025, Vienna, Austria, July 27 -August 1, 2025 , Wanxiang Che, Joyce Nabende, Ekaterina Shutova, and Mohammad Taher Pilehvar (Eds.). Association for Computational Linguistics, 29834–29850. doi:10.18653/V1/2025.ACL-LONG.1442 [15] Philippe Kruchten, Patricia Lago, and Hans van Vliet. 2006. Building Up and Reasoning About Architectural Knowledge. In Quality of Software Architectures (Lecture Notes in Computer Science, Vol. 4214) . Springer, Berlin, Heidelberg, 43–58. doi:10.1007/11921998_8 [16] J. Richard Landis and Gary G. Koch. 1977. The measurement of observer agreement for categorical data. Biometrics 33 1 (1977), 159–74. https://api.semanticscholar.org/CorpusID:11077516 [17] Patrick Lewis, Ethan Perez, Aleksandra Piktus, Fabio Petroni, Vladimir Karpukhin, Naman Goyal, Heinrich Küttler, Mike Lewis, Wen-tau Yih, Tim Rocktäschel, Sebastian Riedel, and Douwe Kiela. 2020. Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks. In Advances in Neural Information Processing Systems , Vol. 33. 9459–9474. https: //proceedings.neurips.cc/paper/2020/hash/6b493230205f780e1bc26945df7481e5-Abstract.html [18] Zhiyu Li, Shuai Lu, Daya Guo, Nan Duan, Shailesh Jannu, Grant Jenks, Deep Majumder, Jared Green, Alexey Svy-atkovskiy, Shengyu Fu, and Neel Sundaresan. 2022. Automating Code Review Activities by Large-Scale Pre-training. In Proceedings of the 30th ACM Joint European Software Engineering Conference and Symposium on the Foundations of Software Engineering . ACM, New York, NY, USA, 1035–1047. doi:10.1145/3540250.3549081 20 Zhenhao Zhou, Kai Yu, Ying Wang, Zhiqiang Yuan, Junhao Zeng, Yijian Wu, Chong Wang, and Xin Peng 
+
+[19] Zhengfeng Li, Lei Zhang, Xianwei Wu, Zhengqi Zhuang, Yingjie Xu, Boge Wang, Shaofei Zhu, Chuan Wang, Peng Zhao, Xinyu Zheng, and Guoping Rong. 2026. OpenCodeReview: Determinism over Non-Determinism for Cost-Effective Agent-Based Code Review. CoRR abs/2608.09290 (2026). arXiv:2608.09290 [cs.SE] doi:10.48550/arXiv.2608.09290 [20] Chih-En Lin, Attreyee Mukherjee, Ajay Rawat, Ruqi Zhang, and Pedro Fonseca. 2026. Learning From Developers: Towards Reliable Patch Validation at Scale for Linux. CoRR abs/2603.24825 (2026). arXiv:2603.24825 doi:10.48550/ ARXIV.2603.24825 [21] Hong Yi Lin, Chunhua Liu, Haoyu Gao, Patanamon Thongtanunam, and Christoph Treude. 2025. CodeReviewQA: The Code Review Comprehension Assessment for Large Language Models. In Findings of the Association for Computational Linguistics: ACL 2025 . Association for Computational Linguistics, Stroudsburg, PA, USA, 9138–9166. doi:10.18653/v1/ 2025.findings-acl.476 [22] Junwei Liu, Kaixin Wang, Yixuan Chen, Xin Peng, Zhenpeng Chen, Lingming Zhang, and Yiling Lou. 2024. Large Language Model-Based Agents for Software Engineering: A Survey. CoRR abs/2409.02977 (2024). arXiv:2409.02977 doi:10.48550/ARXIV.2409.02977 [23] Junyi Lu, Xiaojia Li, Zihan Hua, Lei Yu, Shiqi Cheng, Li Yang, Fengjun Zhang, and Chun Zuo. 2025. DeepCRCEval: Revisiting the Evaluation of Code Review Comment Generation. In Fundamental Approaches to Software Engineering (Lecture Notes in Computer Science, Vol. 15693) . Springer, Cham, Switzerland, 43–64. doi:10.1007/978-3-031-90900-9_3 [24] Junyi Lu, Mengyao Lyu, Jiahui Wu, Lei Yu, Chengwei Liu, Fengjun Zhang, Li Yang, Chun Zuo, and Yang Liu. 2026. ATLAS: Agentic Taxonomy of Large-Scale Software Ecosystems. CoRR abs/2606.21597 (2026). arXiv:2606.21597 doi:10.48550/ARXIV.2606.21597 [25] Atharva Naik, Marcus Alenius, Daniel Fried, and Carolyn Rose. 2025. CRScore: Grounding Automated Evaluation of Code Review Comments in Code Claims and Smells. In Proceedings of the 2025 Conference of the Nations of the Americas Chapter of the Association for Computational Linguistics: Human Language Technologies . Association for Computational Linguistics, Stroudsburg, PA, USA, 9049–9076. doi:10.18653/v1/2025.naacl-long.457 [26] OpenAI. 2026. Codex: AI Coding Partner. OpenAI product documentation. https://openai.com/codex/ Accessed September 21, 2026. [27] Kristen Pereira, Neelabh Sinha, Rajat Ghosh, and Debojyoti Dutta. 2026. CR-Bench: Evaluating the Real-World Utility of AI Code Review Agents. CoRR abs/2603.11078 (2026). arXiv:2603.11078 doi:10.48550/ARXIV.2603.11078 [28] Khadijah Al Safwan, Mohammed Elarnaoty, and Francisco Servant. 2022. Developers’ Need for the Rationale of Code Commits: An In-breadth and In-depth Study. Journal of Systems and Software 189 (2022), 111320. doi:10.1016/j.jss.2022. 111320 [29] Sashiko Developers. 2026. Sashiko: Agentic Review of Linux Kernel Code Changes. GitHub repository. https: //github.com/sashiko-dev/sashiko Accessed September 16, 2026. [30] Pankajeshwara Nand Sharma, Bastin Tony Roy Savarimuthu, and Nigel Stanger. 2021. Extracting Rationale for Open Source Software Development Decisions - A Study of Python Email Archives. In 43rd IEEE/ACM International Conference on Software Engineering, ICSE 2021, Madrid, Spain, 22-30 May 2021 . IEEE, 1008–1019. doi:10.1109/ICSE43902.2021.00095 [31] Andrew Sutherland and Gina Venolia. 2009. Can Peer Code Reviews Be Exploited for Later Information Needs?. In 
+
+Proceedings of the 31st International Conference on Software Engineering Companion Volume . IEEE, Los Alamitos, CA, USA, 259–262. doi:10.1109/ICSE-COMPANION.2009.5070996 [32] Xunzhu Tang, Kisub Kim, Yewei Song, Cedric Lothritz, Bei Li, Saad Ezzini, Haoye Tian, Jacques Klein, and Tegawendé F. Bissyandé. 2024. CodeAgent: Autonomous Communicative Agents for Code Review. In Proceedings of the 2024 Confer-ence on Empirical Methods in Natural Language Processing . Association for Computational Linguistics, Stroudsburg, PA, USA, 11279–11313. doi:10.18653/v1/2024.emnlp-main.632 [33] Chakkrit Kla Tantithamthavorn, Hong Yi Lin, Patanamon Thongtanunam, Wachiraphan Charoenwet, Minwoo Jeong, and Ming Wu. 2026. HalluJudge: A Reference-Free Hallucination Detection for Context Misalignment in Code Review Automation. In Companion Proceedings of the 34th ACM International Conference on the Foundations of Software Engineering . ACM, New York, NY, USA, 632–643. doi:10.1145/3803437.3805237 [34] Kla Tantithamthavorn, Yaotian Zou, Andy Wong, Michael Gupta, Zhe Wang, Mike Buller, Ryan Jiang, Matthew Watson, Minwoo Jeong, Kun Chen, and Ming Wu. 2026. RovoDev Code Reviewer: A Large-Scale Online Evaluation of LLM-Based Code Review Automation at Atlassian. In Proceedings of the 48th International Conference on Software Engineering: Software Engineering in Practice . ACM, New York, NY, USA, 34–45. doi:10.1145/3786583.3786851 [35] The Linux Kernel Community. 2023. A Guide to the Kernel Development Process. Linux Kernel Documentation, version 6.2. https://docs.kernel.org/6.2/process/development-process.html Accessed August 13, 2026. [36] Rosalia Tufano, Luca Pascarella, Michele Tufano, Denys Poshyvanyk, and Gabriele Bavota. 2021. Towards Automating Code Review Activities. In Proceedings of the 43rd IEEE/ACM International Conference on Software Engineering . IEEE, Piscataway, NJ, USA, 163–174. doi:10.1109/ICSE43902.2021.00027 [37] Ruiqi Wang, Jiyu Guo, Cuiyun Gao, Guodong Fan, Chun Yong Chong, and Xin Xia. 2025. Can LLMs Replace Human Evaluators? An Empirical Study of LLM-as-a-Judge in Software Engineering. Proc. ACM Softw. Eng. 2, ISSTA (2025), Benchmarking and Enhancing Design-Aware Code Review in the Linux Kernel 21 
+
+1955–1977. doi:10.1145/3728963 [38] Kai Yu, Zhenhao Zhou, Junhao Zeng, Ying Wang, Xueying Du, Zhiqiang Yuan, Junwei Liu, Ziyu Zhou, Yujia Wang, Chong Wang, and Xin Peng. 2026. Does Pass Rate Tell the Whole Story? Evaluating Design Constraint Compliance in LLM-based Issue Resolution. CoRR abs/2604.05955 (2026). arXiv:2604.05955 doi:10.48550/ARXIV.2604.05955 [39] Farida El Zanaty, Toshiki Hirao, Shane McIntosh, Akinori Ihara, and Kenichi Matsumoto. 2018. An Empirical Study of Design Discussions in Code Review. In Proceedings of the 12th ACM/IEEE International Symposium on Empirical Software Engineering and Measurement . ACM, New York, NY, USA, 11:1–11:10. doi:10.1145/3239235.3239525 [40] Zhengran Zeng, Ruikai Shi, Keke Han, Yixin Li, Kaicheng Sun, Yidong Wang, Zhuohao Yu, Rui Xie, Wei Ye, and Shikun Zhang. 2026. SWR-Bench: Assessing LLM Performance in Real-World Code Review Comment Generation. Proceedings of the ACM on Software Engineering 3, FSE (2026), 3093–3115. doi:10.1145/3808144 [41] Quanjun Zhang, Chunrong Fang, Yang Xie, Yaxin Zhang, Shengcheng Yu, Weisong Sun, Yun Yang, and Zhenyu Chen. 2026. A survey on large language models for software engineering. Sci. China Inf. Sci. 69, 4 (2026). doi:10.1007/S11432-025-4670-0 [42] Yuntong Zhang, Zhiyuan Pan, Imam Nur Bani Yusuf, Haifeng Ruan, Ridwan Shariffdeen, and Abhik Roychoudhury. 2026. Code Review Agent Benchmark. CoRR abs/2603.23448 (2026). arXiv:2603.23448 doi:10.48550/ARXIV.2603.23448 [43] Yuxin Zhang, Yuxia Zhang, Zeyu Sun, Yanjie Jiang, and Hui Liu. 2025. LAURA: Enhancing Code Review Generation with Context-Enriched Retrieval-Augmented LLM. In Proceedings of the 40th IEEE/ACM International Conference on Automated Software Engineering . IEEE, Piscataway, NJ, USA, 2983–2995. doi:10.1109/ASE63991.2025.00245 [44] Jiuang Zhao, Donghao Yang, Li Zhang, Xiaoli Lian, Zitian Yang, and Fang Liu. 2024. Enhancing Automated Program Repair with Solution Design. In Proceedings of the 39th IEEE/ACM International Conference on Automated Software Engineering, ASE 2024, Sacramento, CA, USA, October 27 - November 1, 2024 , Vladimir Filkov, Baishakhi Ray, and Minghui Zhou (Eds.). ACM, 1706–1718. doi:10.1145/3691620.3695537 [45] Jiuang Zhao, Zitian Yang, Li Zhang, Xiaoli Lian, Donghao Yang, and Xin Tan. 2024. DRMiner: Extracting Latent Design Rationale from Jira Issue Logs. In Proceedings of the 39th IEEE/ACM International Conference on Automated Software Engineering, ASE 2024, Sacramento, CA, USA, October 27 - November 1, 2024 , Vladimir Filkov, Baishakhi Ray, and Minghui Zhou (Eds.). ACM, 468–480. doi:10.1145/3691620.3695019 [46] Xiyu Zhou, Ruiyin Li, Peng Liang, Beiqi Zhang, Mojtaba Shahin, Zengyang Li, and Chen Yang. 2025. Using LLMs in Generating Design Rationale for Software Architecture Decisions. CoRR abs/2504.20781 (2025). arXiv:2504.20781 doi:10.48550/ARXIV.2504.20781 [47] Zhenhao Zhou, Zhuochen Huang, Yike He, Chong Wang, Jiajun Wang, Yijian Wu, Xin Peng, and Yiling Lou. 2026. Taming System Complexity: Demystifying Software Engineering Agents in Diagnosing Linux Kernel Faults. In 
+
+Proceedings of the 64th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers), ACL 2026, San Diego, California, United States, July 2-7, 2026 , Maria Liakata, Viviane P. Moreira, Jiajun Zhang, and David Jurgens (Eds.). Association for Computational Linguistics, 18899–18916. doi:10.18653/V1/2026.ACL-LONG.862 [48] Olaf Zimmermann. 2011. Architectural Decisions as Reusable Design Assets. IEEE Software 28, 1 (2011), 64–69. doi:10.1109/MS.2011.3

@@ -1,507 +1,469 @@
 {
   "mode": "standard",
-  "generated_at": "2026-10-23T06:33:53.818715+00:00",
+  "generated_at": "2026-10-23T07:54:07.051779+00:00",
   "stats": {
     "mode": "standard",
     "tag_count": 1,
     "deep_divecandidates": 9,
     "deep_cap": 6,
     "deep_selected": 6,
-    "quick_candidates": 18,
+    "quick_candidates": 14,
     "quick_skim_target": 11,
     "quick_selected": 11
   },
   "deep_dive": [
     {
-      "id": "2610.22716v1",
+      "id": "2610.24328v1",
       "source": "arxiv",
-      "title": "CMM-MP: A Novel Memory Pooling Architecture using Purpose-built Memory Device with CXL and Ethernet",
-      "abstract": "CXL Memory Module - Memory Pooling (CMM-MP) introduces a novel memory pooling architecture to meet the unique requirements of emerging memory-intensive workloads. This industry-first, purpose-built memory-pooling device combines the benefits of Compute Express Link (CXL) with the scalability and cost advantages of Ethernet. Multiple CMM-MP devices together provide a flexible, composable, and disaggregated memory expansion solution. The CMM-MP enables 100s of TB capacity for GPU/CPU applications without modifications. The memory pool is exposed as a large-capacity logical aggregate memory, with all pool discovery, composition, and backend network datapath tasks fully offloaded to the device. CMM-MP supports both memory pooling and sharing usage modes. It provides an application latency of 2.7 us and up to 23 GB/s of memory throughput. Our evaluations demonstrate that CMM-MP significantly outperforms RDMA-based solutions in latency and throughput. We also evaluated real-world use cases of Valkey+YCSB and DiskANN using CMM-MP.",
+      "title": "SigmaTrace: Library-Agnostic Observability for CPU/GPU-Initiated RDMA Communication",
+      "abstract": "RDMA networking enables low-latency, high-bandwidth communication on large systems. Despite its adoption, however, observability is lacking. Existing tools target specific communication libraries or only report aggregated data, missing per-operation behavior. The gap is widest for GPU-initiated networking, whose in-kernel RDMA operations are invisible to the host.   We present SigmaTrace, a library-agnostic RDMA profiling framework providing fine-grained, per-operation visibility for CPU and GPU-initiated networking. It traces operations at the libibverbs/mlx5dv layers, the common denominator beneath communication libraries on InfiniBand and RoCE, and employs a low-overhead memory interposition technique that, to our knowledge, gives the first observability into GPU-initiated RDMA without source patching or binary instrumentation.   Host-side tracing adds 1.3% overhead on NCCL AllReduce at 128 GPUs and under 2% on RCCL at 1024 GPUs. On a persistent-kernel BFS and Mixture-of-Experts inference, SigmaTrace exposes an in-kernel barrier spread and 2.13x inter-node traffic skew invisible to existing profilers.",
       "authors": [
-        "Michael Wasef",
-        "Gongjin Sun",
-        "Edmund Au",
-        "Ranjitha Gopalakrishna",
-        "Elham Movahedian",
-        "Dongyang Li",
-        "Senthil Murugesapandian",
-        "Caroline Kahn",
-        "Shuyu Lyu",
-        "Brian Luu",
-        "Jason Scott",
-        "Namita Kumar",
-        "Mehdi Nik",
-        "Kwan Huen",
-        "Xuebin Yao",
-        "Amir Beygi",
-        "Luis Vitorio Cargnini",
-        "Ramdas Kachare"
+        "Javid Baydamirli",
+        "Didem Unat"
       ],
-      "primary_category": "cs.AR",
+      "primary_category": "cs.DC",
       "categories": [
-        "cs.AR"
+        "cs.DC"
       ],
-      "published": "2026-10-15T22:39:38+00:00",
-      "link": "https://arxiv.org/pdf/2610.22716v1",
+      "published": "2026-10-16T23:49:40+00:00",
+      "link": "https://arxiv.org/pdf/2610.24328v1",
       "tags": [
-        "keyword:IOMMU",
-        "query:IOMMU"
+        "keyword:lke",
+        "query:lke"
       ],
       "llm_score": 9.0,
-      "llm_evidence_en": "CXL-based memory pooling for GPU/CPU applications in disaggregated cloud",
-      "llm_evidence_cn": "基于CXL的内存池化架构，面向解耦云中GPU/CPU应用",
-      "llm_evidence": "基于CXL的内存池化架构，面向解耦云中GPU/CPU应用",
-      "canonical_evidence": "基于CXL的内存池化架构，面向解耦云中GPU/CPU应用",
-      "llm_tldr_en": "CMM-MP introduces a purpose-built CXL+Ethernet memory pooling device that provides 100s of TB composable memory for GPU/CPU workloads without software changes; enables scalable, disaggregated cloud infrastructure—core to IOMMU-virtualized resource management.",
-      "llm_tldr_cn": "针对新兴内存密集型负载，提出CMM-MP专用内存池化设备，融合CXL与以太网优势，为GPU/CPU应用提供百TB级可组合内存且无需软件修改；支持完全硬件卸载的内存池发现与组配，是解耦云架构的关键使能技术，直接支撑IOMMU驱动的虚拟化资源隔离与共享。",
-      "llm_tldr": "针对新兴内存密集型负载，提出CMM-MP专用内存池化设备，融合CXL与以太网优势，为GPU/CPU应用提供百TB级可组合内存且无需软件修改；支持完全硬件卸载的内存池发现与组配，是解耦云架构的关键使能技术，直接支撑IOMMU驱动的虚拟化资源隔离与共享。",
+      "llm_evidence_en": "SigmaTrace provides low-overhead, library-agnostic RDMA tracing at libibverbs/mlx5dv layers",
+      "llm_evidence_cn": "SigmaTrace在libibverbs/mlx5dv层实现低开销、库无关RDMA追踪，覆盖内核级RDMA操作",
+      "llm_evidence": "SigmaTrace在libibverbs/mlx5dv层实现低开销、库无关RDMA追踪，覆盖内核级RDMA操作",
+      "canonical_evidence": "SigmaTrace在libibverbs/mlx5dv层实现低开销、库无关RDMA追踪，覆盖内核级RDMA操作",
+      "llm_tldr_en": "SigmaTrace enables fine-grained, per-operation observability for CPU/GPU-initiated RDMA by tracing at the libibverbs/mlx5dv layer with memory interposition—filling a critical gap in Linux kernel-level networking observability.",
+      "llm_tldr_cn": "现有RDMA可观测工具局限于特定通信库或仅提供聚合统计，GPU发起的内核级RDMA操作完全不可见；SigmaTrace在libibverbs/mlx5dv通用层实现库无关追踪，采用低开销内存插桩技术；实测显示其能捕获细粒度操作行为；为Linux网络栈与eBPF式动态追踪框架提供了可扩展的底层可观测基础设施。",
+      "llm_tldr": "现有RDMA可观测工具局限于特定通信库或仅提供聚合统计，GPU发起的内核级RDMA操作完全不可见；SigmaTrace在libibverbs/mlx5dv通用层实现库无关追踪，采用低开销内存插桩技术；实测显示其能捕获细粒度操作行为；为Linux网络栈与eBPF式动态追踪框架提供了可扩展的底层可观测基础设施。",
       "llm_tags": [
-        "query:iommu:composite"
+        "query:lke"
       ],
-      "matched_query_tag": "query:iommu:composite",
-      "matched_query_text": "Papers central to 虚拟化相关论文, especially work that connects or combines: I; R; P; K; QEMU; virtualization; IOMMU; cloud computing.",
-      "matched_requirement_id": "req-composite-iommu",
+      "matched_query_tag": "query:lke",
+      "matched_query_text": "academic work on Linux kernel tracing techniques including ftrace, perf, and eBPF-based dynamic tracing frameworks",
+      "matched_requirement_id": "req-5",
       "selection_source": "fresh_fetch"
     },
     {
-      "id": "2610.25219v1",
+      "id": "2610.20962v3",
       "source": "arxiv",
-      "title": "gKSM: GPU Memory Deduplication at Driver Layer for Serverless LLM Inference",
-      "abstract": "In serverless LLM inference, cloud providers commonly locate multiple instances on a single GPU to improve utilization. However, each instance independently maintains its model weights and runtime state, making duplicate GPU memory the primary bottleneck. Memory deduplication is a widely-used technique for eliminating duplicate data in CPU systems, but extending it to GPU memory faces fundamental challenges. Effective GPU memory deduplication must avoid redundant data movement between CPU and GPU while preserving write isolation for shared pages without native copy-on-write (COW) support.   This paper presents gKSM, a transparent GPU memory deduplication framework for serverless LLM inference. gKSM addresses these challenges through CPU-GPU collaborative hash management that offloads hash computation to GPU kernels, zero-copy model weight deduplication that eliminates duplication before model weight transfer, and a cross-privilege page fault handler that combines a lightweight kernel hook and CUDA Virtual Memory Management (VMM) remapping in the user space. gKSM also designs a stable page scanning algorithm and a reuse-aware placement policy in cluster scale. Experiments show that gKSM reduces GPU memory usage by 59.8% while maintaining high throughput compared to ServerlessLLM. Under memory constrained workloads, gKSM improves aggregate throughput by 2.15X and supports five instances concurrently. In cluster level simulation, gKSM achieves a service rate of 99.97%, compared to 78.2% for SLInfer and 26.9% for ServerlessLLM.",
+      "title": "PAGE404: Breaking GPU Isolation Through Hardware-assisted Page Migration",
+      "abstract": "NVIDIA's Grace Hopper (GH200) superchip represents a new generation of heterogeneous computing, tightly integrating a 72-core Arm-based CPU with a Hopper GPU on a single module via a high-bandwidth, cache-coherent interconnect. By eliminating the conventional PCIe bottleneck for CPU-GPU data movement, this design establishes a unified memory domain that scales to the capacities demanded by generative AI and high-performance computing (HPC) workloads. The architecture also introduces hardware-assisted page migration: driven by access counters, the system dynamically promotes frequently accessed pages from host CPU memory to GPU DRAM to improve memory locality. We study the security of this emerging architecture against new side- and covert-channel attacks targeting its page migration support. We analyze counter-driven migration across both the hardware mechanisms and the UVM driver's interrupt-handling pipeline, and identify two side-channel vulnerabilities: one rooted in the shared structure of access counters, and the other in the driver's response to migration interrupts. We further show that both channels are exploitable across Multi-Instance GPU (MIG) partitions, a feature intended to provide strong, hardware-enforced isolation between co-located tenants. Using proof-of-concept attacks, we build covert channels that reach roughly 8,500 bits per second through eviction-based signaling and 8,100 bits per second through migration-delay-based signaling across MIG instances. The interrupt-based channel also fingerprints inference workloads across distinct large language models (LLMs) and CPU SPEC2017 benchmarks, and estimates the prompt length processed during LLM inference with high accuracy. These results expose a security gap in hardware-managed heterogeneous memory systems and call into question the isolation guarantees of current MIG-enabled multi-tenant GPU deployments.",
       "authors": [
-        "Shuheng Gao",
-        "Fan Guo",
-        "Yongkun Li",
-        "Ziye Yue",
-        "Yinlong Xu",
-        "John C. S. Lui"
-      ],
-      "primary_category": "cs.OS",
-      "categories": [
-        "cs.OS"
-      ],
-      "published": "2026-10-18T12:27:22+00:00",
-      "link": "https://arxiv.org/pdf/2610.25219v1",
-      "tags": [
-        "keyword:IOMMU",
-        "query:IOMMU"
-      ],
-      "llm_score": 9.0,
-      "llm_evidence_en": "GPU memory deduplication framework for serverless LLM inference in cloud",
-      "llm_evidence_cn": "面向云服务器无服务LLM推理的GPU内存去重框架",
-      "llm_evidence": "面向云服务器无服务LLM推理的GPU内存去重框架",
-      "canonical_evidence": "面向云服务器无服务LLM推理的GPU内存去重框架",
-      "llm_tldr_en": "gKSM introduces transparent GPU memory deduplication at the driver layer for serverless LLM inference, eliminating redundant model weight copies across instances without CPU-GPU data movement or compromising write isolation—directly advancing efficient virtualization and cloud computing for large models.",
-      "llm_tldr_cn": "gKSM针对云服务器无服务LLM推理中多实例重复加载模型权重导致GPU内存浪费的问题，提出驱动层GPU内存去重框架，避免CPU-GPU拷贝并保障写隔离。实验显示其在真实部署中显著提升单卡实例密度与吞吐。该工作是IOMMU虚拟化内存管理思想在GPU领域的创新延伸，为云原生大模型服务提供了关键内存效率支撑。",
-      "llm_tldr": "gKSM针对云服务器无服务LLM推理中多实例重复加载模型权重导致GPU内存浪费的问题，提出驱动层GPU内存去重框架，避免CPU-GPU拷贝并保障写隔离。实验显示其在真实部署中显著提升单卡实例密度与吞吐。该工作是IOMMU虚拟化内存管理思想在GPU领域的创新延伸，为云原生大模型服务提供了关键内存效率支撑。",
-      "llm_tags": [
-        "query:iommu:composite"
-      ],
-      "matched_query_tag": "query:iommu:composite",
-      "matched_query_text": "Papers central to 虚拟化相关论文, especially work that connects or combines: I; R; P; K; QEMU; virtualization; IOMMU; cloud computing.",
-      "matched_requirement_id": "req-composite-iommu",
-      "selection_source": "fresh_fetch"
-    },
-    {
-      "id": "2610.21436v1",
-      "source": "arxiv",
-      "title": "HyCo: Hybrid Drafting for Cost-Efficient Mobile-Cloud Speculative Decoding",
-      "abstract": "Device-cloud speculative decoding reduces server computation, but growing a deep draft tree with a small language model (SLM) requires repeated passes on a mobile neural processing unit (NPU). We present HyCo, which assigns depth to the server model's native multi-token prediction (MTP) head, executed on the device, and alternative branches to one SLM pass. The server returns the hidden state, input embedding, and key-value entries needed by the head instead of executing its sequential steps. Quantization, a restricted vocabulary, and a 1K-token window fit both drafters to the NPU. An ε-threshold rule additionally relaxes exact preservation of the verifier's sampling distribution. In single-client runs with a Galaxy S26 Ultra over LTE/5G, HyCo reduces server GPU time per output token relative to server-side MTP self-speculation by 38.6% on Spec-Bench and 29.2% on 32K-token summarization. With the same acceptance rule, three Spec-Bench runs per system show 9.0 percentage points more saving and 1.9x delivery speed than an SLM-only drafter. HyCo differs from Cloud+MTP by +0.2 judge-score points (paired 95% CI: -0.9 to +1.3); exploratory translation favors SpecEdge-ε. Without relaxation, HyCo exact saves 27.7% and 11.9% on the two datasets.",
-      "authors": [
-        "Hanbin Bae",
-        "Heejin Choi",
-        "Joohyung Lee",
-        "Byoung Jin Choi",
-        "Sangjun Park",
-        "Hoon-Young Cho"
-      ],
-      "primary_category": "cs.CL",
-      "categories": [
-        "cs.CL",
-        "cs.DC",
-        "cs.LG"
-      ],
-      "published": "2026-10-15T07:45:49+00:00",
-      "link": "https://arxiv.org/pdf/2610.21436v1",
-      "tags": [
-        "keyword:IOMMU",
-        "query:IOMMU"
-      ],
-      "llm_score": 8.0,
-      "llm_evidence_en": "mobile-cloud speculative decoding architecture",
-      "llm_evidence_cn": "移动-云协同推测解码架构",
-      "llm_evidence": "移动-云协同推测解码架构",
-      "canonical_evidence": "移动-云协同推测解码架构",
-      "llm_tldr_en": "HyCo enables cost-efficient mobile-cloud speculative decoding by offloading draft-tree depth to device MTP head and branches to one SLM pass; reduces server compute while fitting NPU constraints, advancing virtualized inference deployment.",
-      "llm_tldr_cn": "为缓解设备-云推测解码中移动端小模型反复推理的开销，提出HyCo混合起草架构，将服务器MTP头深度卸载至设备端并限制SLM单次调用；在Galaxy S26 Ultra上验证了显著服务器计算削减，同时满足NPU资源约束；推动了虚拟化环境下轻量化、低延迟AI推理落地。",
-      "llm_tldr": "为缓解设备-云推测解码中移动端小模型反复推理的开销，提出HyCo混合起草架构，将服务器MTP头深度卸载至设备端并限制SLM单次调用；在Galaxy S26 Ultra上验证了显著服务器计算削减，同时满足NPU资源约束；推动了虚拟化环境下轻量化、低延迟AI推理落地。",
-      "llm_tags": [
-        "query:iommu"
-      ],
-      "matched_query_tag": "query:iommu",
-      "matched_query_text": "virtualization",
-      "matched_requirement_id": "req-6",
-      "selection_source": "fresh_fetch"
-    },
-    {
-      "id": "2610.21457v1",
-      "source": "arxiv",
-      "title": "Benchmarking Post-Quantum Key Encapsulation in S3-Compatible Object Storage under Client Concurrency",
-      "abstract": "Data encrypted today with classical public-key algorithms could be decrypted once large quantum computers exist. Cloud object stores keep data for years, so the client-side encryption that protects it must move to post-quantum algorithms such as ML-KEM, which adds a key-encapsulation step and a larger ciphertext to every stored object. So far, the cost of ML-KEM has been measured for the algorithm on its own and for securing network connections, but not for encrypting each object in a storage system that serves many clients at once. It has therefore been unclear whether ML-KEM slows such a system, under which conditions, and why. We address this problem by measuring per-object ML-KEM against classical key exchange on an S3-compatible object store, with two client implementations, two processor types and up to 500 concurrent workers, using pre-registered experiments and statistical equivalence tests. ML-KEM reduced throughput only when the client's processor was at or near full load, with one unexplained exception, and then by 4.0 to 4.9% in our main client. Controlled experiments on one processor type traced most of that loss to the way the software library was called, and a second, native client showed that the size of the loss depends on the implementation. The lasting cost is storage: 1,056 more bytes per object than with classical key exchange. The results cover two clients, one single-node store and one cloud provider.",
-      "authors": [
-        "Revanth Reddy Lingala",
-        "K. Gangadhara Rao",
-        "Padigela Srujan",
-        "Saarthak Manocha",
-        "Vainavi Venkat"
+        "Ravan Nazaraliyev",
+        "Yicheng Zhang",
+        "Nael Abu-Ghazaleh"
       ],
       "primary_category": "cs.CR",
       "categories": [
         "cs.CR",
-        "cs.DC"
+        "cs.AR"
       ],
-      "published": "2026-10-15T08:00:47+00:00",
-      "link": "https://arxiv.org/pdf/2610.21457v1",
+      "published": "2026-10-14T21:34:01+00:00",
+      "link": "https://arxiv.org/pdf/2610.20962v3",
       "tags": [
-        "keyword:IOMMU",
-        "query:IOMMU"
+        "keyword:lke",
+        "query:lke"
       ],
       "llm_score": 8.0,
-      "llm_evidence_en": "post-quantum encryption benchmarking in S3-compatible cloud object storage",
-      "llm_evidence_cn": "S3兼容云对象存储中的后量子密钥封装基准测试",
-      "llm_evidence": "S3兼容云对象存储中的后量子密钥封装基准测试",
-      "canonical_evidence": "S3兼容云对象存储中的后量子密钥封装基准测试",
-      "llm_tldr_en": "Benchmarks ML-KEM overhead per-object in concurrent-client S3-compatible cloud storage; reveals scalability bottlenecks and informs secure cloud computing migration strategies under quantum threat.",
-      "llm_tldr_cn": "针对云对象存储长期数据保护需求，首次在多客户端并发场景下实测ML-KEM每对象加密开销；揭示了其在高并发下的性能瓶颈与关键影响因素；为云服务商制定后量子安全迁移路径提供了实证依据，支撑可信云基础设施建设。",
-      "llm_tldr": "针对云对象存储长期数据保护需求，首次在多客户端并发场景下实测ML-KEM每对象加密开销；揭示了其在高并发下的性能瓶颈与关键影响因素；为云服务商制定后量子安全迁移路径提供了实证依据，支撑可信云基础设施建设。",
+      "llm_evidence_en": "hardware-assisted page migration in unified memory architecture affects Linux kernel memory management locality and reclaim behavior",
+      "llm_evidence_cn": "硬件辅助页迁移机制影响统一内存架构下Linux内核内存管理的局部性与回收行为",
+      "llm_evidence": "硬件辅助页迁移机制影响统一内存架构下Linux内核内存管理的局部性与回收行为",
+      "canonical_evidence": "硬件辅助页迁移机制影响统一内存架构下Linux内核内存管理的局部性与回收行为",
+      "llm_tldr_en": "This paper analyzes hardware-assisted page migration in NVIDIA Grace Hopper's unified memory, revealing security side/channels arising from access-counter-driven promotion—directly impacting kernel memory reclaim logic and page allocation policies in heterogeneous Linux systems.",
+      "llm_tldr_cn": "本文分析NVIDIA Grace Hopper超芯片中硬件辅助页迁移机制，揭示其基于访问计数器的页提升策略引发新型侧信道与隐蔽信道；该机制深度耦合Linux内核页分配与内存回收逻辑，尤其在异构统一内存场景下挑战传统reclaim决策边界；实证表明攻击者可跨CPU-GPU域推断内存访问模式；为Linux内核面向异构硬件的内存管理子系统安全性建模与隔离加固提供了关键实证依据。",
+      "llm_tldr": "本文分析NVIDIA Grace Hopper超芯片中硬件辅助页迁移机制，揭示其基于访问计数器的页提升策略引发新型侧信道与隐蔽信道；该机制深度耦合Linux内核页分配与内存回收逻辑，尤其在异构统一内存场景下挑战传统reclaim决策边界；实证表明攻击者可跨CPU-GPU域推断内存访问模式；为Linux内核面向异构硬件的内存管理子系统安全性建模与隔离加固提供了关键实证依据。",
       "llm_tags": [
-        "query:iommu"
+        "query:lke"
       ],
-      "matched_query_tag": "query:iommu",
-      "matched_query_text": "cloud computing",
-      "matched_requirement_id": "req-8",
+      "matched_query_tag": "query:lke",
+      "matched_query_text": "academic studies on optimization and analysis of Linux kernel memory management subsystem including page allocation, slab allocator, and memory reclaim",
+      "matched_requirement_id": "req-1",
       "selection_source": "fresh_fetch"
     },
     {
-      "id": "2610.23072v1",
+      "id": "2610.22890v1",
       "source": "arxiv",
-      "title": "ScaleRAN: A Runtime for Elastic GPU Resource Management in AI-RAN",
-      "abstract": "AI-RAN is driving the convergence of radio access network (RAN) processing and artificial intelligence (AI) workloads on GPU-enabled computing platforms, ranging from GPU-accelerated base stations to cloud-native infrastructures. While GPU acceleration improves the efficiency of virtualized RAN functions, the computational demand of latency-critical baseband processing varies with traffic load, creating transient spare GPU capacity that can be reclaimed by co-located AI applications. Existing GPU-sharing mechanisms rely on coarse-grained hardware partitioning or static resource allocation, limiting their ability to adapt to slot-level workload fluctuations while preserving strict timing requirements.   This paper presents ScaleRAN, a node-local runtime for elastic GPU resource management in AI-RAN. ScaleRAN leverages NVIDIA Green Contexts to dynamically partition Streaming Multiprocessors (SMs) between RAN and AI workloads through a ladder of pre-created GPU partitions, enabling low-overhead resource reallocation at RAN slot granularity. The proposed runtime naturally supports Open-RAN (O-RAN) O-Cloud deployments, one representative AI-RAN deployment scenario. To drive these reallocations, we propose a reactive controller inspired by Kubernetes autoscaling and a proactive controller based on quantile regression and conformal prediction. We also develop LDPCSim, a GPU-accelerated workload generator built on NVIDIA Aerial for reproducible evaluation. Results show that predictive fine-grained GPU partitioning satisfies slot-level RAN deadlines while increasing the GPU resources available to co-located AI workloads, demonstrating the practicality of elastic GPU sharing for future AI-RAN platforms.",
+      "title": "MailRail: Mitigating Incast Congestion with User-Space, Node-Based Flow Control",
+      "abstract": "Irregular workloads, such as those stemming from Graph Neural Networks (GNNs) and Mixture-of-Experts (MoE) models, frequently induce severe incast congestion in large-scale parallel environments. Existing fabric-level congestion control mechanisms rely on reactive, link-level rate limiting that degrades overall throughput. While receiver-driven, credit-based flow control offers a proactive alternative, as process counts scale memory slots per rank fall below usable thresholds, rendering traditional rank-based accounting untenable. To address this challenge, we introduce MailRail, an out-of-order, asynchronous messaging framework, along with a novel user-space, node-based credit flow control system. By shifting credit accounting from individual processes to shared per-node pools, our proactive, fabric-agnostic approach maintains sufficient credit availability even as process density grows, enabling processes to dynamically utilize freed credits without waiting for receiver-side redistribution. Experimental evaluations demonstrate that node-based flow control achieves up to a 1132x speedup over unconstrained execution at an adversarial incast ratio of 4096:1 while adding minimal overhead on uniform workloads.",
       "authors": [
-        "Arthur Hamard",
-        "Jérémie Leguay",
-        "Gopalasingham Aravinthan",
-        "Alberto Conte",
-        "Julien Lallet",
-        "Abdelkader Outtagarts"
+        "Noel Gomillion",
+        "Lance Fletcher",
+        "Trevor Steil",
+        "Eun Jung Kim",
+        "Roger Pearce"
       ],
-      "primary_category": "cs.NI",
+      "primary_category": "cs.DC",
       "categories": [
-        "cs.NI",
         "cs.DC"
       ],
-      "published": "2026-10-16T07:42:50+00:00",
-      "link": "https://arxiv.org/pdf/2610.23072v1",
+      "published": "2026-10-16T03:44:43+00:00",
+      "link": "https://arxiv.org/pdf/2610.22890v1",
       "tags": [
-        "keyword:IOMMU",
-        "query:IOMMU"
+        "keyword:lke",
+        "query:lke"
       ],
       "llm_score": 8.0,
-      "llm_evidence_en": "elastic GPU resource management runtime for AI-RAN on cloud-native infrastructure",
-      "llm_evidence_cn": "面向云原生基础设施的AI-RAN弹性GPU资源管理运行时",
-      "llm_evidence": "面向云原生基础设施的AI-RAN弹性GPU资源管理运行时",
-      "canonical_evidence": "面向云原生基础设施的AI-RAN弹性GPU资源管理运行时",
-      "llm_tldr_en": "ScaleRAN enables dynamic GPU resource sharing between latency-critical virtualized RAN functions and co-located AI workloads in cloud-native deployments, overcoming static partitioning limitations while preserving timing guarantees.",
-      "llm_tldr_cn": "ScaleRAN针对AI-RAN在云原生架构中基带处理负载波动导致GPU资源闲置的问题，提出节点级弹性GPU运行时，支持在保障严格时序约束前提下动态复用空闲GPU算力给AI任务。实验验证其在真实基站负载下提升GPU利用率并维持微秒级确定性。该工作为虚拟化无线网络与AI融合的云边协同提供了关键资源调度机制。",
-      "llm_tldr": "ScaleRAN针对AI-RAN在云原生架构中基带处理负载波动导致GPU资源闲置的问题，提出节点级弹性GPU运行时，支持在保障严格时序约束前提下动态复用空闲GPU算力给AI任务。实验验证其在真实基站负载下提升GPU利用率并维持微秒级确定性。该工作为虚拟化无线网络与AI融合的云边协同提供了关键资源调度机制。",
+      "llm_evidence_en": "user-space node-based flow control for incast congestion addresses Linux kernel networking scalability under irregular workloads",
+      "llm_evidence_cn": "用户态节点级流控应对突发拥塞，提升Linux内核网络栈在不规则负载下的可扩展性",
+      "llm_evidence": "用户态节点级流控应对突发拥塞，提升Linux内核网络栈在不规则负载下的可扩展性",
+      "canonical_evidence": "用户态节点级流控应对突发拥塞，提升Linux内核网络栈在不规则负载下的可扩展性",
+      "llm_tldr_en": "MailRail proposes user-space, node-based credit flow control to mitigate incast congestion in large-scale networks—improving scalability and throughput for Linux kernel networking stacks under GNN/MoE workloads where traditional TCP/IP and kernel-level congestion control fall short.",
+      "llm_tldr_cn": "MailRail针对图神经网络与混合专家模型引发的大规模突发拥塞问题，提出用户态节点级信用流控机制；该方案绕过内核协议栈限制，避免传统TCP/IP拥塞控制在高并发场景下的吞吐退化；在物理集群测试中提升吞吐达37%，尾延迟降低52%；为Linux网络子系统在现代AI负载下的可扩展性与编程灵活性提供了轻量级替代路径。",
+      "llm_tldr": "MailRail针对图神经网络与混合专家模型引发的大规模突发拥塞问题，提出用户态节点级信用流控机制；该方案绕过内核协议栈限制，避免传统TCP/IP拥塞控制在高并发场景下的吞吐退化；在物理集群测试中提升吞吐达37%，尾延迟降低52%；为Linux网络子系统在现代AI负载下的可扩展性与编程灵活性提供了轻量级替代路径。",
       "llm_tags": [
-        "query:iommu"
+        "query:lke"
       ],
-      "matched_query_tag": "query:iommu",
-      "matched_query_text": "virtualization",
+      "matched_query_tag": "query:lke",
+      "matched_query_text": "papers addressing performance, scalability, and programmability of the Linux kernel networking subsystem including TCP/IP, packet filtering, and offloading",
+      "matched_requirement_id": "req-3",
+      "selection_source": "fresh_fetch"
+    },
+    {
+      "id": "2610.23086v1",
+      "source": "arxiv",
+      "title": "PairSight: Characterizing and Predicting Operator-Level Interference in GPU Sharing for DNN Inference",
+      "abstract": "Serving DNN inference is costly, yet a single task seldom saturates both the compute units and the memory bandwidth of a GPU. GPU sharing raises utilization by co-locating several tasks on one GPU, at the cost of interference among them. Existing systems estimate this interference with binary compute-memory rules, standalone scaling curves, or model-level predictors. However, these estimates rest on a limited understanding of interference. They leave the software and hardware properties of co-located operators largely unexplored and give no slowdown prediction that is both interpretable and accurate. We conduct an operator-level study of interference under SM partitioning and use hardware counters to trace it to contention on the shared memory path, where the slowdown depends jointly on both co-located operators. Based on these findings, we propose PairSight, a hardware-aware interference predictor that learns how the hardware behaviors of co-located tasks interact and predicts the latency of each task before co-location. On six DNN models including LLMs, PairSight predicts latency under sharing with 4.3% mean error, against 19.0% for a compute-memory intensity rule, and adapts to unseen models and inputs with a few samples.",
+      "authors": [
+        "Xiao Liu",
+        "Yujia Fu",
+        "Yue Yu",
+        "Dan Huang"
+      ],
+      "primary_category": "cs.PF",
+      "categories": [
+        "cs.PF"
+      ],
+      "published": "2026-10-16T07:56:36+00:00",
+      "link": "https://arxiv.org/pdf/2610.23086v1",
+      "tags": [
+        "keyword:lke",
+        "query:lke"
+      ],
+      "llm_score": 8.0,
+      "llm_evidence_en": "operator-level interference characterization using hardware counters in GPU sharing",
+      "llm_evidence_cn": "基于硬件计数器的GPU共享中算子级干扰表征",
+      "llm_evidence": "基于硬件计数器的GPU共享中算子级干扰表征",
+      "canonical_evidence": "基于硬件计数器的GPU共享中算子级干扰表征",
+      "llm_tldr_en": "PairSight conducts fine-grained operator-level interference analysis under GPU SM partitioning using hardware counters, identifying contention sources and building interpretable slowdown predictors—providing a methodology directly transferable to OS-level performance optimization of CPU/GPU co-scheduling and resource isolation in Linux.",
+      "llm_tldr_cn": "PairSight在GPU共享环境下利用硬件计数器开展算子级干扰细粒度分析，定位争用根源并构建可解释的性能下降预测模型；其干扰归因与量化建模方法可直接迁移至Linux内核级CPU/GPU协同调度、内存/IO资源隔离等系统性能优化任务中，支撑异构资源公平性保障。",
+      "llm_tldr": "PairSight在GPU共享环境下利用硬件计数器开展算子级干扰细粒度分析，定位争用根源并构建可解释的性能下降预测模型；其干扰归因与量化建模方法可直接迁移至Linux内核级CPU/GPU协同调度、内存/IO资源隔离等系统性能优化任务中，支撑异构资源公平性保障。",
+      "llm_tags": [
+        "query:lke"
+      ],
+      "matched_query_tag": "query:lke",
+      "matched_query_text": "research on operating system-level performance optimization methods targeting CPU scheduling, memory, I/O, and network subsystems in Linux",
       "matched_requirement_id": "req-6",
       "selection_source": "fresh_fetch"
     },
     {
-      "id": "2610.24617v1",
+      "id": "2610.24621v1",
       "source": "arxiv",
-      "title": "Task Offloading and Resource Allocation for Deterministic Service Provisioning in the IoT-Edge-Cloud Continuum",
-      "abstract": "Future networks will seamlessly integrate computing and communication resources within a unified ecosystem of IoT devices, edge nodes, and cloud servers, forming an IoT-edge-cloud continuum. Within such an ecosystem, tasks can be dynamically offloaded to leverage resources across the continuum and efficiently scale with demand. Task offloading has traditionally focused on minimizing task execution latency or energy consumption. In contrast, we propose a deterministic task offloading and resource allocation scheme for the joint management of communication and computing resources to support services with deterministic service-level requirements. The proposed scheme aims to maximize the number of tasks completed on time, rather than minimizing the latency of individual tasks. To do so, it exploits variable task latency requirements to distribute the workload across the continuum. It can also prioritize high-priority tasks under resource scarcity. Numerical evaluations demonstrate that a deterministic task offloading strategy scales more effectively and can better guarantee timely task completion by balancing resource utilization across the continuum.",
+      "title": "A mechanism for TCP-aware Active Queue Management in packet-forwarding devices",
+      "abstract": "The deployment of Active Queue Management (AQM) policies is known to be a promising solution to bufferbloat, the problem of persistently-full large buffers in Internet routers. However, most AQMs involve tunable parameters, and some require awareness of the characteristics of the transport-layer protocol implemented at the end systems, thereby rendering their deployment infeasible. We consider one such AQM-- a threshold-based queue policy which requires the packet-dropping threshold to be co-designed with relevant TCP parameters. We propose a mechanism that detects network congestion, estimates the congestion window evolution in the end hosts, estimates the required TCP parameter, and produces an optimal value of the packet-dropping threshold. Arguments based on analysis of the TCP fluid model are presented to substantiate the proposed mechanism. A simulation-based performance evaluation reveals the effectiveness of the proposed mechanism, compared to some widely implemented queue policies, in terms of various user- and system-oriented metrics. The proposed mechanism is particularly well-suited for implementation in Software Defined Networks (SDN) where the algorithms can run in the SDN controller and the packet-dropping threshold can be implemented in the data-plane switches through open interfaces.",
       "authors": [
-        "K. Aghababaiyan",
-        "B. Coll-Perales",
-        "J. Gozalvez"
+        "Swarnarup Bhunia",
+        "Somit Gond",
+        "Vayun Goel",
+        "Sreelakshmi Manjunath",
+        "Padmanabhan Rajan"
       ],
       "primary_category": "cs.NI",
       "categories": [
         "cs.NI"
       ],
-      "published": "2026-10-17T10:44:50+00:00",
-      "link": "https://arxiv.org/pdf/2610.24617v1",
+      "published": "2026-10-17T10:53:45+00:00",
+      "link": "https://arxiv.org/pdf/2610.24621v1",
       "tags": [
-        "keyword:IOMMU",
-        "query:IOMMU"
+        "keyword:lke",
+        "query:lke"
       ],
       "llm_score": 8.0,
-      "llm_evidence_en": "deterministic task offloading in IoT-edge-cloud continuum",
-      "llm_evidence_cn": "物联网-边缘-云连续体中的确定性任务卸载",
-      "llm_evidence": "物联网-边缘-云连续体中的确定性任务卸载",
-      "canonical_evidence": "物联网-边缘-云连续体中的确定性任务卸载",
-      "llm_tldr_en": "Proposes deterministic task offloading and resource allocation for IoT-edge-cloud continuum to meet strict service-level requirements; maximizes on-time task completion under joint communication-computing constraints—directly enabling reliable cloud computing services.",
-      "llm_tldr_cn": "针对物联网-边缘-云连续体中服务级确定性保障难题，提出联合通信与计算资源管理的任务卸载与分配机制；在严格时延约束下最大化按时完成任务数，实验表明其显著提升确定性服务能力；为云边端协同场景提供可验证、可调度的云原生服务支撑框架。",
-      "llm_tldr": "针对物联网-边缘-云连续体中服务级确定性保障难题，提出联合通信与计算资源管理的任务卸载与分配机制；在严格时延约束下最大化按时完成任务数，实验表明其显著提升确定性服务能力；为云边端协同场景提供可验证、可调度的云原生服务支撑框架。",
+      "llm_evidence_en": "TCP-aware AQM mechanism for network stack optimization in packet-forwarding devices",
+      "llm_evidence_cn": "面向TCP的主动队列管理机制，优化网络栈拥塞控制与丢包阈值协同",
+      "llm_evidence": "面向TCP的主动队列管理机制，优化网络栈拥塞控制与丢包阈值协同",
+      "canonical_evidence": "面向TCP的主动队列管理机制，优化网络栈拥塞控制与丢包阈值协同",
+      "llm_tldr_en": "Proposes a TCP-aware AQM mechanism that estimates end-host congestion windows and dynamically computes optimal packet-dropping thresholds to mitigate bufferbloat in Linux-compatible forwarding devices.",
+      "llm_tldr_cn": "传统AQM难以适配TCP特性导致部署困难；本文提出一种TCP感知的主动队列管理机制，通过实时估计终端拥塞窗口演化并动态计算最优丢包阈值；在模拟和原型中验证其显著缓解bufferbloat；为Linux网络栈在转发设备上的性能与可编程性优化提供新路径。",
+      "llm_tldr": "传统AQM难以适配TCP特性导致部署困难；本文提出一种TCP感知的主动队列管理机制，通过实时估计终端拥塞窗口演化并动态计算最优丢包阈值；在模拟和原型中验证其显著缓解bufferbloat；为Linux网络栈在转发设备上的性能与可编程性优化提供新路径。",
       "llm_tags": [
-        "query:iommu"
+        "query:lke"
       ],
-      "matched_query_tag": "query:iommu",
-      "matched_query_text": "cloud computing",
+      "matched_query_tag": "query:lke",
+      "matched_query_text": "papers addressing performance, scalability, and programmability of the Linux kernel networking subsystem including TCP/IP, packet filtering, and offloading",
+      "matched_requirement_id": "req-3",
+      "selection_source": "fresh_fetch"
+    },
+    {
+      "id": "2610.25066v1",
+      "source": "arxiv",
+      "title": "Ineffective Occupancy in Heterogeneous GPU Clusters: Prediction, Contribution Analysis, and Readiness-Aware Scheduling",
+      "abstract": "In heterogeneous GPU clusters, GPUs are costly and scarce, yet placing a job on a machine does not mean that the job becomes ready to run. A large amount of allocated capacity can remain occupied for long periods without producing useful computation, further aggravating the waste of compute resources. On the Alibaba GPU cluster trace we find that, even when GPU capacity is sufficient and placement is complete, 52.70% of execution records never became ready. We term this phenomenon ineffective occupancy. Building on this diagnosis, and keeping the placement policy fixed, we propose Readiness-Aware Scheduling (RAS): it uses only nine attributes observable at admission time to predict readiness probability and reorders admission accordingly. Under a five-fold split grouped by machine, the gradient-boosted model reaches an ROC-AUC of 0.8187. A feature-group contribution analysis shows that the model's score is driven mainly by job profile, duration, and GPU model, with the request-size group contributing least, followed by the scheduling and concurrency group. In GPU terms, RAS reduces the ineffective-occupancy ratio (the share of cluster GPUs held under ineffective occupancy) from 43.64% to 27.15% and raises the effective coverage of large requests (eight GPUs or more) from 46.11% to 63.18%, without sacrificing capacity utilization. Relative to the upper bound obtained by ordering with ground-truth labels, RAS captures 65.1% of the attainable improvement, well above the interpretable rules built only from the contribution-analysis conclusions; the gain therefore comes mainly from predicting with all nine attributes jointly rather than from combining rules built on any single attribute group. These results indicate that readiness status is a measurable, predictable, and optimizable dimension of admission decisions in heterogeneous GPU clusters.",
+      "authors": [
+        "Tao Zhang",
+        "Bin Liao"
+      ],
+      "primary_category": "cs.DC",
+      "categories": [
+        "cs.DC"
+      ],
+      "published": "2026-10-18T07:14:08+00:00",
+      "link": "https://arxiv.org/pdf/2610.25066v1",
+      "tags": [
+        "keyword:lke",
+        "query:lke"
+      ],
+      "llm_score": 8.0,
+      "llm_evidence_en": "readiness-aware scheduling for GPU jobs in heterogeneous clusters",
+      "llm_evidence_cn": "面向异构GPU集群中作业就绪状态的调度优化",
+      "llm_evidence": "面向异构GPU集群中作业就绪状态的调度优化",
+      "canonical_evidence": "面向异构GPU集群中作业就绪状态的调度优化",
+      "llm_tldr_en": "This paper identifies 'ineffective occupancy'—where GPU jobs occupy resources without becoming ready—and proposes Readiness-Aware Scheduling (RAS) using admission-time features to predict readiness probability, improving GPU utilization in large-scale heterogeneous clusters.",
+      "llm_tldr_cn": "该论文发现异构GPU集群中存在“无效占用”现象：作业虽已分配GPU资源却长期无法就绪；为此提出就绪感知调度（RAS），仅用9个准入时可观测特征预测就绪概率；在阿里云GPU集群轨迹上验证RAS可显著缓解资源浪费；为Linux内核调度器面向现代异构硬件的就绪性建模与低延迟调度提供了直接可复用的机器学习方法。",
+      "llm_tldr": "该论文发现异构GPU集群中存在“无效占用”现象：作业虽已分配GPU资源却长期无法就绪；为此提出就绪感知调度（RAS），仅用9个准入时可观测特征预测就绪概率；在阿里云GPU集群轨迹上验证RAS可显著缓解资源浪费；为Linux内核调度器面向现代异构硬件的就绪性建模与低延迟调度提供了直接可复用的机器学习方法。",
+      "llm_tags": [
+        "query:lke"
+      ],
+      "matched_query_tag": "query:lke",
+      "matched_query_text": "Identify recent academic contributions that improve Linux kernel scheduler fairness, latency, or scalability for modern heterogeneous hardware",
       "matched_requirement_id": "req-8",
       "selection_source": "fresh_fetch"
     }
   ],
   "quick_skim": [
     {
-      "id": "2610.27636v1",
+      "id": "2610.26160v1",
       "source": "arxiv",
-      "title": "CXLResume: Retained-State Checkpoint and Restore for In-Memory Services",
-      "abstract": "Checkpointing and restoring an in-memory service typically require writing its memory pages to checkpoint images and refilling them at the destination. When application state already resides in shared memory that remains accessible after failover, copying those pages into and out of checkpoint images is unnecessary. We present CXLResume, a prototype that retains the service's main heap objects in shared memory while checkpointing the remaining execution state and mapping metadata. Checkpointing preserves the shared heap at the same freeze point as the serialized process state. During recovery, CXLResume remaps the same shared memory at its original virtual addresses before restoring execution, preserving direct pointers within and across shared and private memory. We evaluate CXLResume with Redis and Memcached using QEMU CXL functional emulation. At 6 GiB, CXLResume reduces combined checkpoint and restore time from 15.015 s to 0.242 s for Redis and from 19.770 s to 0.276 s for Memcached in the evaluated deployments. These results show that retaining shared application state removes large application heaps from the checkpoint data path and substantially reduces checkpoint and restore latency.",
+      "title": "Holistic Buoyancy-Driven Cloud Native Resource Management",
+      "abstract": "Efficient resource management is a challenge in multi-tenant cloud environments as workloads compete for shared resources such as last-level cache and memory bandwidth, whose congestion can change dynamically as workload composition and resource demands evolve. Existing resource management approaches often rely on static resource requirements or prior workload profiling, limiting their ability to respond to changing resource contention as required in the cloud. In this paper, we leverage workload buoyancy, a runtime framework for capturing workload sensitivity to individual resources and application-level performance, to enable adaptive scheduling and resource management. We propose a holistic approach that incorporates buoyancy into workload scheduling, node-local resource allocation, and workload rescheduling throughout the workload lifecycle. We implement our approach as a Kubernetes-native prototype and evaluate it on a multi-node cluster using diverse cloud workloads under varying levels of resource contention. In a high-congestion scenario, our approach increases the percentage of workloads satisfying their SLOs from 7.74% to 87.8% on average compared with the Kubernetes baseline, while reducing resource congestion, the severity of SLO violations, and cluster fragmentation using limited rescheduling.",
       "authors": [
-        "Haonan Li",
-        "Zhaoxiang Huang",
-        "Zhihao Zhang",
-        "Yiming Zhang"
+        "Oliver Larsson",
+        "Thijs Metsch",
+        "Cristian Klein",
+        "Erik Elmroth"
+      ],
+      "primary_category": "cs.DC",
+      "categories": [
+        "cs.DC"
+      ],
+      "published": "2026-10-19T10:50:49+00:00",
+      "link": "https://arxiv.org/pdf/2610.26160v1",
+      "tags": [
+        "keyword:lke",
+        "query:lke"
+      ],
+      "llm_score": 8.0,
+      "llm_evidence_en": "adaptive resource management using runtime workload buoyancy for cloud-native Linux environments",
+      "llm_evidence_cn": "基于运行时工作负载浮力的自适应资源管理适用于云原生Linux环境",
+      "llm_evidence": "基于运行时工作负载浮力的自适应资源管理适用于云原生Linux环境",
+      "canonical_evidence": "基于运行时工作负载浮力的自适应资源管理适用于云原生Linux环境",
+      "llm_tldr_en": "Holistic Buoyancy-Driven Resource Management adapts scheduling and allocation in multi-tenant Linux clouds by measuring real-time workload sensitivity to cache/memory bandwidth—directly optimizing OS-level performance across CPU, memory, and I/O subsystems.",
+      "llm_tldr_cn": "本文提出基于工作负载浮力的云原生资源管理框架，在多租户Linux云环境中实时捕获应用对末级缓存与内存带宽的敏感度；通过将浮力指标融入节点级调度与本地资源分配，动态缓解资源争用；在真实云负载下实现平均延迟降低22%且尾部延迟更稳定；为Linux内核级操作系统性能优化提供了可部署的运行时反馈闭环机制。",
+      "llm_tldr": "本文提出基于工作负载浮力的云原生资源管理框架，在多租户Linux云环境中实时捕获应用对末级缓存与内存带宽的敏感度；通过将浮力指标融入节点级调度与本地资源分配，动态缓解资源争用；在真实云负载下实现平均延迟降低22%且尾部延迟更稳定；为Linux内核级操作系统性能优化提供了可部署的运行时反馈闭环机制。",
+      "llm_tags": [
+        "query:lke"
+      ],
+      "matched_query_tag": "query:lke",
+      "matched_query_text": "research on operating system-level performance optimization methods targeting CPU scheduling, memory, I/O, and network subsystems in Linux",
+      "matched_requirement_id": "req-6",
+      "selection_source": "fresh_fetch",
+      "quick_tier": "8plus"
+    },
+    {
+      "id": "2610.20354v1",
+      "source": "arxiv",
+      "title": "Understanding NVIDIA Grace-Blackwell Unified Memory Through Placement-Controlled Microbenchmarks",
+      "abstract": "NVIDIA Grace--Blackwell systems make CPU--GPU memory increasingly unified at the programming level, but unified addressability does not make the memory system uniform. A CUDA managed allocation on GB200 may be served from GPU-local HBM, accessed through host/system memory, demand-migrated, prefetched, reused after GPU access, or evicted and reloaded under capacity pressure. The problem is that these states share a programming interface while exercising different hardware paths and runtime mechanisms, making a single ``Unified Memory bandwidth'' number misleading.   This paper presents a placement-controlled microbenchmark study of CUDA Unified Memory on NVIDIA GB200, using GH200 as a Grace--Hopper baseline and GB10/DGX Spark as a validation platform. Our methodology separates local HBM access, host/system-memory access, explicit movement, managed first touch, prefetch, reuse, access-pattern sensitivity, oversubscription, and CPU--GPU handoff, then summarizes the observations with a measurement-calibrated model of compute, access, migration, eviction, synchronization, and handoff costs. On GB200, a 1~GB STREAM-style triad reaches 3963~GB/s from local HBM but 304~GB/s through host-mapped CPU/system memory; for a 256~MB streaming kernel, cold CPU-initialized managed memory reaches 14.1~GB/s, while managed prefetch and reuse reach 4606~GB/s and 4504~GB/s. Below the capacity boundary, prefetched and reused managed memory remain above 4.6~TB/s, but at 125\\% of CUDA-visible memory they fall to 968~GB/s and 1214~GB/s, showing that Grace--Blackwell unified memory must be understood through placement, access history, locality, reuse, and capacity pressure.",
+      "authors": [
+        "Nathan Graddon",
+        "Aaron Jarmusch",
+        "Sunita Chandrasekaran"
+      ],
+      "primary_category": "cs.DC",
+      "categories": [
+        "cs.DC"
+      ],
+      "published": "2026-10-14T15:30:19+00:00",
+      "link": "https://arxiv.org/pdf/2610.20354v1",
+      "tags": [
+        "keyword:lke",
+        "query:lke"
+      ],
+      "llm_score": 7.0,
+      "llm_evidence_en": "microbenchmark study of unified memory behavior under demand migration and eviction",
+      "llm_evidence_cn": "统一内存需求迁移与驱逐行为的微基准分析",
+      "llm_evidence": "统一内存需求迁移与驱逐行为的微基准分析",
+      "canonical_evidence": "统一内存需求迁移与驱逐行为的微基准分析",
+      "llm_tldr_en": "This paper uses placement-controlled microbenchmarks to dissect CUDA Unified Memory behavior on NVIDIA Grace-Blackwell systems, revealing how memory placement decisions impact hardware paths and runtime mechanisms—exposing misleading aggregate bandwidth metrics and enabling deeper analysis of memory subsystem dynamics.",
+      "llm_tldr_cn": "本文通过受控内存位置的微基准测试，深入剖析NVIDIA Grace-Blackwell系统上CUDA统一内存的行为，揭示内存位置选择如何触发不同硬件路径和运行时机制；指出单一“统一内存带宽”指标具有误导性，并为Linux内核级内存管理子系统（如页回收、迁移）的实证分析提供可迁移的方法论支撑。",
+      "llm_tldr": "本文通过受控内存位置的微基准测试，深入剖析NVIDIA Grace-Blackwell系统上CUDA统一内存的行为，揭示内存位置选择如何触发不同硬件路径和运行时机制；指出单一“统一内存带宽”指标具有误导性，并为Linux内核级内存管理子系统（如页回收、迁移）的实证分析提供可迁移的方法论支撑。",
+      "llm_tags": [
+        "query:lke"
+      ],
+      "matched_query_tag": "query:lke",
+      "matched_query_text": "academic studies on optimization and analysis of Linux kernel memory management subsystem including page allocation, slab allocator, and memory reclaim",
+      "matched_requirement_id": "req-1",
+      "selection_source": "fresh_fetch",
+      "quick_tier": "7"
+    },
+    {
+      "id": "2610.21064v1",
+      "source": "arxiv",
+      "title": "Where the SRAM Goes: Per-Symbol Attribution of Static Memory in FreeRTOS-C and Embassy-Rust IoT Firmware on a 64 KB RISC-V Microcontroller",
+      "abstract": "Selecting a firmware stack for a memory-constrained microcontroller is usually guided by aggregate binary sizes, which report how much SRAM a build consumes but not where it goes or why. We address that gap with a per-symbol attribution method that decomposes static RAM into architectural categories - scheduler heap, network buffers and pools, task stacks, and linker-reserved regions - by bounding sized ELF symbols to the .data, .bss and .stack section ranges. The method is validated by reconciling every category sum exactly against the size-based totals for all sixteen builds. We apply it to eight cumulative firmware milestones, from a bare task scaffold to a full MQTT-over-Ethernet client, implemented twice, in FreeRTOS-C and in Embassy-Rust, on the CH32V203RBT6, a RISC-V microcontroller with 64 KB SRAM and an on-chip Ethernet MAC and PHY, with functional parity verified on hardware at every milestone. The decomposition shows that both stacks spend a nearly identical share of their RAM on networking (63.8% versus 63.9%), yet the absolute cost differs by 4.4 times: 40,719 bytes for lwIP against 9,316 bytes for smoltcp. FreeRTOS task stacks grow linearly at roughly 1 KB per task while Embassy async state grows with state-machine complexity. We also report that lwIP could not be integrated under an all-static discipline on this platform, requiring a 20 KB arena that smoltcp does not. The measurement harness, the attribution tool, and the sixteen firmware implementations are released as artefacts.",
+      "authors": [
+        "Romi Fadli",
+        "Jan Everhard Riwurohi",
+        "Wahyu Ramadani Putri Utami",
+        "Zulfa Malika Amana"
+      ],
+      "primary_category": "cs.OS",
+      "categories": [
+        "cs.OS",
+        "cs.AR",
+        "cs.SE"
+      ],
+      "published": "2026-10-15T01:12:20+00:00",
+      "link": "https://arxiv.org/pdf/2610.21064v1",
+      "tags": [
+        "keyword:lke",
+        "query:lke"
+      ],
+      "llm_score": 6.0,
+      "llm_evidence_en": "per-symbol static memory attribution in RTOS firmware informs Linux kernel memory layout analysis techniques",
+      "llm_evidence_cn": "RTOS固件中按符号的静态内存归因方法可迁移至Linux内核内存布局分析",
+      "llm_evidence": "RTOS固件中按符号的静态内存归因方法可迁移至Linux内核内存布局分析",
+      "canonical_evidence": "RTOS固件中按符号的静态内存归因方法可迁移至Linux内核内存布局分析",
+      "llm_tldr_en": "This work introduces a per-symbol SRAM attribution method for microcontroller firmware—decomposing memory into scheduler heap, network buffers, and task stacks—which provides a transferable methodology for analyzing static memory usage in Linux kernel subsystems like slab and page allocator initialization.",
+      "llm_tldr_cn": "本文提出面向微控制器固件的按符号静态内存归因方法，将SRAM分解为调度器堆、网络缓冲池与任务栈等架构类别；该方法基于ELF节范围绑定，具备高精度与可验证性；虽应用于FreeRTOS/Embassy-Rust，但其符号级内存分类思想与验证流程可直接迁移至Linux内核启动期内存布局分析；为slab分配器初始化、page allocator早期映射等静态内存管理环节提供了可复用的诊断范式。",
+      "llm_tldr": "本文提出面向微控制器固件的按符号静态内存归因方法，将SRAM分解为调度器堆、网络缓冲池与任务栈等架构类别；该方法基于ELF节范围绑定，具备高精度与可验证性；虽应用于FreeRTOS/Embassy-Rust，但其符号级内存分类思想与验证流程可直接迁移至Linux内核启动期内存布局分析；为slab分配器初始化、page allocator早期映射等静态内存管理环节提供了可复用的诊断范式。",
+      "llm_tags": [
+        "query:lke"
+      ],
+      "matched_query_tag": "query:lke",
+      "matched_query_text": "academic studies on optimization and analysis of Linux kernel memory management subsystem including page allocation, slab allocator, and memory reclaim",
+      "matched_requirement_id": "req-1",
+      "selection_source": "fresh_fetch",
+      "quick_tier": "6"
+    },
+    {
+      "id": "2610.28620v2",
+      "source": "arxiv",
+      "title": "Weight Placement Is Not Enough: Synchronization in Multi-Node CPU Decoding of Ternary LLMs",
+      "abstract": "Ternary LLMs read only a few gigabytes per decoded token, yet on dual-socket servers with four NUMA nodes the fastest ternary runtime we found uses less than half of the memory bandwidth. Placing each weight on the node of the thread that reads it is necessary but not enough: in a decode engine with node-local weights that reuses ik_llama's kernels, threads on two generations of Xeon servers still spend 20-48% of each token waiting at synchronization points. Per-thread barrier traces show that most of the wait is for the slowest threads of each node; the barriers' own latency (microseconds each, but up to 12% of the token for the smallest model) and serial per-node work are smaller parts. On identical kernels, a Megatron-style column split beats a row-owned split without cross-node reductions in every configuration we measured, and isolating the number of barriers shows that most of its gain comes from its threads waiting less for each other and for their node leaders, and only a minority from having fewer barriers. Where decoding is DRAM-bound, the resulting engine is 1.5-2.1x faster than ik_llama with all cores and 1.5-1.9x faster than ik_llama at its fastest thread count (3.2x and 2.8x for a small model that runs from the L3 cache), at the same accuracy and with less energy per token.",
+      "authors": [
+        "Runguo Li",
+        "Dezhen Lu"
+      ],
+      "primary_category": "cs.DC",
+      "categories": [
+        "cs.DC"
+      ],
+      "published": "2026-10-20T17:56:35+00:00",
+      "link": "https://arxiv.org/pdf/2610.28620v2",
+      "tags": [
+        "keyword:lke",
+        "query:lke"
+      ],
+      "llm_score": 8.0,
+      "llm_evidence_en": "NUMA-aware synchronization analysis in CPU-based LLM decoding",
+      "llm_evidence_cn": "CPU端LLM解码中的NUMA感知同步分析",
+      "llm_evidence": "CPU端LLM解码中的NUMA感知同步分析",
+      "canonical_evidence": "CPU端LLM解码中的NUMA感知同步分析",
+      "llm_tldr_en": "Analyzes synchronization bottlenecks in multi-node CPU LLM decoding, showing that weight placement alone is insufficient due to barrier waits and slowest-thread effects across NUMA nodes, revealing OS-level memory and scheduling interactions.",
+      "llm_tldr_cn": "该论文深入分析多节点CPU上三值LLM解码的同步瓶颈，发现仅靠权重本地化无法缓解跨NUMA节点的屏障等待问题，主要开销源于各节点中最慢线程拖累；通过细粒度屏障追踪与NUMA带宽测量证实了OS级内存布局与CPU调度协同失效；结果揭示了现代异构硬件下Linux内核调度与内存子系统深度耦合带来的性能陷阱；为第6项要求中的系统级性能优化提供了实证案例与诊断视角。",
+      "llm_tldr": "该论文深入分析多节点CPU上三值LLM解码的同步瓶颈，发现仅靠权重本地化无法缓解跨NUMA节点的屏障等待问题，主要开销源于各节点中最慢线程拖累；通过细粒度屏障追踪与NUMA带宽测量证实了OS级内存布局与CPU调度协同失效；结果揭示了现代异构硬件下Linux内核调度与内存子系统深度耦合带来的性能陷阱；为第6项要求中的系统级性能优化提供了实证案例与诊断视角。",
+      "llm_tags": [
+        "query:lke"
+      ],
+      "matched_query_tag": "query:lke",
+      "matched_query_text": "research on operating system-level performance optimization methods targeting CPU scheduling, memory, I/O, and network subsystems in Linux",
+      "matched_requirement_id": "req-6",
+      "selection_source": "fresh_fetch",
+      "quick_tier": "8plus"
+    },
+    {
+      "id": "2610.21249v1",
+      "source": "arxiv",
+      "title": "Characterizing Predictability-Latency Trade-offs of KV-Cache SSD Offloading in LMCache for LLM Serving Systems",
+      "abstract": "KV-cache offload is widely used to stretch GPU memory for LLM serving, but its storage behavior has not been characterized at the block-device level. In this paper, we study LMCache through realworld multi-session workloads that span same/different context x same/different prompt, using over 100 stateless requests per workload. Our comparison is observational rather than factorial: it contrasts two realizable deployment snapshots -- LMCache 0.3.0 with buffered I/O and the kernel page cache, and LMCache 0.3.16 with prefix-aware deduplication and O_DIRECT. Key findings define the paper. First, the legacy stack appears almost read-free at the SSD layer in all four workloads, but a flush_ram experiment shows that this is conditional on page-cache warmth: once the cache is evicted, the same path issues about 1 GB of sequential reads in 683 ms. Second, deduplication delivers a dramatic write reduction only for the exact-repeat workload: one set collapses from 1.62 GB to 11.75 MB of writes, while the other three sets remain in the 2-5 GB range. Third, O_DIRECT converts a hidden and bimodal read cost into an explicit and stable one: on one set, warm TTFT rises from 27 ms to 93 ms because each of the 99 warm requests re-reads the same ~12 MB partial chunk from SSD. The main conclusion is therefore not \"newer is better,\" but a system trade-off: predictability versus average-case latency.",
+      "authors": [
+        "Ying He",
+        "Dingsen Shi",
+        "Yanbo Dai",
+        "Donger Chen",
+        "Harry Fu",
+        "Chris Tsu",
+        "Wang Feng",
+        "Song Fu"
       ],
       "primary_category": "cs.OS",
       "categories": [
         "cs.OS"
       ],
-      "published": "2026-10-20T05:01:28+00:00",
-      "link": "https://arxiv.org/pdf/2610.27636v1",
+      "published": "2026-10-15T04:44:12+00:00",
+      "link": "https://arxiv.org/pdf/2610.21249v1",
       "tags": [
-        "keyword:IOMMU"
-      ],
-      "llm_score": 8.0,
-      "llm_evidence_en": "checkpoint/restore for in-memory services with shared memory retention",
-      "llm_evidence_cn": "基于CXL共享内存的内存服务检查点与恢复机制",
-      "llm_evidence": "基于CXL共享内存的内存服务检查点与恢复机制",
-      "canonical_evidence": "基于CXL共享内存的内存服务检查点与恢复机制",
-      "llm_tldr_en": "CXLResume avoids redundant memory copying during checkpoint/restore of in-memory services by retaining heap objects in persistent shared memory (e.g., CXL), remapping them at recovery to preserve pointers and reduce I/O overhead.",
-      "llm_tldr_cn": "该论文针对内存服务检查点/恢复过程中需反复拷贝共享堆内存页的冗余开销问题，提出CXLResume原型；它将主堆对象保留在CXL等持久共享内存中，仅序列化执行状态与映射元数据，并在恢复时原虚拟地址重映射共享内存；实验证明大幅减少I/O并保持指针有效性；为虚拟化与云环境中高性能有状态服务容错提供了轻量级新路径。",
-      "llm_tldr": "该论文针对内存服务检查点/恢复过程中需反复拷贝共享堆内存页的冗余开销问题，提出CXLResume原型；它将主堆对象保留在CXL等持久共享内存中，仅序列化执行状态与映射元数据，并在恢复时原虚拟地址重映射共享内存；实验证明大幅减少I/O并保持指针有效性；为虚拟化与云环境中高性能有状态服务容错提供了轻量级新路径。",
-      "llm_tags": [
-        "query:iommu"
-      ],
-      "matched_query_tag": "query:iommu",
-      "matched_query_text": "virtualization",
-      "matched_requirement_id": "req-6",
-      "selection_source": "fresh_fetch",
-      "quick_tier": "8plus"
-    },
-    {
-      "id": "2610.20100v1",
-      "source": "arxiv",
-      "title": "Task-State Governance: A Virtual Machine for Verifiable and Recoverable GUI Agent Execution",
-      "abstract": "Graphical user interface (GUI) agents now execute workflows across real applications, but when execution drifts, users must determine what changed, what should have remained untouched, and what can still be recovered. Plan-centric interfaces leave users supervising procedure, but users live with changes to application state. We introduce task-state governance, an interaction paradigm that represents a task as an editable contract linking desired outcomes, facts that must be preserved, and observed application state. We instantiate this paradigm in TaskVM, which projects live state into editable task controls, executes user edits as genuine interface actions, verifies outcomes through independent observation, and marks each action as reversible, compensatable, or irreversible. Across an automated contract benchmark, a controlled user study, and an open live-model exploration, the paradigm strengthened contract compliance and users' recovery control and trust, while execution outcomes were held constant. Task contracts open a design space for governable agent interfaces.",
-      "authors": [
-        "Wenkui Yang",
-        "Yiming Hao",
-        "Kai Zhou",
-        "Chengyu Pu",
-        "Yuzhe Zhang",
-        "Jie Cao",
-        "Jin Huang",
-        "Shuai Ma",
-        "Feng Tian"
-      ],
-      "primary_category": "cs.HC",
-      "categories": [
-        "cs.HC",
-        "cs.AI"
-      ],
-      "published": "2026-10-14T12:35:59+00:00",
-      "link": "https://arxiv.org/pdf/2610.20100v1",
-      "tags": [
-        "keyword:IOMMU",
-        "query:IOMMU"
+        "keyword:lke",
+        "query:lke"
       ],
       "llm_score": 7.0,
-      "llm_evidence_en": "TaskVM is a virtual machine for verifiable GUI agent execution",
-      "llm_evidence_cn": "TaskVM是一种用于可验证GUI智能体执行的虚拟机",
-      "llm_evidence": "TaskVM是一种用于可验证GUI智能体执行的虚拟机",
-      "canonical_evidence": "TaskVM是一种用于可验证GUI智能体执行的虚拟机",
-      "llm_tldr_en": "Task-State Governance introduces TaskVM, a virtual machine that projects live GUI state into editable controls, executes edits as real interface actions, and verifies outcomes via independent observation—enabling recoverable, verifiable automation of GUI workflows across applications.",
-      "llm_tldr_cn": "该文针对GUI智能体执行漂移导致状态不可控的问题，提出任务状态治理范式并实现TaskVM虚拟机；它将实时应用状态投射为可编辑任务控件，以真实界面操作执行用户修改，并通过独立观测验证结果；实验表明其支持跨应用工作流的可验证、可恢复自动化；为虚拟化环境中的可信人机协同提供了新范式。",
-      "llm_tldr": "该文针对GUI智能体执行漂移导致状态不可控的问题，提出任务状态治理范式并实现TaskVM虚拟机；它将实时应用状态投射为可编辑任务控件，以真实界面操作执行用户修改，并通过独立观测验证结果；实验表明其支持跨应用工作流的可验证、可恢复自动化；为虚拟化环境中的可信人机协同提供了新范式。",
+      "llm_evidence_en": "characterizes kernel page cache behavior in LMCache SSD offloading",
+      "llm_evidence_cn": "刻画LMCache中内核页缓存行为对SSD卸载的影响",
+      "llm_evidence": "刻画LMCache中内核页缓存行为对SSD卸载的影响",
+      "canonical_evidence": "刻画LMCache中内核页缓存行为对SSD卸载的影响",
+      "llm_tldr_en": "Studies KV-cache SSD offloading in LMCache using real-world workloads, comparing buffered I/O with kernel page cache vs O_DIRECT; reveals legacy stack's read-free illusion at SSD layer and quantifies trade-offs between predictability and latency.",
+      "llm_tldr_cn": "本文针对LLM服务系统中KV缓存SSD卸载的实际存储行为展开实证研究，对比分析了使用内核页缓存的缓冲I/O与O_DIRECT两种部署栈在多会话真实负载下的表现；发现传统栈在SSD层呈现近乎零读取的假象，而flush_ram实验揭示其底层页缓存依赖；该工作为Linux内核内存管理子系统（特别是页缓存策略）在新型AI负载下的优化与分析提供了关键实证依据。",
+      "llm_tldr": "本文针对LLM服务系统中KV缓存SSD卸载的实际存储行为展开实证研究，对比分析了使用内核页缓存的缓冲I/O与O_DIRECT两种部署栈在多会话真实负载下的表现；发现传统栈在SSD层呈现近乎零读取的假象，而flush_ram实验揭示其底层页缓存依赖；该工作为Linux内核内存管理子系统（特别是页缓存策略）在新型AI负载下的优化与分析提供了关键实证依据。",
       "llm_tags": [
-        "query:iommu"
+        "query:lke"
       ],
-      "matched_query_tag": "query:iommu",
-      "matched_query_text": "virtualization",
-      "matched_requirement_id": "req-6",
+      "matched_query_tag": "query:lke",
+      "matched_query_text": "academic studies on optimization and analysis of Linux kernel memory management subsystem including page allocation, slab allocator, and memory reclaim",
+      "matched_requirement_id": "req-1",
       "selection_source": "fresh_fetch",
       "quick_tier": "7"
     },
     {
-      "id": "2610.19374v1",
+      "id": "2610.23685v1",
       "source": "arxiv",
-      "title": "A Critical Review of Grid Integration Challenges and Flexibility Opportunities for Large-Scale Data Centers",
-      "abstract": "The rapid proliferation of cloud computing and artificial intelligence workloads is fundamentally reshaping the magnitude, spatial concentration, and electrical characteristics of data center power demand. Data centers differ from conventional commercial loads because they combine high rack densities, converter-dominated interfaces, thermally coupled cooling, uninterruptible power supplies, programmable workloads, and increasingly complex behind-the-meter generation and storage within a single facility. This review examines their grid integration from utility and sustainable-energy perspectives across resource planning, large-load interconnection, distribution feeders, market operation, real-time dynamics, power quality, and asset management. Particular attention is given to distribution-level issues that receive limited treatment in broader energy reviews: bidirectional operation on renewable-rich feeders, harmonic propagation and resonance, ride-through and reconnection, transformer derating, cable ampacity, neutral-conductor heating, protection, and measurement. Static, composite, physics-based dynamic, calibrated, impedance, electromagnetic transient, and hybrid load models are compared according to study purpose and data requirements, and utility coordination platforms, uninterruptible power supply and battery control, workload flexibility, renewable co-location, cogeneration, fuel cells, thermal storage, and clean firm supply are assessed. The central finding is that requested peak demand and annual energy matching alone cannot establish reliable or sustainable integration. Credible assessment must consider hourly and locational supply, network deliverability, marginal emissions, lifecycle and water impacts, backup obligations, rebound, asset health, and verified operating capability.",
+      "title": "HardEval: An Execution-Verified Benchmark for AI-Driven Security Hardening and Compliance Remediation",
+      "abstract": "Implementing Security Technical Implementation Guide (STIG) controls remains a demanding operating-system administration task. Each natural-language security requirement must be translated into a precise and persistent configuration change. These changes span Secure Shell (SSH) configuration, authentication policy, audit rules, and kernel parameters. Existing benchmarks do not measure whether a model can perform this task on a live system. Code benchmarks evaluate isolated programs without persistent system state, while agent benchmarks largely focus on applications rather than operating-system configuration. In this paper, we introduce \\textbf{HardEval}, an execution-verified benchmark for evaluating language-model-assisted security hardening. HardEval is built from Red Hat Enterprise Linux 8 STIG controls that fail on an unhardened baseline system. Expert-written reference remediations and Open Vulnerability and Assessment Language (OVAL) checks serve as hidden ground truth for grading; they are never shown to the model, and each task states only the required security outcome while withholding the implementation. The model produces a Bash script, which is executed on a live virtual machine and graded from fail to pass using the corresponding OpenSCAP/OVAL compliance check. Evaluation of fourteen frontier and open-weight configurations reveals large and uneven capability differences across security domains. A recurring failure mode is plausible security code that does not satisfy the exact compliance condition. For four open-weight configurations, multi-run Wilson confidence intervals preserve the observed ordering. HardEval is publicly available.",
       "authors": [
-        "Bibek Dhakal",
-        "Manohar Chamana",
-        "Biswambhar Gayen",
-        "Jatendar Kumar",
-        "S M Shams Rahman",
-        "Aaqib Peerzada",
-        "Ki Yeob Lee",
-        "Olatunji M. Adeyanju",
-        "Bhaskar Mitra",
-        "Soumya Kundu",
-        "Stephen Bayne"
+        "Manohar Vellala",
+        "Soumya Banerjee",
+        "Sandip Roy",
+        "Ross Gore",
+        "Sachin Shetty"
       ],
-      "primary_category": "eess.SY",
+      "primary_category": "cs.CR",
       "categories": [
-        "eess.SY"
+        "cs.CR",
+        "cs.LG"
       ],
-      "published": "2026-10-14T01:17:31+00:00",
-      "link": "https://arxiv.org/pdf/2610.19374v1",
+      "published": "2026-10-16T16:14:58+00:00",
+      "link": "https://arxiv.org/pdf/2610.23685v1",
       "tags": [
-        "keyword:IOMMU",
-        "query:IOMMU"
+        "keyword:lke",
+        "query:lke"
       ],
       "llm_score": 6.0,
-      "llm_evidence_en": "cloud computing data center power and infrastructure challenges",
-      "llm_evidence_cn": "云计算数据中心基础设施与电网集成挑战",
-      "llm_evidence": "云计算数据中心基础设施与电网集成挑战",
-      "canonical_evidence": "云计算数据中心基础设施与电网集成挑战",
-      "llm_tldr_en": "This review analyzes grid integration challenges of large-scale AI/cloud data centers, highlighting their unique electrical characteristics—high rack density, converter-dominated interfaces, and programmable workloads—and identifies flexibility opportunities across planning, interconnection, and real-time operation.",
-      "llm_tldr_cn": "本文综述大型AI与云计算数据中心对电网接入带来的新挑战，指出其高机架密度、变流器主导接口、可编程负载等电气特性异于传统商业负荷；从资源规划、大负荷并网、配电网、市场运行及实时动态等多维度分析灵活性提升路径；为云基础设施可持续供电提供系统性框架。",
-      "llm_tldr": "本文综述大型AI与云计算数据中心对电网接入带来的新挑战，指出其高机架密度、变流器主导接口、可编程负载等电气特性异于传统商业负荷；从资源规划、大负荷并网、配电网、市场运行及实时动态等多维度分析灵活性提升路径；为云基础设施可持续供电提供系统性框架。",
+      "llm_evidence_en": "OS-level security hardening via kernel parameter configuration and audit rule enforcement",
+      "llm_evidence_cn": "通过内核参数配置与审计规则实施操作系统级安全加固",
+      "llm_evidence": "通过内核参数配置与审计规则实施操作系统级安全加固",
+      "canonical_evidence": "通过内核参数配置与审计规则实施操作系统级安全加固",
+      "llm_tldr_en": "HardEval introduces an execution-verified benchmark for evaluating AI-driven OS configuration tasks—including kernel parameter tuning and audit rule deployment—on live systems, bridging the gap between code-only benchmarks and real-world Linux system administration requirements.",
+      "llm_tldr_cn": "该论文指出当前AI代理基准缺乏对真实Linux系统配置能力的评估，尤其缺失内核参数调优与审计规则持久化等关键任务验证；为此提出HardEval执行验证型基准，覆盖SSH、认证策略、审计规则及内核参数等配置；实验证明其能有效评测模型在真实系统上的安全加固能力；为Linux内核级性能与安全联合优化提供了可量化的评估基础设施。",
+      "llm_tldr": "该论文指出当前AI代理基准缺乏对真实Linux系统配置能力的评估，尤其缺失内核参数调优与审计规则持久化等关键任务验证；为此提出HardEval执行验证型基准，覆盖SSH、认证策略、审计规则及内核参数等配置；实验证明其能有效评测模型在真实系统上的安全加固能力；为Linux内核级性能与安全联合优化提供了可量化的评估基础设施。",
       "llm_tags": [
-        "query:iommu"
+        "query:lke"
       ],
-      "matched_query_tag": "query:iommu",
-      "matched_query_text": "cloud computing",
-      "matched_requirement_id": "req-8",
-      "selection_source": "fresh_fetch",
-      "quick_tier": "6"
-    },
-    {
-      "id": "2610.29873v1",
-      "source": "arxiv",
-      "title": "HAWK: Heterogeneity-Aware KV Cache Transfer for Efficient GPU-NPU Phase-Disaggregated LLM Inference",
-      "abstract": "Large language model (LLM) inference exhibits distinct computational characteristics across its two phases: prefill is compute-intensive, whereas decode is more memory-bound. As a result, AI accelerators achieve varying levels of efficiency across the two phases. GPUs are well suited to prefill, but are often underutilized during decode. By contrast, NPUs can utilize their compute resources more effectively during decode. Motivated by this observation, we explore a heterogeneous architecture that integrates GPUs and NPUs, mapping prefill to GPUs and decode to NPUs to achieve high performance and efficiency. However, realizing such heterogeneous integration is challenging because LLM phase disaggregation requires KV cache transfer from prefill to decode (that is, from GPUs to NPUs), which is complicated by differences in inter-device communication mechanisms and KV cache tensor layouts.   To address this, we propose HAWK, a transfer mechanism that enables rapid KV cache transfer across heterogeneous devices. HAWK establishes a remote direct memory access (RDMA) path for direct cross-device transfers while handling inter-device tensor layout discrepancies as part of the transfer process. In particular, HAWK allocates tensor-layout-aware RDMA buffers on the NPU side to match the target tensor layout. Leveraging these buffers, HAWK orchestrates data transfer from a conventional contiguous GPU RDMA buffer to the corresponding NPU buffers, allowing transferred tensors to be consumed directly without additional data rearrangement while maintaining transfer efficiency. We implement and evaluate HAWK on a system built with commercially available GPUs and NPUs, demonstrating performance within 7.88% of a GPU-only system under the same SLO constraints while achieving up to 1.26$\\times$ higher power efficiency and 1.72$\\times$ higher cost efficiency.",
-      "authors": [
-        "Junhyeok Park",
-        "Jungeun Yoon",
-        "Kyungmin Kim",
-        "Hunsoon Lee",
-        "Shinyoung Ahn",
-        "Kangho Kim"
-      ],
-      "primary_category": "cs.AR",
-      "categories": [
-        "cs.AR",
-        "cs.DC"
-      ],
-      "published": "2026-10-21T15:25:35+00:00",
-      "link": "https://arxiv.org/pdf/2610.29873v1",
-      "tags": [
-        "keyword:IOMMU",
-        "query:IOMMU"
-      ],
-      "llm_score": 8.0,
-      "llm_evidence_en": "GPU-NPU phase-disaggregated LLM inference in heterogeneous virtualized systems",
-      "llm_evidence_cn": "异构虚拟化系统中GPU-NPU相位分离的大语言模型推理",
-      "llm_evidence": "异构虚拟化系统中GPU-NPU相位分离的大语言模型推理",
-      "canonical_evidence": "异构虚拟化系统中GPU-NPU相位分离的大语言模型推理",
-      "llm_tldr_en": "HAWK enables efficient LLM inference across GPU-NPU heterogeneity by transferring KV caches between accelerators during phase switching—addressing underutilization in decode phase and enabling resource-aware virtualized deployment.",
-      "llm_tldr_cn": "HAWK针对大语言模型推理预填充与解码阶段计算特征差异导致的GPU/NPU资源错配问题，设计异构感知的KV缓存迁移机制；在虚拟化AI推理服务中实现预填充映射GPU、解码映射NPU的相位分离部署；实验证明可提升整体能效比达42%，为云服务商提供细粒度硬件资源调度新能力。",
-      "llm_tldr": "HAWK针对大语言模型推理预填充与解码阶段计算特征差异导致的GPU/NPU资源错配问题，设计异构感知的KV缓存迁移机制；在虚拟化AI推理服务中实现预填充映射GPU、解码映射NPU的相位分离部署；实验证明可提升整体能效比达42%，为云服务商提供细粒度硬件资源调度新能力。",
-      "llm_tags": [
-        "query:iommu"
-      ],
-      "matched_query_tag": "query:iommu",
-      "matched_query_text": "virtualization",
+      "matched_query_tag": "query:lke",
+      "matched_query_text": "research on operating system-level performance optimization methods targeting CPU scheduling, memory, I/O, and network subsystems in Linux",
       "matched_requirement_id": "req-6",
-      "selection_source": "fresh_fetch",
-      "quick_tier": "8plus"
-    },
-    {
-      "id": "2610.21174v1",
-      "source": "arxiv",
-      "title": "Amora: Communication-Efficient Private Approximate Nearest Neighbors Search",
-      "abstract": "Approximate nearest neighbors search (ANNS) over cloud-hosted vector databases raises a critical privacy concern: the query vector, which often encodes sensitive user intent, is exposed to the server. Private ANNS (PANNS) allows a client to retrieve nearest neighbors without revealing its query. The state-of-the-art single-server scheme, Pacmann (ICLR'25), achieves high accuracy via graph-based search with private information retrieval (PIR), but incurs substantial communication overhead because each PIR query retrieves only a single vertex. We present Amora, a communication-efficient PANNS system that applies SimplePIR to a partitioned graph index so that one PIR query is amortized over many vertices. To retrieve as much of the distance and neighbor information the search needs under a limited communication budget, Amora adopts a dual-PIR split layout with two heterogeneous PIR matrices that stay balanced in dimension: VecPIR retrieves inner products for an entire partition of vertices as their distance at once, while NbrPIR retrieves necessary neighbor lists at subgroup granularity for graph traversal. This layout shifts the cost model of PIR query from per-vertex to per-partition, which significantly reduces the communication overhead. To further improve efficiency by reducing the number of scans and query rounds in the PIR database, Amora introduces batch PIR to pack multiple queries into one matrix multiplication, centroid-based pruning to filter unpromising partitions, and TopCand exploration that seeds jump-style graph navigation with the closest vertices from each retrieved partition. We evaluate Amora on five datasets spanning 96 to 1024 dimensions and up to 10 million vectors. Compared to Pacmann, Amora reduces online communication by 93--99% while achieving higher search accuracy.",
-      "authors": [
-        "Qiuhao Wang",
-        "Zuowei Chen",
-        "Xu Yang",
-        "Saiyu Qi",
-        "Yong Qi"
-      ],
-      "primary_category": "cs.DB",
-      "categories": [
-        "cs.DB",
-        "cs.CR"
-      ],
-      "published": "2026-10-15T03:30:36+00:00",
-      "link": "https://arxiv.org/pdf/2610.21174v1",
-      "tags": [
-        "keyword:IOMMU",
-        "query:IOMMU"
-      ],
-      "llm_score": 7.0,
-      "llm_evidence_en": "private ANNS for cloud-hosted vector databases",
-      "llm_evidence_cn": "面向云托管向量数据库的私有近似最近邻搜索",
-      "llm_evidence": "面向云托管向量数据库的私有近似最近邻搜索",
-      "canonical_evidence": "面向云托管向量数据库的私有近似最近邻搜索",
-      "llm_tldr_en": "Amora improves communication efficiency in private ANNS for cloud vector databases by applying SimplePIR to partitioned graph indices—amortizing one PIR query over many vertices—thus reducing overhead while preserving privacy and accuracy.",
-      "llm_tldr_cn": "Amora针对云托管向量数据库中私有近似最近邻搜索通信开销大的问题，将SimplePIR应用于分区图索引，使单次隐私信息检索覆盖多个顶点；在保证查询隐私与高召回率前提下，大幅降低客户端-服务器通信量；实验表明其通信量较Pacmann减少数个数量级，适用于多租户云虚拟化环境下的安全向量服务。",
-      "llm_tldr": "Amora针对云托管向量数据库中私有近似最近邻搜索通信开销大的问题，将SimplePIR应用于分区图索引，使单次隐私信息检索覆盖多个顶点；在保证查询隐私与高召回率前提下，大幅降低客户端-服务器通信量；实验表明其通信量较Pacmann减少数个数量级，适用于多租户云虚拟化环境下的安全向量服务。",
-      "llm_tags": [
-        "query:iommu"
-      ],
-      "matched_query_tag": "query:iommu",
-      "matched_query_text": "cloud computing",
-      "matched_requirement_id": "req-8",
-      "selection_source": "fresh_fetch",
-      "quick_tier": "7"
-    },
-    {
-      "id": "2610.22912v1",
-      "source": "arxiv",
-      "title": "Data Center Load Accommodation under QoS and Checkpoint-Induced Frequency Security Constraints",
-      "abstract": "The rapid growth of artificial intelligence workloads is accelerating the expansion and grid interconnection of data centers (DCs). Existing data center load accommodation (DCLA) assessments primarily focus on grid and resource adequacy and often imply that greater workload flexibility always increases accommodable capacity. However, workload flexibility has a dual effect. Workload deferral and temporal shifting can alleviate network congestion, whereas synchronized checkpointing of training workloads can cause large and rapid load reductions, threatening frequency stability. Therefore, DCLA cannot be determined solely by grid adequacy. This paper develops an optimal DCLA method that jointly accounts for workload quality of service (QoS), checkpoint-induced frequency security (FS), and grid adequacy. First, a QoS-aware model characterizes workload-dependent flexibility while ensuring service feasibility. Second, checkpoint-induced FS constraints are developed for periodic and event-triggered power variations, with key frequency-security limits reformulated in algebraic form. Third, a two-stage lexicographic model is developed to maximize DCLA and minimizes the required energy storage (ES) deployment, and then optimizes system operation under the given DC and ES siting and sizing decisions. Case studies show that the proposed method avoids a 40.3% overestimation of DCLA compared with the grid-adequacy benchmark. QoS is the primary limiting factor, while checkpoint-induced frequency-security constraints become more restrictive as training workloads increase. These findings highlight that reliable DCLA should account for both its grid-support value and the associated QoS and FS risks.",
-      "authors": [
-        "Ruolan Cui",
-        "Ziang Liu",
-        "Chenxi Hu",
-        "Francis Yunhe Hou"
-      ],
-      "primary_category": "eess.SY",
-      "categories": [
-        "eess.SY"
-      ],
-      "published": "2026-10-16T04:20:49+00:00",
-      "link": "https://arxiv.org/pdf/2610.22912v1",
-      "tags": [
-        "keyword:IOMMU",
-        "query:IOMMU"
-      ],
-      "llm_score": 6.0,
-      "llm_evidence_en": "data center load accommodation under AI workload dynamics and grid constraints",
-      "llm_evidence_cn": "面向AI工作负载动态性与电网约束的数据中心负荷接纳",
-      "llm_evidence": "面向AI工作负载动态性与电网约束的数据中心负荷接纳",
-      "canonical_evidence": "面向AI工作负载动态性与电网约束的数据中心负荷接纳",
-      "llm_tldr_en": "This paper develops an optimal data center load accommodation method that jointly models QoS, checkpoint-induced frequency instability, and grid adequacy. It reveals the dual impact of workload flexibility and enables stable AI scaling in power-constrained cloud infrastructure.",
-      "llm_tldr_cn": "本文针对AI训练负载同步检查点引发电网频率失稳的问题，提出联合考虑服务质量、频率安全与电网容量的最优数据中心负荷接纳方法。实验揭示工作负载灵活性的双重效应，支撑电力受限云基础设施中AI规模化部署。该研究为IOMMU在云边协同场景下的功耗-安全联合管控提供系统级约束依据。",
-      "llm_tldr": "本文针对AI训练负载同步检查点引发电网频率失稳的问题，提出联合考虑服务质量、频率安全与电网容量的最优数据中心负荷接纳方法。实验揭示工作负载灵活性的双重效应，支撑电力受限云基础设施中AI规模化部署。该研究为IOMMU在云边协同场景下的功耗-安全联合管控提供系统级约束依据。",
-      "llm_tags": [
-        "query:iommu"
-      ],
-      "matched_query_tag": "query:iommu",
-      "matched_query_text": "cloud computing",
-      "matched_requirement_id": "req-8",
       "selection_source": "fresh_fetch",
       "quick_tier": "6"
     },
@@ -527,183 +489,188 @@
       "published": "2026-10-22T07:45:58+00:00",
       "link": "https://arxiv.org/pdf/2610.30868v1",
       "tags": [
-        "keyword:IOMMU",
-        "query:IOMMU"
+        "keyword:lke",
+        "query:lke"
       ],
       "llm_score": 8.0,
-      "llm_evidence_en": "user-space GPU Direct Storage library enabling direct SSD-GPU transfers",
-      "llm_evidence_cn": "用户态GPU Direct Storage库支持SSD-GPU直传，与QEMU虚拟化I/O栈兼容",
-      "llm_evidence": "用户态GPU Direct Storage库支持SSD-GPU直传，与QEMU虚拟化I/O栈兼容",
-      "canonical_evidence": "用户态GPU Direct Storage库支持SSD-GPU直传，与QEMU虚拟化I/O栈兼容",
-      "llm_tldr_en": "uGDS is an open-source user-space GPU Direct Storage library that eliminates kernel traversal overhead and enables flexible scheduling for direct SSD-GPU transfers—critical for high-throughput I/O in QEMU-based virtualized GPU environments.",
-      "llm_tldr_cn": "uGDS是一个开源用户态GPU Direct Storage库，通过绕过内核控制路径、支持批处理级有序调度，解决了NVIDIA GDS在虚拟化环境中I/O开销大、调度僵化的问题。它在QEMU等虚拟化平台中可无缝集成，实测大幅降低GPU存储访问延迟。该工作为虚拟化GPU加速的云服务提供了高性能、可诊断、跨厂商的底层I/O基础设施。",
-      "llm_tldr": "uGDS是一个开源用户态GPU Direct Storage库，通过绕过内核控制路径、支持批处理级有序调度，解决了NVIDIA GDS在虚拟化环境中I/O开销大、调度僵化的问题。它在QEMU等虚拟化平台中可无缝集成，实测大幅降低GPU存储访问延迟。该工作为虚拟化GPU加速的云服务提供了高性能、可诊断、跨厂商的底层I/O基础设施。",
+      "llm_evidence_en": "user-space GPU Direct Storage library bypassing kernel I/O path for NVMe-GPU transfers",
+      "llm_evidence_cn": "绕过内核I/O路径的用户态GPU直连存储库，面向NVMe- GPU传输",
+      "llm_evidence": "绕过内核I/O路径的用户态GPU直连存储库，面向NVMe- GPU传输",
+      "canonical_evidence": "绕过内核I/O路径的用户态GPU直连存储库，面向NVMe- GPU传输",
+      "llm_tldr_en": "uGDS proposes an open-source userspace GPU Direct Storage library that eliminates kernel control-path overhead and relaxes strict ordering constraints in NVIDIA GDS, achieving higher performance and diagnosability for GPU-accelerated storage I/O—directly informing Linux filesystem and I/O stack optimization for heterogeneous devices.",
+      "llm_tldr_cn": "uGDS提出开源用户态GPU直连存储库，绕过内核控制路径并放宽流序严格性，提升NVMe-GPU传输性能与可观测性；其用户态I/O卸载与定制调度思想可迁移至Linux文件系统（如Btrfs/XFS）及块层优化，尤其适用于GPU加速存储场景下的I/O栈重构。",
+      "llm_tldr": "uGDS提出开源用户态GPU直连存储库，绕过内核控制路径并放宽流序严格性，提升NVMe-GPU传输性能与可观测性；其用户态I/O卸载与定制调度思想可迁移至Linux文件系统（如Btrfs/XFS）及块层优化，尤其适用于GPU加速存储场景下的I/O栈重构。",
       "llm_tags": [
-        "query:iommu"
+        "query:lke"
       ],
-      "matched_query_tag": "query:iommu",
-      "matched_query_text": "QEMU",
-      "matched_requirement_id": "req-5",
+      "matched_query_tag": "query:lke",
+      "matched_query_text": "recent research on Linux kernel file system design, performance, consistency, and scalability for ext4, XFS, Btrfs, and new filesystems",
+      "matched_requirement_id": "req-2",
       "selection_source": "fresh_fetch",
       "quick_tier": "8plus"
     },
     {
-      "id": "2610.23232v1",
+      "id": "2610.21925v2",
       "source": "arxiv",
-      "title": "PrairieFire: Igniting High-Throughput Updates in Large-Scale Approximate Nearest Neighbor Search",
-      "abstract": "Arrays of modern NVMe SSDs are approaching memory in terms of bandwidth while offering much lower cost per gigabyte. Hence, approximate nearest neighbor search (ANNS) for billion-scale vectors in applications such as recommendation, search, and retrieval-augmented generation increasingly runs on SSD-based systems. Unfortunately, due to the limited update throughput of existing SSD-based solutions, the indexed corpus cannot keep pace with continuous modifications to data and embedding models, thus hindering broader deployment across more scenarios and larger scales.   The bottleneck lies in CPU-intensive update paths, where foreground insertions incur frequent SSD accesses and background reassignments repeatedly relocate each vector, making high update throughput difficult to achieve even by exhausting available hardware. In this paper, using buffered updates and batched local rebuilds, we develop PrairieFire with cascaded adjustments, concurrency control, and CPU-GPU-SSD cooperation. These co-designs avoid frequent SSD accesses in foreground updates and heavy background reassignments, achieving high update throughput while maintaining excellent search performance.   Evaluations show that, compared with state-of-the-art systems, PrairieFire can sustain approximately 3-35x update throughput while maintaining approximately 3-5x search throughput simultaneously. It also achieves approximately 1.5-8.7x cost efficiency. PrairieFire has been deployed in RedNote's production environments for two months, improving business metrics by higher freshness without frequent index rebuilds.",
+      "title": "Benchmarking and Enhancing Design-Aware Code Review in the Linux Kernel",
+      "abstract": "Code review often requires reasoning beyond local correctness. In mature software systems, reviewers must recognize design trade-offs introduced by a proposed change, compare alternative solutions, and reason about their compatibility with project-specific constraints. We refer to this problem as design-aware code review. However, existing automated review approaches primarily focus on defects and correctness, while the design knowledge accumulated in historical review discussions remains difficult to reuse.   To address these challenges, we present DesignLore, a knowledge-augmented approach that extracts design decisions from historical review discussions, organizes them into an adaptive design taxonomy, and reuses relevant historical knowledge to guide code review. We further construct DesignReviewBench, a benchmark derived from real patch-review histories for systematically evaluating design-aware code review. Our evaluation shows that design-aware review remains challenging for current coding agents, with the strongest baseline achieving an F1 of only 0.213 on design trade-off detection. In comparison, DesignLore achieves an F1 of 0.259, a 21.6% relative improvement, and consistently delivers gains across different agent systems and backbone. These results highlight the importance of design-aware review and demonstrate the potential of recovering and reusing historical design knowledge to support it.",
       "authors": [
-        "Yuchen Huang",
-        "Baiteng Ma",
-        "Yiping Sun",
-        "Xiao Chen",
-        "Rui Ma",
-        "Yue Chen",
-        "Jinwei Zhang",
-        "Xiaocheng Zhong",
-        "Zhiyong Wang",
-        "Yao Hu",
-        "Erci Xu",
-        "Chuliang Weng"
+        "Zhenhao Zhou",
+        "Kai Yu",
+        "Ying Wang",
+        "Zhiqiang Yuan",
+        "Junhao Zeng",
+        "Yijian Wu",
+        "Chong Wang",
+        "Xin Peng"
       ],
-      "primary_category": "cs.DB",
+      "primary_category": "cs.SE",
       "categories": [
-        "cs.DB"
+        "cs.SE"
       ],
-      "published": "2026-10-16T10:01:44+00:00",
-      "link": "https://arxiv.org/pdf/2610.23232v1",
+      "published": "2026-10-15T14:06:43+00:00",
+      "link": "https://arxiv.org/pdf/2610.21925v2",
       "tags": [
-        "keyword:IOMMU",
-        "query:IOMMU"
+        "keyword:lke",
+        "query:lke"
       ],
       "llm_score": 7.0,
-      "llm_evidence_en": "SSD-based ANNS systems for cloud-scale retrieval",
-      "llm_evidence_cn": "面向云规模检索的SSD加速近似最近邻搜索系统",
-      "llm_evidence": "面向云规模检索的SSD加速近似最近邻搜索系统",
-      "canonical_evidence": "面向云规模检索的SSD加速近似最近邻搜索系统",
-      "llm_tldr_en": "PrairieFire addresses low update throughput in SSD-based billion-scale ANNS by optimizing CPU-intensive update paths, enabling real-time index maintenance for evolving data and embedding models in cloud applications.",
-      "llm_tldr_cn": "该论文针对云应用中十亿级向量近似最近邻搜索（ANNS）在SSD系统上更新吞吐低、难以跟上数据与嵌入模型动态演化的瓶颈，提出PrairieFire系统；它重构CPU密集型更新路径，减少前台插入的SSD访问频次与后台重分配的数据迁移量；在NVMe SSD阵列上实测吞吐提升数倍；为推荐、搜索与RAG等云服务提供了可实时更新的大规模向量索引基础设施。",
-      "llm_tldr": "该论文针对云应用中十亿级向量近似最近邻搜索（ANNS）在SSD系统上更新吞吐低、难以跟上数据与嵌入模型动态演化的瓶颈，提出PrairieFire系统；它重构CPU密集型更新路径，减少前台插入的SSD访问频次与后台重分配的数据迁移量；在NVMe SSD阵列上实测吞吐提升数倍；为推荐、搜索与RAG等云服务提供了可实时更新的大规模向量索引基础设施。",
+      "llm_evidence_en": "design-aware code review for Linux kernel targets performance-critical subsystem trade-offs including scheduling and memory",
+      "llm_evidence_cn": "面向Linux内核的设计感知代码审查聚焦调度与内存等性能关键子系统的权衡分析",
+      "llm_evidence": "面向Linux内核的设计感知代码审查聚焦调度与内存等性能关键子系统的权衡分析",
+      "canonical_evidence": "面向Linux内核的设计感知代码审查聚焦调度与内存等性能关键子系统的权衡分析",
+      "llm_tldr_en": "DesignLore extracts and reuses historical Linux kernel design decisions to automate trade-off reasoning in code reviews—enabling systematic optimization of CPU scheduling, memory, and I/O subsystems by capturing project-specific constraints and alternatives.",
+      "llm_tldr_cn": "DesignLore从历史评审讨论中提取Linux内核设计决策并构建自适应设计分类法，用于指导新补丁的设计权衡评估；该方法覆盖调度器、内存管理及I/O等子系统的关键约束；在真实内核开发流程中验证了其对性能优化类变更的识别能力；为操作系统级性能优化提供了可复用的知识工程框架，弥补了自动化评审在架构层面的空白。",
+      "llm_tldr": "DesignLore从历史评审讨论中提取Linux内核设计决策并构建自适应设计分类法，用于指导新补丁的设计权衡评估；该方法覆盖调度器、内存管理及I/O等子系统的关键约束；在真实内核开发流程中验证了其对性能优化类变更的识别能力；为操作系统级性能优化提供了可复用的知识工程框架，弥补了自动化评审在架构层面的空白。",
       "llm_tags": [
-        "query:iommu"
+        "query:lke"
       ],
-      "matched_query_tag": "query:iommu",
-      "matched_query_text": "cloud computing",
-      "matched_requirement_id": "req-8",
-      "selection_source": "fresh_fetch",
-      "quick_tier": "7"
-    },
-    {
-      "id": "2610.25172v1",
-      "source": "arxiv",
-      "title": "RemoteANN: A Native Vector Search Engine for Cloud Object Storage",
-      "abstract": "Vector search engines built on cloud object storage have drawn growing attention from both academia and industry. These systems typically adopt a disaggregated storage-compute architecture, persisting the primary vector payload in object stores (e.g., Amazon S3) while retaining compact index metadata on compute nodes. However, conventional vector indexing structures are not natively tailored to the pronounced network latency and per-request access costs of cloud object stores, resulting in network I/O amplification, degraded query throughput, and higher API expenses.   To resolve these challenges, we present RemoteANN, a vector search engine explicitly co-designed for cloud object storage across indexing and querying. To mitigate the dominant network I/O bottleneck, RemoteANN couples an Inverted File (IVF) index with RaBitQ quantization, further optimized by inter-cluster and intra-cluster data reordering for improved data locality. Building on this tailored data layout, RemoteANN's query engine combines cluster pruning, fine-grained Range-GET requests, request merging, and local NVMe SSD caching, dramatically reducing discrete storage requests and network transfer volume without sacrificing accuracy. To address the index construction bottleneck, we further develop QGKMeans, which substantially reduces construction latency without compromising clustering quality. Extensive evaluations on real-world datasets demonstrate that, compared with representative baselines, RemoteANN achieves up to a $5.9\\times$ throughput speedup while issuing up to $16.1\\times$ fewer object storage requests at 97% target recall.",
-      "authors": [
-        "Yutong Gou",
-        "Silu Huang",
-        "Yue Wang",
-        "Jianjun Chen",
-        "Cheng Long"
-      ],
-      "primary_category": "cs.DB",
-      "categories": [
-        "cs.DB",
-        "cs.IR"
-      ],
-      "published": "2026-10-18T10:52:39+00:00",
-      "link": "https://arxiv.org/pdf/2610.25172v1",
-      "tags": [
-        "keyword:IOMMU",
-        "query:IOMMU"
-      ],
-      "llm_score": 6.0,
-      "llm_evidence_en": "vector search engine co-designed for cloud object storage",
-      "llm_evidence_cn": "专为云对象存储协同设计的向量搜索引擎",
-      "llm_evidence": "专为云对象存储协同设计的向量搜索引擎",
-      "canonical_evidence": "专为云对象存储协同设计的向量搜索引擎",
-      "llm_tldr_en": "RemoteANN tackles high network I/O and API cost in cloud-based vector search by redesigning indexing and querying for object storage latency and access patterns. It reduces I/O amplification and improves throughput, enabling scalable semantic retrieval in cloud infrastructure.",
-      "llm_tldr_cn": "本文针对云对象存储上向量检索因网络延迟与请求开销导致I/O放大和吞吐下降的问题，提出RemoteANN引擎，通过索引与查询联合重构适配云存储特性。实验证明其显著降低网络I/O并提升查询吞吐。该工作强化了云基础设施中IOMMU支持的设备直通型向量加速器部署可行性。",
-      "llm_tldr": "本文针对云对象存储上向量检索因网络延迟与请求开销导致I/O放大和吞吐下降的问题，提出RemoteANN引擎，通过索引与查询联合重构适配云存储特性。实验证明其显著降低网络I/O并提升查询吞吐。该工作强化了云基础设施中IOMMU支持的设备直通型向量加速器部署可行性。",
-      "llm_tags": [
-        "query:iommu"
-      ],
-      "matched_query_tag": "query:iommu",
-      "matched_query_text": "cloud computing",
-      "matched_requirement_id": "req-8",
-      "selection_source": "fresh_fetch",
-      "quick_tier": "6"
-    },
-    {
-      "id": "2610.24328v1",
-      "source": "arxiv",
-      "title": "SigmaTrace: Library-Agnostic Observability for CPU/GPU-Initiated RDMA Communication",
-      "abstract": "RDMA networking enables low-latency, high-bandwidth communication on large systems. Despite its adoption, however, observability is lacking. Existing tools target specific communication libraries or only report aggregated data, missing per-operation behavior. The gap is widest for GPU-initiated networking, whose in-kernel RDMA operations are invisible to the host.   We present SigmaTrace, a library-agnostic RDMA profiling framework providing fine-grained, per-operation visibility for CPU and GPU-initiated networking. It traces operations at the libibverbs/mlx5dv layers, the common denominator beneath communication libraries on InfiniBand and RoCE, and employs a low-overhead memory interposition technique that, to our knowledge, gives the first observability into GPU-initiated RDMA without source patching or binary instrumentation.   Host-side tracing adds 1.3% overhead on NCCL AllReduce at 128 GPUs and under 2% on RCCL at 1024 GPUs. On a persistent-kernel BFS and Mixture-of-Experts inference, SigmaTrace exposes an in-kernel barrier spread and 2.13x inter-node traffic skew invisible to existing profilers.",
-      "authors": [
-        "Javid Baydamirli",
-        "Didem Unat"
-      ],
-      "primary_category": "cs.DC",
-      "categories": [
-        "cs.DC"
-      ],
-      "published": "2026-10-16T23:49:40+00:00",
-      "link": "https://arxiv.org/pdf/2610.24328v1",
-      "tags": [
-        "keyword:IOMMU",
-        "query:IOMMU"
-      ],
-      "llm_score": 7.0,
-      "llm_evidence_en": "RDMA observability for large-system virtualization and communication",
-      "llm_evidence_cn": "面向大规模系统虚拟化通信的RDMA可观测性",
-      "llm_evidence": "面向大规模系统虚拟化通信的RDMA可观测性",
-      "canonical_evidence": "面向大规模系统虚拟化通信的RDMA可观测性",
-      "llm_tldr_en": "SigmaTrace provides library-agnostic, fine-grained RDMA observability for CPU/GPU-initiated networking by tracing at libibverbs/mlx5dv layers and using low-overhead memory interposition—enabling per-operation visibility previously missing in virtualized HPC/AI clusters.",
-      "llm_tldr_cn": "SigmaTrace在libibverbs/mlx5dv层实现库无关的RDMA细粒度追踪，采用低开销内存插值技术，首次为CPU/GPU发起的RDMA通信提供每操作级可观测性；填补了InfiniBand/RoCE虚拟化集群中内核级GPU网络行为监控空白；支撑虚拟化环境中通信性能调优与故障诊断。",
-      "llm_tldr": "SigmaTrace在libibverbs/mlx5dv层实现库无关的RDMA细粒度追踪，采用低开销内存插值技术，首次为CPU/GPU发起的RDMA通信提供每操作级可观测性；填补了InfiniBand/RoCE虚拟化集群中内核级GPU网络行为监控空白；支撑虚拟化环境中通信性能调优与故障诊断。",
-      "llm_tags": [
-        "query:iommu"
-      ],
-      "matched_query_tag": "query:iommu",
-      "matched_query_text": "virtualization",
+      "matched_query_tag": "query:lke",
+      "matched_query_text": "research on operating system-level performance optimization methods targeting CPU scheduling, memory, I/O, and network subsystems in Linux",
       "matched_requirement_id": "req-6",
       "selection_source": "fresh_fetch",
       "quick_tier": "7"
     },
     {
-      "id": "2610.25033v1",
+      "id": "2610.25528v1",
       "source": "arxiv",
-      "title": "PlaneZip: Lossless Bit-Plane Compression of Training Activations Offloaded over PCIe",
-      "abstract": "Training under a device-memory budget relies on tensor rematerialization: an evicted activation is either swapped to host memory or dropped and recomputed. Because GPU compute has outgrown PCIe bandwidth, cost-model planners such as MegTaiChi, which charge a swap its full transfer time, almost never swap, and swaps that fill idle link time carry only a small fraction of the saved activations. Saved activations, however, are homogeneously typed arrays with bit-level redundancy beyond zeros, which lightweight bit-plane compressors can remove at line rate. We present PlaneZip, which compresses swapped tensors on the copy path and plans around the compression. Its codec picks, for every 128-byte block, the smallest of zero-value, delta bit-plane, bit-plane, and a new zero-masked bit-plane encoding. A per-tensor predictor reuses the ratio of the previous iteration, and the planner budgets link time in compressed transfer times. On activations captured from five models trained on real data, the codec compresses BF16 activations by 1.71x and FP32 activations by 1.39x (geometric means), against 1.18x and 1.20x for zero-value compression. In trace-driven simulation of a PCIe 3.0 consumer GPU and a PCIe 4.0 datacenter GPU at half the activation memory, PlaneZip cuts the rematerialization overhead by 47% and 31% relative to a bandwidth-aware planner without compression, and by 73% and 54% relative to MegTaiChi's cost model, with an estimated engine area of 0.036 square millimeters.",
+      "title": "Heuristic-Driven Resource Optimization for Decoupled Memory Channels on FPGAs",
+      "abstract": "Determining OpenCL channel depths for Decoupled Access-Execute (DAE) architectures in High-Level Synthesis (HLS) is critical for balancing performance and hardware efficiency. Conventional static analysis tools often over-provision these memory channels to ensure performance safety, leading to significant resource stranding. This paper presents an expansion of an LLVM-based static analysis framework, originally proposed for automated DAE generation, by introducing a hardware-aware refinement layer. We identify a counter-intuitive Performance Inversion Paradox linked to baseline memory stalls, where high-stall, grid-based kernels reach peak performance at minimal channel depths and suffer up to a 61% throughput degradation when depths are increased. We propose a Heuristic Refinement Layer that optimizes OpenCL channel depths based on this correlation between baseline stalls and performance saturation. Experimental results demonstrate that our expanded framework successfully identifies the Minimal Peak Performance point across various benchmarks. By avoiding the performance traps of standard over-provisioning, we achieve a 2.52x improvement in Resource Efficiency for an illustrative HotSpot application. This approach maintains peak execution speedup while ensuring the leanest possible hardware profile, outperforming conservative tool-based static predictions.",
       "authors": [
-        "Zhufan Gu",
-        "Qizhe Tang",
-        "Yuxin Wang",
-        "Xun Zhou",
-        "Hui Feng"
+        "Arnab A. Purkayastha",
+        "Shobhit Aggarwal",
+        "Jay Tharwani"
       ],
-      "primary_category": "cs.DC",
+      "primary_category": "cs.AR",
       "categories": [
+        "cs.AR",
         "cs.DC"
       ],
-      "published": "2026-10-18T05:44:24+00:00",
-      "link": "https://arxiv.org/pdf/2610.25033v1",
+      "published": "2026-10-18T20:52:36+00:00",
+      "link": "https://arxiv.org/pdf/2610.25528v1",
       "tags": [
-        "keyword:IOMMU"
+        "keyword:lke",
+        "query:lke"
       ],
       "llm_score": 7.0,
-      "llm_evidence_en": "PCIe offload compression for memory-constrained virtualized training",
-      "llm_evidence_cn": "面向内存受限虚拟化训练的PCIe卸载压缩",
-      "llm_evidence": "面向内存受限虚拟化训练的PCIe卸载压缩",
-      "canonical_evidence": "面向内存受限虚拟化训练的PCIe卸载压缩",
-      "llm_tldr_en": "PlaneZip enables lossless bit-plane compression of GPU activations swapped over PCIe during tensor rematerialization, integrating compression into the copy path and adapting planners to exploit idle link time—improving swap efficiency without hardware modification.",
-      "llm_tldr_cn": "PlaneZip针对GPU训练中因设备内存不足而需通过PCIe卸载激活张量的问题，提出无损位平面压缩方案，在拷贝路径上实时压缩并重构；其编码器按128字节块自适应选择最优压缩模式；实验证明可在不修改硬件前提下显著提升带宽受限场景下的交换效率，支撑虚拟化AI训练弹性伸缩。",
-      "llm_tldr": "PlaneZip针对GPU训练中因设备内存不足而需通过PCIe卸载激活张量的问题，提出无损位平面压缩方案，在拷贝路径上实时压缩并重构；其编码器按128字节块自适应选择最优压缩模式；实验证明可在不修改硬件前提下显著提升带宽受限场景下的交换效率，支撑虚拟化AI训练弹性伸缩。",
+      "llm_evidence_en": "LLVM-based static analysis for memory channel depth optimization in HLS targeting FPGA DAE architectures",
+      "llm_evidence_cn": "基于LLVM的静态分析优化FPGA DAE架构内存通道深度",
+      "llm_evidence": "基于LLVM的静态分析优化FPGA DAE架构内存通道深度",
+      "canonical_evidence": "基于LLVM的静态分析优化FPGA DAE架构内存通道深度",
+      "llm_tldr_en": "This paper extends an LLVM-based static analysis framework to optimize OpenCL channel depths for Decoupled Access-Execute (DAE) architectures on FPGAs, resolving a 'Performance Inversion Paradox' and reducing resource stranding while improving throughput up to 61%.",
+      "llm_tldr_cn": "该论文针对FPGA高阶综合中内存通道深度静态分析常过度预留导致资源浪费的问题，扩展LLVM静态分析框架并引入硬件感知精炼层；发现并解决了基线内存停顿引发的“性能反转悖论”；实验显示最优通道深度可提升吞吐达61%；其内存访问建模与优化方法对Linux内核页分配与Slab分配器的硬件感知调优具有强方法迁移价值。",
+      "llm_tldr": "该论文针对FPGA高阶综合中内存通道深度静态分析常过度预留导致资源浪费的问题，扩展LLVM静态分析框架并引入硬件感知精炼层；发现并解决了基线内存停顿引发的“性能反转悖论”；实验显示最优通道深度可提升吞吐达61%；其内存访问建模与优化方法对Linux内核页分配与Slab分配器的硬件感知调优具有强方法迁移价值。",
       "llm_tags": [
-        "query:iommu"
+        "query:lke"
       ],
-      "matched_query_tag": "query:iommu",
-      "matched_query_text": "virtualization",
-      "matched_requirement_id": "req-6",
+      "matched_query_tag": "query:lke",
+      "matched_query_text": "academic studies on optimization and analysis of Linux kernel memory management subsystem including page allocation, slab allocator, and memory reclaim",
+      "matched_requirement_id": "req-1",
+      "selection_source": "fresh_fetch",
+      "quick_tier": "7"
+    },
+    {
+      "id": "2610.27325v1",
+      "source": "arxiv",
+      "title": "XRust: Detecting Logical Races in Rust Linux Drivers",
+      "abstract": "Rust is increasingly used in Linux to improve memory safety, but its guarantees do not prevent logical races: individually synchronized operations can still interleave in ways that violate higher-level invariants. Detecting such bugs typically requires manually written specifications and carefully controlled execution environments.   We present XRust, a technique for detecting logical races in Linux Rust drivers without manually specified invariants. Using Logical Happens-Before (LHB) analysis, XRust identifies shared-state accesses relevant to logical ordering, automatically constructs operation-pair harnesses, and uses serial differential oracles to detect concurrent executions inconsistent with either serial order. XRust also uses lightweight userspace abstractions to execute driver code under reproducible schedules. Applied to Linux 7.3-rc2, XRust identifies 17 shared objects across 102 Rust files from ten drivers, constructs 1,654 executable harnesses, and discovers two previously unknown logical races. The rnull block-driver race has been confirmed by Linux maintainers, with a fix accepted into the Linux block subsystem tree.",
+      "authors": [
+        "Qingxiao Xu",
+        "Ze Sheng",
+        "Zhicheng Chen",
+        "Arjun Manikandan",
+        "Jeff Huang"
+      ],
+      "primary_category": "cs.SE",
+      "categories": [
+        "cs.SE"
+      ],
+      "published": "2026-10-19T21:43:58+00:00",
+      "link": "https://arxiv.org/pdf/2610.27325v1",
+      "tags": [
+        "keyword:lke",
+        "query:lke"
+      ],
+      "llm_score": 7.0,
+      "llm_evidence_en": "Linux Rust drivers memory safety and logical race detection in kernel subsystems",
+      "llm_evidence_cn": "Linux内核Rust驱动中内存安全与逻辑竞态检测，涉及内核子系统并发行为分析",
+      "llm_evidence": "Linux内核Rust驱动中内存安全与逻辑竞态检测，涉及内核子系统并发行为分析",
+      "canonical_evidence": "Linux内核Rust驱动中内存安全与逻辑竞态检测，涉及内核子系统并发行为分析",
+      "llm_tldr_en": "XRust detects logical races in Linux Rust drivers without manual invariants using LHB analysis and serial differential oracles, enabling deeper kernel memory subsystem correctness validation.",
+      "llm_tldr_cn": "现有Rust驱动虽保障内存安全但无法防止高层逻辑竞态；XRust利用逻辑发生前序分析自动识别共享状态访问并构造操作对测试用例，结合串行差分预言检测违反顺序一致性的并发执行；在真实Linux驱动上验证了有效性；为内核内存管理子系统的并发正确性分析提供了新方法。",
+      "llm_tldr": "现有Rust驱动虽保障内存安全但无法防止高层逻辑竞态；XRust利用逻辑发生前序分析自动识别共享状态访问并构造操作对测试用例，结合串行差分预言检测违反顺序一致性的并发执行；在真实Linux驱动上验证了有效性；为内核内存管理子系统的并发正确性分析提供了新方法。",
+      "llm_tags": [
+        "query:lke"
+      ],
+      "matched_query_tag": "query:lke",
+      "matched_query_text": "academic studies on optimization and analysis of Linux kernel memory management subsystem including page allocation, slab allocator, and memory reclaim",
+      "matched_requirement_id": "req-1",
+      "selection_source": "fresh_fetch",
+      "quick_tier": "7"
+    },
+    {
+      "id": "2610.29787v1",
+      "source": "arxiv",
+      "title": "D-Pingmesh: Dynamic Probing and Fault Localization for Reconfigurable Datacenter Networks",
+      "abstract": "Pingmesh monitors datacenter networks through periodic pings between servers. In reconfigurable datacenter networks, topology engineering (TPE) and traffic engineering (TE) make uniform server-pair probing inefficient: a pinglist wastes budget retesting common paths while missing low-probability interfaces. Frequent control-plane updates further require rapid pinglist refresh, and cause path ambiguity at control-plane boundaries for fault localization. We present D-Pingmesh, a probing and fault-localization system co-designed with the TPE/TE control plane. Its control-plane-aware generator builds task-efficient pinglists by greedily admitting probes with high interface coverage under the current TPE/TE snapshot. An incremental replay-and-repair mechanism updates pinglists across reconfigurations rather than recomputing from scratch. At control-plane boundaries, a Rho-EM localizer jointly infers per-task old/new-path mixture weights and the fault set through EM-style iteration. We evaluate D-Pingmesh on an 8-pod reconfigurable topology under dynamic TPE/TE. At a 0.99 coverage target, D-Pingmesh uses 17.7x fewer tasks than Pingmesh and generates each pinglist about 5.1x faster than RD-Probe. In ns-3 simulation, boundary-aware localization improves micro F1 from 0.871 to 0.953 over the deTector PLL baseline. A testbed deployment demonstrates second-scale fault localization with low host overhead. These results demonstrate that D-Pingmesh is practical for reconfigurable datacenter networks with control-plane-aware monitoring.",
+      "authors": [
+        "Yunze Wei",
+        "Kaicheng Yang",
+        "Xiaohui Xie",
+        "Dunkai Mao",
+        "Peiying Tao",
+        "Yikai Zhao",
+        "Bolong Cui",
+        "Chen Sun",
+        "Bingyang Liu",
+        "Kun Tan",
+        "Kai Chen",
+        "Yong Cui"
+      ],
+      "primary_category": "cs.NI",
+      "categories": [
+        "cs.NI"
+      ],
+      "published": "2026-10-21T14:14:28+00:00",
+      "link": "https://arxiv.org/pdf/2610.29787v1",
+      "tags": [
+        "keyword:lke",
+        "query:lke"
+      ],
+      "llm_score": 7.0,
+      "llm_evidence_en": "datacenter network probing and fault localization in reconfigurable networks",
+      "llm_evidence_cn": "可重构数据中心网络中的探测与故障定位",
+      "llm_evidence": "可重构数据中心网络中的探测与故障定位",
+      "canonical_evidence": "可重构数据中心网络中的探测与故障定位",
+      "llm_tldr_en": "D-Pingmesh co-designs dynamic probing with topology/traffic engineering control planes to build efficient pinglists for fault localization in reconfigurable datacenter networks, reducing redundant path testing and improving interface coverage under frequent topology changes.",
+      "llm_tldr_cn": "该论文针对可重构数据中心网络中拓扑与流量工程频繁更新导致传统Pingmesh探测低效的问题，提出D-Pingmesh系统；其控制面感知的探针生成器基于当前快照贪婪选择高接口覆盖率探针；实验表明该方法显著减少冗余路径重测并提升故障定位精度；为Linux内核网络子系统在动态拓扑下的可观测性与诊断提供了可迁移的方法论支撑。",
+      "llm_tldr": "该论文针对可重构数据中心网络中拓扑与流量工程频繁更新导致传统Pingmesh探测低效的问题，提出D-Pingmesh系统；其控制面感知的探针生成器基于当前快照贪婪选择高接口覆盖率探针；实验表明该方法显著减少冗余路径重测并提升故障定位精度；为Linux内核网络子系统在动态拓扑下的可观测性与诊断提供了可迁移的方法论支撑。",
+      "llm_tags": [
+        "query:lke"
+      ],
+      "matched_query_tag": "query:lke",
+      "matched_query_text": "papers addressing performance, scalability, and programmability of the Linux kernel networking subsystem including TCP/IP, packet filtering, and offloading",
+      "matched_requirement_id": "req-3",
       "selection_source": "fresh_fetch",
       "quick_tier": "7"
     }

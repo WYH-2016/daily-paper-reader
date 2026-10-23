@@ -1,0 +1,218 @@
+Title: Heuristic-Driven Resource Optimization for Decoupled Memory Channels on FPGAs
+
+URL Source: https://arxiv.org/pdf/2610.25528v1
+
+Published Time: Tue, 20 Oct 2026 01:53:21 GMT
+
+Number of Pages: 6
+
+Markdown Content:
+# Heuristic-Driven Resource Optimization for Decoupled Memory Channels on FPGAs 
+
+Arnab A Purkayastha ∗, Shobhit Aggarwal †, Jay Tharwani ‡∗Western New England University, Member IEEE, Springfield, MA, USA Email: arnab.purkayastha@wne.edu 
+
+† Department of ECE, The Citadel, Charleston, NC, USA shobhit.aggarwal@citadel.edu 
+
+‡ Senior Member IEEE, Morrisville, NC, USA Email: jtharwan@alumni.uncc.edu 
+
+Abstract —Determining OpenCL channel depths for De-coupled Access-Execute (DAE) architectures in High-Level Synthesis (HLS) is critical for balancing performance and hardware efficiency. Conventional static analysis tools often over-provision these memory channels to ensure performance safety, leading to significant resource stranding. This paper presents an expansion of an LLVM-based static analysis framework-originally proposed for automated DAE generation, by introducing a hardware-aware refinement layer. We identify a counter-intuitive Performance Inversion Paradox linked to baseline memory stalls, where high-stall, grid-based kernels reach peak performance at minimal channel depths and suffer up to a 61% throughput degradation when depths are increased. We propose a Heuristic Refinement Layer that optimizes OpenCL channel depths based on this correlation between baseline stalls and performance saturation. Experimental results demonstrate that our expanded framework successfully identifies the 
+
+Minimal Peak Performance point across various benchmarks. By avoiding the performance traps of standard over-provisioning, we achieve a 2.52 × improvement in Resource Efficiency ( η) for an illustrative HotSpot application. This approach maintains peak execution speedup while ensur-ing the leanest possible hardware profile, outperforming conservative tool-based static predictions. 
+
+Keywords —Hardware Accelerators, Reconfigurable Com-puting, FPGA, OpenCL, LLVM, Automation tool. 
+
+I. I NTRODUCTION 
+
+The rapid evolution of High-Level Synthesis (HLS) has transformed the landscape of FPGA-based hardware design, enabling developers to abstract complex spatial architectures using high-level languages like C, C++, and OpenCL. By automating the transition from software algorithms to hardware description, HLS has significantly lowered the barrier to entry for accelerating data-intensive workloads in domains such as genomics, finance, and artificial intelligence. However, despite the massive par-allel processing capability provided by modern FPGA fabrics, achieving peak theoretical performance remains an elusive goal due to the memory wall. As highlighted in architectural studies, the memory wall represents a fun-damental performance gap where the data-consumption rate of the internal logic far outpaces the rate at which the memory subsystem can supply that data [1]. In the context of FPGAs, this gap is uniquely chal-lenging; unlike traditional CPUs that rely on deep, fixed cache hierarchies to mitigate latency, FPGAs require designers to manually or semi-automatically orchestrate data movement. When memory-bound applications are ported to FPGAs, the execution pipelines often spend a majority of their operational cycles in a stalled state, waiting for high-latency DRAM transactions to com-plete. This under-utilization of the FPGA’s computational resources negates the energy-efficiency and throughput benefits that hardware acceleration is intended to provide. Consequently, the primary challenge in modern HLS design is not just the implementation of the computational logic, but the engineering of sophisticated memory-interfacing structures that can effectively bridge this wall. To quantify the impact of the memory wall, we characterized three representative benchmarks on an Intel Arria 10 FPGA. As shown in Table I, the baseline (non-decoupled) versions of these kernels suffer from significant memory-related inactivity. These stall percent-ages represent a massive under-utilization of the FPGA’s computational resources. For instance, in the HotSpot kernel, the execution engine is idle for over three-quarters of its operational cycles, waiting for memory transactions to complete. This empirical evidence highlights that the primary bottleneck is not the compute logic itself, but the lack of an efficient data-supply mechanism. Table I: Baseline Memory Stall Characterization 
+
+Benchmark Domain Access Pattern Stalls (%) 
+
+HotSpot Physics Simulation Regular (Grid) 76.8% BFS Graph Analytics Irregular (Sat.) 40.7% RangeK Database Search Variable (Bursty) 3.01% 
+
+To navigate the constraints of the memory wall, the OpenCL standard for FPGAs provides a specialized 
+
+> © 2026 IEEE. Personal use of this material is permitted. Permission from IEEE must be obtained for all other uses, in any current or future media, including reprinting/republishing this material for advertising or promotional purposes, creating new collective works, for resale or redistribution to servers or lists, or reuse of any copyrighted component of this work in other works. Accepted version of the paper published in the 2026 IEEE International Conference on Interdisciplinary Approaches in Technology and Management for Social Innovation (IATMSI). DOI: 10.1109/IATMSI68868.2026.11465435 arXiv:2610.25528v1 [cs.AR] 18 Oct 2026
+
+abstraction known as Pipes or Channels . As described in [1], [2], these channels facilitate high-bandwidth, point-to-point communication between concurrent kernels, allowing data to be streamed directly between logic blocks without the overhead of returning to global memory. This capability is foundational for implementing the DAE framework, a hardware architecture specifically designed to mitigate memory latency. In a DAE system, the computational kernel is par-titioned into two distinct units: the Access unit and the Execute unit. The Access unit is dedicated solely to calculating memory addresses and issuing read/write requests to DRAM, while the Execute unit focuses on the core algorithmic operations. By separating these concerns, the Access unit can run ahead of the computation, pre-fetching data into FIFO-based channels. This creates a producer-consumer relationship where the Execute unit pulls data from a ready buffer rather than waiting on high-latency memory transactions. When properly implemented, this decoupling allows the FPGA to overlap memory communication with computation, effectively 
+
+hiding the latency that would otherwise stall the execution pipeline. While DAE is effective, manual partitioning is complex. Recent work introduced an LLVM-based toolchain to automate this process at the Intermediate Representation (IR) level [1]. By analyzing data-flow graphs, this tool automatically identifies predictable access patterns. However, a significant limitation remains: the tool does not give the optimal channel depth. The onus thus lies on the designer/ programmer who generally default to a one-size-fits-all channel depth (typically 64) for any complex indexing. This over-provisioning leads to Resource Stranding, where physical Block RAM (BRAM) is occupied but provides no additional performance gain, as many kernels reach performance saturation at much lower depths. This paper extends the foundational LLVM-based DAE work by introducing a Stride Classification logic and a Heuristic-Driven Optimization Layer. We propose that by analyzing the baseline stall characteristics identified in Table I, we can right-size channel depths to achieve a pareto-optimal trade-off. In summary, the key contributions of this work are as follows:  
+
+> •
+
+Expanded LLVM Toolchain: An enhanced DAE framework expanded with a stride classifier engine ,
+
+heuristic refinement logic , and full support for 
+
+modern opaque pointers . 
+
+> •
+
+Performance Inversion Discovery: Identification of a counter-intuitive Stall-Performance Correlation ,proving that over-provisioning OpenCL channels in bandwidth-saturated kernels leads to performance drop.  
+
+> •
+
+Efficiency Optimization: A refinement methodo-logy metric achieving improvement in Resource Efficiency right-sizing channels to their minimal peak-performance depth. All our source codes are reproducible and freely available to download. 1.II. M ETHODOLOGY AND SYSTEM DESIGN 
+
+The proposed framework operates as a multi-stage optimization pipeline that transforms high-level OpenCL kernels into resource-optimized DAE architectures. The core of this system is the integration of a front-end LLVM static analysis engine with a back-end heuristic refinement layer. The primary goal is to bridge the gap between 
+
+performance-safe static predictions and resource-efficient 
+
+hardware implementations. 
+
+A. LLVM Static Analysis Engine 
+
+The first stage of our methodology involves an en-hanced LLVM-based parser which operates directly on the LLVM Intermediate Representation (IR) [3], [4]. Parsing at the IR level is critical because it allows the tool to observe the finalized data-flow and memory-addressing logic after initial compiler optimizations. 
+
+1) Mechanism of the LLVM Parser: The parser func-tions by traversing the LLVM Module’s Call Graph and Control Flow Graph (CFG). The analysis follows a three-step instruction-walking process:  
+
+> •
+
+Iterative Context Identification: The tool first identi-fies the innermost loops within a kernel. It searches for the Induction Variable (IV), which serves as the primary iterator for memory indexing. By identifying the initial value and the increment step of this iterator, the tool establishes a baseline for calculating address offsets.  
+
+> •
+
+Instruction Walking (Use-Def Chains): Upon loc-ating a memory access instruction (e.g., a load or store), the parser walks backward through the Use-Def Chain. This recursive process analyzes the operands to determine how the effective memory address was calculated. It specifically looks for arithmetic operations—such as multiplications and additions—that link the memory address to the previously identified induction variable.  
+
+> •
+
+Address Offset Analysis: The address offset analysis focuses on the address calculation instructions. The parser extracts the Base Pointer (the start of the array or buffer) and the Computed Offset. If the offset is found to be a linear function of the induction variable, the tool identifies it as a Predictable Stride .
+
+> 1Repository link provided upon publication.
+
+2) Addressing the Opaque Pointer Challenge: While earlier versions of the framework relied on explicit LLVM typed pointers, the new version implements a Type Inference engine that inspects instruction metadata and bit-widths to support the modern Opaque Pointer standard. This ensures accurate stride normalization and access pattern detection across diverse data types, maintaining analytical robustness where previous pointer-dependent methods would fail. 
+
+3) Stride Classification Logic: The engine calculates the memory stride ( S) by evaluating the coefficient of the induction variable within the address calculation logic. We classify memory access into three primary categories:  
+
+> •
+
+SHORT ( S ≤ 2): Direct or adjacent accesses (e.g., streaming data).  
+
+> •
+
+LONG ( 2 < S ≤ 16 ): Fixed-distance strides, typical of structured array offsets or small stencils.  
+
+> •
+
+VARIABLE ( S > 16 or non-deterministic): Access patterns where the index depends on another memory load (indirect addressing) or complex polynomial math (stencil grids). The stride calculation for a memory instruction M
+
+indexed by induction variable i is defined by the following relationship: 
+
+S = ∆Address 
+
+∆i × sizeof (Type ) (1) If the parser cannot resolve S to a constant integer during compile-time (static) analysis, it defaults the classification to VARIABLE, triggering the performance-safe buffering logic in the subsequent stage. 
+
+4) Heuristic Refinement Logic: The refinement logic operates in two distinct stages to transform the raw parser output into a final hardware configuration. 
+
+Stage 1: Performance-Safe Prediction: In the initial stage, the tool prioritizes performance safety. For any ac-cess pattern classified as VARIABLE, the engine assumes a non-deterministic memory behavior that could lead to significant pipeline stalls. To mitigate this, it defaults to a conservative maximum channel depth ( Dmax ): 
+
+Dsaf e =
+
+(
+
+4 if S ∈ { SHORT, LONG }
+
+64 if S = VARIABLE While D = 64 ensures sufficient buffering to hide most DRAM latencies, it often results in over-provisioning for kernels that hit bandwidth limits early. 
+
+Stage 2: Stall-Aware Heuristic: The proposed extension introduces a Resource-Aware check. We observe that kernels with high baseline stall rates ( Tstall ) behave as 
+
+saturated systems. For these kernels, adding buffer depth beyond the initial saturation point yields diminishing returns on speedup ( R). We apply the Stall-Performance Heuristic to refine the depth ( Df inal ): 
+
+Df inal =
+
+(
+
+Dsaf e if Tstall < Threshold Saturation Point if Tstall ≥ Threshold For our target FPGA, we empirically determined the Threshold = 40% and the Saturation Point ∈ { 4, 16 }.
+
+B. Integrated Optimization Toolchain 
+
+The proposed framework, illustrated in Figure 1, operates as an end-to-end pipeline that bridges high-level kernel descriptions with resource-optimized hardware bitstreams. The toolchain transitions through three distinct phases:  
+
+> •
+
+Generate Decouplable Variables (Step 1) : The process initiates with the conversion of OpenCL kernels into LLVM IR. The engine performs instruc-tion walking to identify decouplable variables by isolating those with statically predictable address OpenCL Kernel (.cl) Use Clang to get LLVM (.ll) Analyze LLVM Determine Address Dependency Runtime Dependent? Not Decouplable Statically Predictable? Decouplable Step 1 Generate Decouplable Variables Classify Strides Step 2 Stride Classification SHORT Direct accesses LONG Fixed strides VARIABLE Non-deterministic Stage 1: Performance-Safe Prediction, Dsafe = 64     
+
+> Step 3 Heuristic Refinement
+> Tstall > 40%? Saturated Kernel Downsize to D = 4
+> Latency Sensitive Maintain D = 64
+> YES NO Set Optimal Depth = 4
+
+Figure 1: Proposed three-step LLVM optimization tool chain dependencies from those with runtime-dependent indexing [1].  
+
+> •
+
+Stride Classification (Step 2) : Decouplable vari-ables are categorized based on their access strides. While SHORT and LONG strides are directly mapped to minimal depth configurations, VARI-ABLE strides are flagged for further refinement.  
+
+> •
+
+Heuristic Refinement (Step 3) : This stage resolves the Performance-Safe vs. Resource-Efficient con-flicts. By incorporating hardware-level stall char-acteristics (Tstall ), the framework distinguishes between Saturated Kernels (requiring minimal depth) and Latency Sensitive Kernels (requiring deeper buffers), effectively eliminating resource stranding while maintaining peak speedups. III. E XPERIMENTAL SETUP 
+
+This section details the hardware and software envir-onments used to validate the proposed heuristic-driven optimization framework. The methodology relies on real-time hardware profiling to bridge the gap between static LLVM IR analysis and physical resource utilization. 
+
+A. Hardware and Software Environment 
+
+All experiments were conducted on an Intel Arria 10 GX FPGA. The development environment utilized the Intel FPGA SDK for OpenCL and the Quartus Prime Pro Edition toolchain [5], [6]. 
+
+B. Profiling and Characterization 
+
+To obtain the stall data ( Tstall ) required for Step 3 of the toolchain, we utilized the Intel FPGA Dynamic Profiler. Kernels were initially compiled without OpenCL Pipes to identify the raw memory bottleneck. We spe-cifically monitored Load/Store Stalls, which represent the percentage of cycles the execution pipeline is inactive due to memory back pressure. Post-synthesis reports were used to extract Memory Blocks (Block RAM, BRAM), Logic Utilization (Adaptive Logic Module, ALM), and Registers (Flip-Flop, FF) usage for each depth configuration. 
+
+C. Benchmarks 
+
+We selected three representative applications from the Rodinia Benchmark Suite [7], [8]. These benchmarks were chosen specifically because they represent distinct memory access behaviors that test the limits of automated HLS depth allocation:  
+
+> •
+
+HotSpot (Physics Simulation): Chosen for its regular, grid-based access pattern that paradoxically suffers from high baseline stalls (76.8%). It serves as the primary test case for Saturated Kernel optimization.  
+
+> •
+
+BFS (Graph Analytics): Selected to represent ir-regular, non-deterministic access patterns that are heavily bandwidth-limited (40.7% stalls). This tests the tool’s ability to categorize VARIABLE strides that hit performance saturation early.  
+
+> •
+
+RangeK (Database Search): Included as a control for Latency-Sensitive applications. With very low baseline stalls (3.01%), it requires deep buffering (D = 64 ) to handle bursty transactions without losing performance. IV. R ESULTS AND DISCUSSION 
+
+A. Performance Analysis and Stall Correlation 
+
+The efficacy of our heuristic is rooted in the rela-tionship between baseline memory stall rates ( Tstall )and the resulting speedup across varying OpenCL chan-nel depths. Initial characterization results revealed a significant disparity in memory behavior among the Rodinia benchmarks. For instance, HotSpot and BFS exhibited high baseline stall rates of 76.8% and 40.7%, respectively, classifying them as bandwidth-saturated. In contrast, RangeK maintained a much lower stall rate (approximately 3.01%), indicating a latency-sensitive profile. Figures 2 and 3 show the Speedup and Stall reduction vs various channel depths (4-256) for the three representative applications. A critical observation from the results is the Per-formance Inversion Paradox , where increasing hardware resources leads to a drastic reduction in computational throughput.To quantify this loss, we define Performance Degradation ( P∆) as the percentage of peak speedup lost when transitioning to a standard safe-max default (D = 64 ): 
+
+P∆ = Speak − Sstd 
+
+Speak 
+
+× 100 (2) Where, Speak is the maximum achieved speedup and Sstd is the speedup at the standard channel depth. Applying Equation 2 to the HotSpot benchmark, we observe a peak speedup of 4.62 × at a minimal channel depth of D=4 . However, at D = 64 , the speedup drops to 1.83 ×, resulting in a 60.3% performance degradation. Similarly, BFS experiences a degradation of 16.9% when moving from its optimal depth ( D = 16 ) to the standard default. These diminishing returns occur because, in bandwidth-saturated kernels, the execution unit is capped by the DRAM’s peak delivery rate. Any additional buffering via deeper OpenCL channels only adds management over-head and interconnect pressure without providing further latency-hiding benefits. Conversely, RangeK validates the necessity of the heuristic’s second stage; with low baseline stalls, it is highly sensitive to channel depth and achieves its Speak of 1.38 × only at D = 64 .The non-linear and often contradictory performance trends observed across these benchmarks underscore why choosing a channel depth arbitrarily or manually is Figure 2: Speedup vs. Channel depth for all three applications 
+
+Figure 3: DAE optimized stall reduction across channel depths for all three applications impractical. Without the automated stall-based classifica-tion provided by our expansion, a designer would likely choose a large default depth, unknowingly incurring a significant P∆ penalty. 
+
+B. Resource Overhead Analysis 
+
+The transition from a standard kernel to a DAE framework requires the instantiation of OpenCL channel, introducing a fixed hardware overhead primarily in memory and logic utilization. This base cost is visualized in Figure 4, which compares the baseline resource foot-print against the optimized decoupled implementations. As illustrated in the profiling data, adding the DAE hardware results in a measurable resource requirement. For HotSpot, memory block utilization increases from 0.16% to 0.26%, while logic utilization rises from 0.23% to 0.29%. Similarly, BFS shows a jump in logic utilization from 0.22% to 0.25%. However, the data reveals a distinct flatline behavior where the resource footprint remains virtually unchanged as the channel depth scales from 
+
+D=4 to D=64 .The lack of dynamic resource scaling reported by the profiler is likely due to the underlying hardware mapping on the FPGA fabric. FPGAs utilize discrete, fixed-size memory structures, such as Intel’s M20K blocks. When an OpenCL channel is instantiated, the compiler typically allocates a minimum of one such block to handle the interface. For the relatively small data widths and depth ranges (4 to 64) used in these representative benchmarks, the buffer fits entirely within the initial block allocation. This results in no reported increase in total block count despite the change in channel depth. It is important to note that while these specific applications demonstrate a flat resource overhead, the complexity of more advanced kernels (incorporating larger data types or significantly more parallel channels) may eventually force the compiler to utilize additional physical blocks at higher depths. Furthermore, even when block counts remain static, deeper channels can increase routing complexity and pressure on the interconnect fabric. This reinforces the need for our heuristic; by selecting the minimal depth required for peak performance, we avoid unnecessary hardware commitment and minimize the risk of routing-induced frequency degradation. 
+
+C. Resource Efficiency Analysis 
+
+While the physical resource footprint remains relatively static across the evaluated depth ranges, the efficiency 
+
+with which those resources are utilized varies dramatically. To quantify this relationship, we introduce the Resource Efficiency ( η) metric, defined in Equation 3. This metric represents the ratio of the achieved speedup to the hardware resource utilization, providing a quantitative measure of the performance return on the hardware tax 
+
+paid for the DAE architecture. 
+
+η = Speedup Resource Utilization (%) × 100 (3) Next, Table II presents a comparison of resource effi-ciency between the standard safe-max default ( D = 64 )and the depth selected by our heuristic toolchain. Table II: Resource Efficiency ( η) Comparison                            
+
+> Benchmark Configuration Speedup Mem. Utilization Efficiency ( η)
+> HotSpot Opt ( D= 4 )4.62 ×0.26% 17.76
+> Std ( D= 64 )1.83 ×0.26% 7.03 BFS Opt ( D= 16 )1.71 ×0.18% 9.50
+> Std ( D= 64 )1.42 ×0.18% 7.88 RangeK Opt ( D= 64 )1.38 ×0.13% 10.61
+
+By identifying the performance peak at minimal depths for saturated kernels, the framework significantly maximizes the utility of the committed FPGA fabric. For the HotSpot benchmark, the heuristic-optimized configuration is 2.52 × more efficient than the standard implementation. As the resource cost is identical for both Figure 4: Resource utilization comparison between baseline and DAE optimized applications configurations, selecting the D = 4 depth is the only method to maximize the performance-per-area return. In contrast, the standard D = 64 choice represents an 
+
+efficiency trap , where 60% of the potential performance is lost despite the hardware being fully committed In a multi-accelerator system where dozens of kernels may be instantiated on a single FPGA, these efficiency gains become multiplicative. By ensuring each kernel operates at its peak η value, our toolchain prevents the aggregate performance degradation and resource stranding that occur when multiple kernels are over-provisioned. This automated approach effectively transforms OpenCL channel depth from a manual tuning headache into a systematic optimization parameter, ensuring peak speedup with the leanest possible hardware profile. V. C ONCLUSION 
+
+This paper presented an expansion of our LLVM-based compiler toolchain to automate OpenCL channel depth 
+
+selection. This work addresses a fundamental limitation in automated decoupled architectures: the lack of systematic channel optimization. By correlating static IR analysis with hardware-level memory stall characterization, the framework eliminates suboptimal hardware configurations and resource stranding . Our findings reveal a Performance Inversion Paradox in bandwidth-saturated kernels, where arbitrary over-provisioning leads to significant throughput loss. We identify these regimes using a 40% baseline stall threshold, a heuristic marker that classifies a kernel as bandwidth-saturated. By utilizing this threshold, the framework successfully isolates the optimal channel depth required to maintain peak throughput without incurring performance penalties.The impact of this optimization is quantified through the Resource Efficiency (η) metric, which evaluates the performance return on hardware investment. For the HotSpot benchmark, the toolchain identified that a minimal channel depth of D = 4 provides the optimal balance of throughput and area, yielding a 2.52 × efficiency improvement compared to the standard 
+
+D = 64 default. Ultimately, this expansion transforms 
+
+OpenCL channel depth from a manual, trial-and-error tuning parameter into a deterministic optimization vari-able. By ensuring peak efficiency, this framework enables the development of denser and more balanced FPGA accelerators, providing a scalable pathway for complex hardware designs in resource-constrained environments. REFERENCES [1] A. A. Purkayastha, S. Rogers, S. A. Shiddibhavi, and H. Tabkhi, “Llvm-based automation of memory decoupling for opencl applications on fpgas,” Microprocessors and Microsystems , vol. 72, p. 102909, 2020. [Online]. Available: ht-tps://www.sciencedirect.com/science/article/pii/S0141933119301012 [2] A. Momeni, H. Tabkhi, Y. Ukidave, G. Schirner, and D. Kaeli, “Exploring the efficiency of the opencl pipe semantic on an fpga,” International Symposium on Highly Efficient Accelerators and Reconfigurable Technologies (HEART). Boston, MA: International Symposium on Highly Efficient Accelerators and Reconfigurable Technologies (HEART), 2015. [3] C. Lattner and V. Adve, “Llvm: A compilation framework for lifelong program analysis & transformation,” in Code Generation and Optimization, 2004. CGO 2004. International Symposium on .IEEE, 2004, pp. 75–86. [4] “The llvm compiler infrastructure project,” [Online; accessed 2025-01-12]. [Online]. Available: https://llvm.org/ [5] K. O. W. Group et al. , “The opencl specification,” Version , vol. 1, no. 29, p. 8, 2008. [6] “Intel sdk for opencl applications.” [Online]. Available: https://www.altera.com/products/fpga/arria/10 [7] S. Che, M. Boyer, J. Meng, D. Tarjan, J. W. Sheaffer, S.-H. Lee, and K. Skadron, “Rodinia: A benchmark suite for heterogeneous computing,” in Proceedings of the 2009 IEEE International Symposium on Workload Characterization (IISWC) , ser. IISWC ’09, 2009. [8] TeCSAR-UNCC. Opencl-pipes: Automated memory decoupling toolchain. Accessed: Jan. 20, 2026. [Online]. Available: https://github.com/TeCSAR-UNCC/OpenCL-Pipes

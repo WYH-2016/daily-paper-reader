@@ -1,0 +1,683 @@
+Title: A mechanism for TCP-aware Active Queue Management in packet-forwarding devices
+
+URL Source: https://arxiv.org/pdf/2610.24621v1
+
+Published Time: Tue, 20 Oct 2026 00:59:46 GMT
+
+Number of Pages: 12
+
+Markdown Content:
+> 1
+
+# A mechanism for TCP-aware Active Queue Management in packet-forwarding devices 
+
+Swarnarup Bhunia ∗, Somit Gond ∗, Vayun Goel, Sreelakshmi Manjunath † and Padmanabhan Rajan 
+
+School of Computing and Electrical Engineering , Indian Institute of Technology Mandi, HP, India 
+
+{swarnarupbhunia2003, somitgond2 }@gmail.com, {sreelakshmi, padman }@iitmandi.ac.in 
+
+Abstract —The deployment of Active Queue Management (AQM) policies is known to be a promising solution to bufferbloat, the problem of persistently-full large buffers in Internet routers. However, most AQMs involve tunable parameters, and some require awareness of the characteristics of the transport-layer protocol implemented at the end systems, thereby rendering their deployment infeasible. We consider one such AQM—a threshold-based queue policy which requires the packet-dropping threshold to be co-designed with relevant TCP parameters. We propose a mechanism that detects network congestion, estimates the congestion window evolution in the end hosts, estimates the required TCP parameter, and produces an optimal value of the packet-dropping threshold. Arguments based on analysis of the TCP fluid model are presented to substantiate the proposed mechanism. A simulation-based performance evaluation reveals the effectiveness of the proposed mechanism, compared to some widely implemented queue policies, in terms of various user- and system-oriented metrics. The proposed mechanism is particularly well-suited for implementation in Software Defined Networks (SDN) where the algorithms can run in the SDN controller and the packet-dropping threshold can be implemented in the data-plane switches through open interfaces. 
+
+Index Terms —Bufferbloat, Active Queue Management, Latency, Congestion Control 
+
+I. I NTRODUCTION 
+
+Oversized buffers in packet-forwarding devices, such as routers and switches, are known to cause large queues that lead to increased latency across the Internet [1]. This phenomenon, termed bufferbloat [2], is attributed to the use of the simple DropTail policy in these queues and is known to be the cause of congestion collapse in the nascent stages of the Internet [3], [4]. The use of effective Active Queue Management (AQM) strategies has been identified as a solution [2], [5], [6]. Although numerous AQM policies have been proposed; see the survey in [7], most of them require precise parameter tuning, making them difficult to deploy in edge or core routers. Consequently, AQMs are not actively deployed in today’s networks. This prompted the Internet Engineering Task Force to update the recommendations for the selection and deployment of AQMs, see RFC 7567 [8]. The most important, arguably, of these recommendations was that an AQM must be able to self-tune its parameters on the basis of operational conditions. 
+
+∗Equal contribution †Corresponding author A part of this work appears as Bhunia, Swarnarup, et al., “A mechanism for TCP-aware adaptive management of queues in Internet routers.” in Proceedings of the 18th International Conference on COMmunication Systems and NETworks (COMSNETS). IEEE, 2026. 
+
+In the recent past, machine learning (ML) approaches have been adopted for AQM design, leading to AQMs which can self-tune their parameters. For a detailed survey, see [9]. Most of these AQMs, for example, LearnQueue [10], RLECN [11], PET [12] etc., use reinforcement learning to tune buffer size or packet-marking thresholds. Implementation of such AQMs requires large amounts of training data and their operation incurs significant computational overhead [9]. Moreover, the self correcting mechanisms inherent to reinforcement learning may cause instabilities in the network leading to increased jitter and unfairness. Consequently, one cannot definitively conclude that these ML-based AQMs can be deployed in real-world networks or that they outperform traditional ones [9], [13]. Parallelly, the emergence of Software Defined Network (SDN) architectures has enabled the implementation of the control plane of the network layer in remote servers. With this, queue-management decisions at packet-forwarding devices can now rely on algorithms implemented in remote servers, thereby leveraging their computational capabilities. In particular, the SDN controller can implement algorithms that enable self-tuning of AQM policies deployed in SDN switches. However, despite this capability, existing research on AQM for SDNs has largely focused on developing enhancements of classical AQM schemes that are amenable to implementation in programmable SDN switches. For example, P4-CoDel [14] is based on CoDel, iRED [15] on Random Early Detection (RED), and PI2 [16] is an enhancement of the Proportional Integral (PI) queue policy. Although implementable, these enhanced AQMs carry the demerits of the underlying core techniques. For instance, iRED uses an exponential weighted moving average (EWMA) of the queue size to make packet-dropping decisions [15], similar to the original RED policy, which is known to make networks prone to instability and their operation highly sensitive to the choice of EWMA parameters and packet-dropping thresholds [17]. Consequently, practical deployment of AQMs remains challenging. Studies reveal that to effectively deploy most AQMs, their parameters and packet-dropping/marking thresholds need to be tuned in accordance with TCP parameters, inherent to the congestion control algorithm in the transport layer of the end hosts, which are unknown to the router/switch deploying the AQM [18]–[21]. Leveraging this, we develop a mechanism that can learn the congestion-control behaviour of the transport protocol implemented in the end hosts and make optimal packet-dropping decisions at the routers/switches, thereby enabling arXiv:2610.24621v1 [cs.NI] 17 Oct 2026 2
+
+an AQM to self-tune its parameters for prevalent operational conditions. In this paper, we focus on a recently proposed threshold-based queue policy [19], [20], which requires that its packet-dropping threshold be co-designed with relevant TCP parameters. We outline a mechanism that estimates the congestion window maintained by the end hosts and estimates the required TCP parameter(s) from the estimated congestion window, and then computes the packet-dropping threshold based on the estimate. The so-computed threshold is used to activate the AQM once the router/switch experiences congestion. The proposed mechanism uses (i) a simple supervised learning technique to estimate the congestion window, and (ii) fundamen-tal principles of TCP congestion control to estimate the relevant parameters. The use of supervised learning lowers the training requirement, compared to other reinforcement-learning-based AQMs which typically require rigorous training and precise tuning. Furthermore, our approach is grounded in mathematical understanding of the underlying TCP-AQM feedback system, which confirms that maintaining control-theoretic stability of the feedback system guarantees improved network performance. Therefore, the proposed algorithms promise stable operation of the network at an operating point that ensures improved performance. The performance of the proposed mechanism is evaluated using a simulation-based study conducted on ns-3 [22]. It is compared with the widely used DropTail policy and the Adaptive RED (ARED) policy which is currently implemented—although not deployed—in most IP routers and SDN switches. The mechanism, supported by analytical arguments and inferences from the simulations, leads to TCP-aware queue management for low-latency operation of packet-forwarding devices. It is particularly well suited to SDN architectures where all the computations required for the learning-based decision making are performed in the SDN control server and the decisions are installed in the switches through P4 programming [23]. This makes the algorithms implementable in current light-weight SDN switches. The key contributions of this paper are as follows. (i) An algorithm for congestion detection through observa-tions of queue size at a packet-forwarding device. (ii) Application of a simple supervised-learning technique to estimate the congestion window maintained at the end hosts from sequence numbers from the IP datagram payload. (iii) Methodology for estimating a representative TCP parame-ter from the estimated congestion window traces supported by relevant mathematical derivations. (iv) An algorithm for computing the packet-dropping threshold, using the estimated TCP parameter in conjunction with an established control-theoretic result, for stable operation of the network with improved network performance. (v) Simulation-based performance evaluation with relevant topologies, traffic compositions and metrics, and compari-son with relevant baseline policies. The rest of the paper is organised as follows. The preliminaries and the problem formulation are presented in Section II. Section III outlines the proposed mechanism, and Section IV presents the simulations and results. We conclude in Section V. II. P RELIMINARIES 
+
+Consider a single bottleneck link shared by N long-lived TCP flows. Treating the evolution of the congestion window maintained by a sending host as a Poisson counter driven stochastic differential equation yields a fluid model for the evolution of the expectation of the congestion window [24]. When the Poisson processes pertaining to the N end hosts are assumed to be independent and identically distributed, the aforementioned fluid model captures the average congestion window size of the N TCP flows [24]. Denote this average congestion window at time t as w(t). Suppose that the end hosts deploy a TCP variant that follows Additive Increase Multiplicative Decrease (AIMD) congestion control, where it increases the sending window by a general additive increase (AI) function, say i w(t), per acknowledgement received and reduces it by a multiplicative decrease (MD) d w(t) per packet drop, the fluid model for the evolution of the average congestion window w(t) is updated as [25] 
+
+˙w(t) = 
+
+
+
+i w(t)  1 − p(t − τ ) − d w(t)p(t − τ )
+
+ w(t − τ )
+
+τ ,
+
+(1) where p(t) represents the packet-drop probability and τ is the average round-trip time (RTT) of the TCP flows. In the treatment of TCP fluid models, it is assumed that packets are dropped, if at all, only at the bottleneck link. Now, consider the multiplicative decrease component alone. The decrease function can be written as d(w) = βw (t), where β ∈ (0 , 1) 
+
+is the MD parameter. In particular, when a packet is lost, the average congestion window is updated as [19], [25] 
+
+w(t + 1) = (1 − β)w(t). (2) Note that, the congestion window update inherently depends on the packet-drop probability as TCP infers network congestion using the acknowledgement received; this probability depends on the packet-dropping decisions made by the AQM in a packet-forwarding device such as a router/switch. The threshold-based queue policy proposed in [19], [20] makes binary packet-dropping decisions as 
+
+(
+
+if q(t) ≥ qth , drop packet else , enqueue where q(t) is the size of the queue, in the router/switch preceding the bottleneck link, at time t and qth is a tunable parameter of the queue policy that serves as a packet-dropping threshold. When the packet-drop probability p(t) is modelled based on the binary decisions made by the threshold-based queue policy, we obtain a closed-loop fluid model for a set of TCP flows feeding into a bottleneck link managed by this queue policy. A control-theoretic analysis of the fluid model reveals that the threshold-based queue policy can maintain network stability and decongest the bottleneck link, while ensuring reduced queueing delays, when qth is tuned according to the sufficient condition [19] 
+
+qth β w ∗
+
+ w∗
+
+˜Cτ 
+
+qth 
+
+≤ π/ 2. (3) 3
+
+Here, w∗ is the steady-state average congestion window of the TCP flows, which is the fixed point of the fluid model (1) obtained using ˙w(t) = 0 [19]. Further, ˜C is the per-flow capacity of the bottleneck link. To implement the threshold-based queue policy and reap its benefits, a router/switch must be able to compute the packet-dropping threshold qth that satisfies condition (3). This computation requires knowledge of τ , w∗ and β, assuming that the capacity of the output link ˜C is known to the router. Using ACK-clocking methods, the router can estimate the average RTT of the TCP flows, τ . In order to estimate w∗, the router/switch needs to estimate the evolution of the congestion window maintained by the end hosts. Further, the estimated congestion windows of the hosts can be used to estimate the parameter β through equation (2). Recall that the aforementioned TCP fluid model and the analysis rely on the assumption that all hosts use the same AIMD-based congestion control algorithm in the default parameter settings. Despite this similarity, the empirical average of the congestion windows of TCP flows sharing a bottleneck link does not strictly follow equation (2); a more elaborate discussion on this is deferred to Section III-C. In such a scenario, one must estimate a representative β parameter that governs the multiplicative decrease in the average congestion window. With this estimate at hand, inequality (3) can be used to compute a value of the threshold qth required to deploy the threshold-based policy. 
+
+A. Problem formulation 
+
+Deploying the threshold-based queue policy in a packet-forwarding device boils down to implementing algorithms for the following. (i) Detect congestion at the router/switch by observing the queue size. (ii) Estimate the congestion window evolution for all end hosts sharing the bottleneck link. (iii) Estimate the multiplicative decrease parameter β that governs the decrease in the average congestion window after packet loss in the event of congestion. (iv) Compute an appropriate value of the packet-dropping threshold qth which decongests the router/switch and maintains low queueing delays. For developing the underlying algorithms for the mechanism, we assume that all the end systems use AIMD-based congestion control and all the flows are long-lived, i.e. , flows pertaining to FTP applications that last long enough to drive the system into a steady state. This simplistic choice of traffic composition aligns with the assumptions of the fluid models employed in the study of TCP-AQM feedback systems and ensures the applicability of the analytical result (3). Once we develop the required algorithms, we systematically deviate from the assumptions and evaluate their performance in more evolved network topologies and realistic traffic mixes through simulations. We now outline the required algorithms. III. P ROPOSED MECHANISM 
+
+The proposed mechanism is divided into four parts, each of which is described below. The interplay between these is          
+
+> (A) Congestion detection
+> Algorithm 1
+> (B) Congestion window estimation
+> Random forest regressor
+> Congestion? Inputs from switch (C) βestimation (D) Threshold
+> qth computation
+> Algorithm 2
+> qth
+> Proposed Mechanism
+> wi(t),i∈[1 , N ]
+> Yes
+> Queue size, q(t)
+> IP Adds Port nos. (a) Schematic representation of the proposed mechanism. SDN control server Implements (A, B, C, D)
+> Ingress Pkts Buffer
+> Switch Queue size IP Adds. Port nos. Threshold qth
+> Forward
+> (b) Implementation framework for the proposed mechanism.
+
+Fig. 1: Pictorial representation showing the proposed mecha-nism and its implementation. shown in Fig. 1a, and the possible implementation is depicted in Fig. 1b. 
+
+A. Congestion detection 
+
+It is well known that congestion causes synchronisation of TCP flows across hosts sharing a link, and results in pronounced deterministic oscillations in the queue size [26]– [28]. Building on this premise, we use queue size oscillations as an indicator of incipient congestion. Such oscillations can be detected and distinguished from other variations in the queue size by computing the autocorrelation of the queue size data. Oscillations in the queue size with relatively higher amplitude and lower frequency, which indicate the onset of congestion, cause the autocorrelation of the queue size to have lesser number of zero crossings. This relationship is illustrated in Fig. 2, where we plotted the queue size at the router observed through packet-level simulations of a single-bottleneck link of 100 Mbps capacity serving N = 60 TCP hosts. The conventional DropTail policy is used for queue management. We used the TCP NewReno variant and simulated two regimes, one where the TCP flows have a small average RTT of 10 ms, and another where the average RTT is 200 ms. A large bandwidth-delay product, or in particular large RTTs, is known to cause congestion in networks that use DropTail [28]; indeed, we see queue size oscillations in this case with large amplitude 4
+
+100 200 0
+
+B
+
+Time (s) Queue size (pkts) 
+
+100 200 0
+
+B
+
+Time (s) Queue size (pkts) 
+
+0 2447 
+
+−0.500.5
+
+Index Autocorrelation 
+
+0 2447 
+
+−0.500.5
+
+Index Autocorrelation (a) RTT = 10 ms (b) RTT = 200 ms Fig. 2: Plots showing queue size vs time (top panel) and autocorrelation of the queue size (bottom panel), for small and large RTT regime. Here, B is the size of buffer. Large RTT implies a large bandwidth-delay product regime, where congestion is known to occur. Observe that the queue size exhibits pronounced oscillations in this case. When the queue size oscillates excessively, its autocorrelation has lesser zero crossings. and low frequency as shown in Fig. 2(b). We computed the autocorrelation of the queue size, considering all possible lags. We observed that the autocorrelation exhibits a lesser number of zero crossings for the large RTT case. Therefore, observing the number of zero crossings of the autocorrelation of the queue size can help detect congestion. Algorithm 1 outlines congestion detection using this mechanism. 
+
+0 0.2 0.4 0.6 0.8 100.51
+
+False Positive Rate True Positive Rate 
+
+T = 5s 
+
+T = 10s 
+
+T = 15s 
+
+T = 20s Fig. 3: ROC plots showing variation of T and mz
+
+Algorithm 1 Congestion detection 
+
+Input : q(t), T , mz ▷ Input, Parameters 
+
+tcurr ← 0, f lag ← 0, temp = ϕ,
+
+while 1 do 
+
+tnxt ← tcurr + T
+
+wait until tnxt 
+
+qs ← q[tcurr : tnxt ]
+
+ar ← normalized autocorrelation (qs)
+
+z ← zero crossings (ar )
+
+if z < m z then 
+
+temp ← temp ∪ 1 ▷ Append 1 to temp 
+
+else 
+
+temp ← temp ∪ 0 ▷ Append 0 to temp 
+
+end if 
+
+n ← length (temp )
+
+if n > 2 and 
+
+> n
+
+X
+
+> i=n−2
+
+temp [i] = 3 then 
+
+▷ Check if z < m z in 3T
+
+f lag ← 1 ▷ Congestion detected 
+
+end if 
+
+tcurr ← tnxt 
+
+Output: f lag f lag ← 0 ▷ Reset f lag 
+
+end while 
+
+In Algorithm 1, mz is the zero-crossing threshold used to determine the presence of congestion. The value of mz
+
+is decided by the operating point of the algorithm; i.e. the relative cost of missing the presence of congestion, versus the cost of falsely declaring congestion when there is actually none. Assuming that the cost of false alarms are negligible, the operating point should be selected to minimize misses. When the number of zero crossings in a time duration of T
+
+is less than mz , then the algorithm concludes that the link is congested. The parameter T represents a time duration for checking the queue size traces for deterministic oscillations. Although the choice of T is left to the implementation and may vary across routers, it is important to note that T must be at least a few multiples of RTT. This is because it takes at least a few RTTs for TCP hosts to infer congestion in the network and react to packet loss by reducing their congestion window. Setting T to a large value, say a few seconds, would ensure that the router detects congestion successfully. However, this may result in a delay in detecting congestion, which may impact network performance. Towards understanding the influence of the parameter T on the ability of Algorithm 1 to accurately detect congestion, we examined the Receiver Operating Characteristic (ROC) curve of the detector. For this we conducted 100 simulations, of the aforementioned single-bottleneck link, of which 50 were of a congested scenario while the remaining did not have congestion. Taking it as ground truth we compared our congestion detection approach with a range of thresholds mz , for various values of the time duration T . Using this, we plotted the ROC curve to visualize the results. The results are presented in Fig. 3. It 5
+
+can be seen that most values of T give similar true positive rates (close to 100%.) To reduce latency, we thus choose to implement Algorithm 1 with T = 5 seconds. 
+
+B. Congestion window estimation 
+
+Whilst detecting congestion, it is also crucial to maintain an accurate estimate of the congestion window of each TCP flow at the router which upon detection of congestion, can help calculate the required parameters to eventually estimate the optimal packet-dropping threshold qth to resolve congestion. This can be achieved by (1) sniffing the sequence number and related fields from the IP datagram payload at the router and then (2) utilising an intelligent algorithm which can estimate the corresponding congestion window size maintained at the TCP sender’s end for that corresponding TCP flow. Our congestion window estimation methodology involves sniffing the following header fields: the source and destination IP addresses and port numbers, TCP sequence number, acknowledgement number, and the packet size. The four tuple of the IP addresses and port numbers help uniquely identify the TCP flow and these sniffed header fields along with the time of packet arrival can be cached and stored as a time series data per TCP flow. The congestion window size estimation is made using a random forest regressor. The time series data is preprocessed to create the following input features namely direction (whether from source to destination or vice versa), sequence number difference, acknowledgment number difference, time difference (current value minus the previous value), packet size and duplicate ACK count. A window size of 10 packets is considered, i.e. input features of the 9 previous packets along with the currently received input packet features are concatenated and fed into the model as input which in turn estimates the congestion window size at that time instant. These estimates are cached for future estimations in the auto-regressive manner as explained. The implementation from scikit-learn’s 
+
+RandomForestRegressor model initialized with 100 estimators is used. Training data is generated using ns-3 for each simulation topology considered in the study, the details of which are deferred to Section IV. More that 0.8 million training examples were used to train the model. 
+
+C. Parameter estimation 
+
+With the congestion window estimates at hand, we now need to estimate the multiplicative decrease parameter that governs the decrease in the average congestion window from these estimates. We propose a mathematical model for the required estimation. The correctness of the model is established through the propositions presented below. When the congestion-control algorithm in TCP source host 
+
+i infers packet loss, its congestion window wi is reduced as 
+
+wi(t + 1) = (1 − βi)w i(t), (4) where βi is the MD parameter of the host i. From the estimated congestion window of a host i, obtained using the random forest regressor, the SDN controller can use wi(t) and wi(t + 1) to compute βi using equation (4). Although this can be done to obtain the MD parameter of each source, these parameters 
+
+200 300 050 100 
+
+> Congestion window (pkts)
+
+200 300 050 100 
+
+> Estimated Actual
+
+200 300 050 100 
+
+> Absolute error (pkts)
+
+200 300 050 100 
+
+Time (s) Fig. 4: Plots showing the estimated congestion window evolu-tion juxtaposed against the actual, for two arbitrarily chosen hosts. The common legend for the comparison plots is placed in the top-right plot alone. in themselves do not capture the behaviour of the average congestion window w(t) = ( PNi=1 wi(t)) /N whose fixed-point value w∗ appears in inequality (3). The size of the congestion window w i(t) of each source i is influenced by its AI function i(w). An aggressive source with a higher increase parameter will have a larger congestion window while a conservatively increasing source will have a smaller window. To that end, each source contributes differently to the average congestion window w(t) as seen by the packet-forwarding device. Therefore, the required estimate, that of a parameter that governs the decrease in w(t), is not a straight-forward average of the parameters βi.Let us define a loss event as one in which the average congestion window is reduced by a fraction due to reduction in the congestion windows of a subset of TCP sources. Suppose that there are k such loss events. Let se be the subset of TCP sources which reduced their congestion window in eth loss event, where e ∈ { 1, 2, · · · , k }.
+
+Proposition 1. At each loss event e ∈ { 1, 2, · · · , k }, consider the congestion window averaged over all TCP flows i ∈ se,denoted as we(t). The decrease in we(t) is governed by 
+
+we(t + 1) = (1 − βe)we(t), (5) 
+
+where the parameter βe is a weighted average of the decrease parameters of all the individual TCP sources i ∈ se, and is given by 
+
+βe = X
+
+> i∈se
+
+βiwi(t)
+
+X 
+
+> i∈se
+
+wi(t)
+
+−1
+
+. (6) 6
+
+Proof. Averaging equation (4) over all i ∈ se yields an equation for the evolution of the congestion window we(t), equating which with equation (5) yields the above expression for βe.Note that during each loss event there may be TCP sources that do not reduce their congestion window, i.e. , for each e ∈{1, 2, · · · , k } ∃ i / ∈ se. Therefore, βe obtained for a particular loss event e cannot be used as an estimate of the parameter that governs the multiplicative decrease in the average congestion window w(t). To model the impact of these TCP sources, one may look at the evolution of the average of we(t), across loss events. This is analogous to the time average of the average congestion window w(t) = ( PNi=1 wi(t)) /N with the set of indices in the summation being non-uniform across time. The TCP fluid model relies on ergodicity of the stochastic process that governs the congestion window evolution [24], [28]; hence we invoke the property of the time average of the process being equal to the ensemble average. The following proposition uses this property to derive the required estimate. 
+
+Proposition 2. At a congested bottleneck link, the multiplicative decrease in the average congestion window w(t) is governed by a parameter ˆβ given by 
+
+ˆβ =
+
+> k
+
+X
+
+> e=1
+
+X
+
+> i∈se
+
+βiwi(t)
+
+ kX
+
+> e=1
+
+X
+
+> i∈se
+
+wi(t)
+
+−1
+
+. (7) 
+
+Proof. When the link is congested, the average congestion window can be approximated as 
+
+w(t) = 1
+
+k
+
+> k
+
+X
+
+> e=1
+
+we(t). (8) From equation (2), the required estimate ˆβ is given by 
+
+ˆβ = 1 − w(t + 1) 
+
+w(t) ,
+
+which upon substituting (8) and (5) yields 
+
+ˆβ =
+
+> k
+
+X
+
+> e=1
+
+βewe(t)
+
+ kX
+
+> e=1
+
+we(t)
+
+−1
+
+. (9) As most of the TCP flows would be synchronised due to congestion, one may assume that N − | se| << N ∀ e ∈{1, 2, · · · , k }, where | · | represents set cardinality. This leads to the approximation |se| ≈ N ∀ e ∈ { 1, 2, · · · , k }. Now, substituting (5) and (6) in equation (9) yields equation (7). Observe that the estimate ˆβ given by equation (7) is a weighted average of the multiplicative decrease parameter of the individual TCP sources, i.e. , βi. Here, each weight is dependent on the summation of the individual congestion window across all loss events. For a congested link, the estimate given by equation (7) can be replaced with a computationally lighter one, as outlined in the proposition below. 
+
+Proposition 3. The estimate ˆβ given by equation (7) can be replaced by 
+
+ˆβ =
+
+> N
+
+X
+
+> i=1
+
+βi mi
+
+ NX
+
+> i=1
+
+mi
+
+−1
+
+, (10) 
+
+where mi is the number of times a TCP source i infers packet loss and reduces its congestion window. Proof. Equation (7) can be rewritten as 
+
+ˆβ =
+
+> k
+
+X
+
+> e=1
+> N
+
+X
+
+> i=1
+
+βiwi(t)I(i, e )
+
+ kX
+
+> e=1
+> N
+
+X
+
+> i=1
+
+wi(t)I(i, e )
+
+−1
+
+, (11) where 
+
+I(i, e ) = 
+
+(
+
+1, if i ∈ se
+
+0, otherwise .
+
+Rearranging the summations in equation (11) yields 
+
+ˆβ =
+
+> N
+
+X
+
+> i=1
+
+βikX
+
+> e=1
+
+wi(t) I(i, e )
+
+ NX
+
+> i=1
+> k
+
+X
+
+> e=1
+
+wi(t) I(i, e )
+
+−1
+
+, (12) When the link is congested, a TCP source experiences a packet loss when its sending rate reaches its share of the bottleneck bandwidth. In other words, this happens when the congestion window of the flow has reached its share of the bandwidth-delay product. It is possible that in a single loss event, a given flow may get a smaller share of the bandwidth compared to another. This implies that the first flow may have a smaller congestion window than the second. However, when we observe a given TCP flow i over a period of time and note that it experiences mi
+
+loss events, the summation of the congestion window across all loss events would be approximately equal to mi ˜Cτ. To that end, we may use the approximation Pke=1 wi(t) I(i, e ) ≈ mi ˜Cτ. 
+
+Applying this approximation to equation (12) yields the revised estimate given by equation (10). The estimate given by equation (7) requires the SDN controller to maintain records of the congestion window size of all the flows, along with the information of when each flow inferred a packet loss and reduced the congestion window. Meanwhile, the estimate given by equation (10) requires the router to track only the number of times that a TCP flow reduced the size of its congestion window. The latter appears to require less memory and less computation time. However, either of the two equations, (7) or (10), may be used to compute the estimate ˆβ.
+
+D. Computation of packet-dropping threshold 
+
+With the estimate ˆβ at hand, we may now compute the packet-dropping threshold qth using inequality (3). Note that this condition also requires w∗, ˜C and τ . Among these, ˜C is the per-flow capacity of the output link of the packet-forwarding device, which is known to the SDN controller, and the average RTT of the flows τ can be observed by the SDN controller using ack-clocking. Suppose that post congestion detection, the estimate ˆβ is obtained at a time instant t, the steady-state average congestion window w∗ is calculated from the estimated congestion window traces wi(·) over a duration T as 
+
+w∗ = 1
+
+T N
+
+> t
+
+X
+
+> l=t−T
+> N
+
+X
+
+> i=1
+
+wi(l),
+
+where T is the time duration parameter used in Section III-A. 7
+
+Given that qth is always a positive integer and that it is always less than the buffer size of the router B; the required value of qth can be obtained by brute force in linear time. We begin by computing the function on the left-hand side of inequality (3) using an initial value of qth , taken as 10; and then recompute this function by incrementing qth until inequality (3) is satisfied. These details, along with some checks, are presented in Algorithm 2. The algorithm uses one parameter κ which serves as an upper bound for the ratio of the average congestion window to the share of bandwidth-delay product of each flow. The physical interpretation of the parameter κ emerges from the congestion-control behaviour of AIMD-based TCP itself. Under such congestion control, the congestion window increases additively until a loss is detected, and is reduced by a multiplicative factor thereafter. It is well known that the peak value of the congestion window of a source would ideally be equal to its share of the bandwidth-delay product. However, when packet-forwarding devices use large buffers, often equal to multiples of the bandwidth-delay product as seen in current devices, packets are not dropped adequately; and the congestion window of an end host increases beyond its share of the bandwidth-delay product leading to excessive buffering. This can be checked by the condition w∗ ≥ ˜Cτ . When an AQM is to be deployed in such a scenario, the packet-dropping threshold must account for such excessive buffering and drop packets in a manner that it serves as adequate feedback for the end hosts to reduce their congestion window. Therefore, when excessive buffering has occurred we use the parameter κ < 1 in place of the ratio 
+
+w∗/( ˜Cτ ), which is > 1, in the function on the left-hand side of inequality (3). This leads to a threshold qth which would drop packets aggressively and bring down the w∗ appropriately so as to reduce queueing delay. Here, we choose κ = 0 .9
+
+heuristically. In general, small values of κ would further limit the congestion window of the end hosts, which may in turn affect the throughput observed by the host. IV. P ERFORMANCE EVALUATION 
+
+We now conduct packet-level simulations on ns-3 [22], version 3.36.1, to evaluate the performance of the threshold-based queue policy, with the threshold qth tuned using the mechanism proposed in Section III. We consider two network topologies and two traffic compositions in each topology. Simulations are designed with appropriately chosen factors and the performance is benchmarked against two queue policies implemented in today’s switches. These details are presented in the following subsections. The entire codebase is available at [29]. 
+
+A. Network topology 
+
+We consider two topologies: the single-bottleneck dumbbell topology, which is a generic setup for AQM evaluation [30], and the more-evolved parking-lot topology, which is used in many congestion-control studies [31]–[33]. The single-bottleneck topology is consistent with the assumptions of the fluid model (2), which forms the mathematical basis of the proposed mechanism, and is therefore well suited for 
+
+Algorithm 2 Computation of packet-dropping threshold 
+
+Input: ˆβ, w ∗, ˜C, τ, B qth ← 10 
+
+κ ← 0.9
+
+▷ Initialization of f
+
+if w∗ ≥ ˜Cτ then ▷ Checks for excessive buffering 
+
+f ← qth ˆβ ˜Cτ κ qth +1 
+
+else 
+
+f ← qth ˆβ w ∗
+
+ w∗
+
+˜Cτ 
+
+qth 
+
+end if while f ≥ π/ 2 & qth < B do ▷ Runs when (3) is not true 
+
+qth ← qth + 1 
+
+if w∗ ≥ ˜Cτ then ▷ Checks for excessive buffering 
+
+f ← qth ˆβ ˜Cτ κ qth +1 
+
+else 
+
+f ← qth ˆβ w ∗
+
+ w∗
+
+˜Cτ 
+
+qth 
+
+end if end while return qth ▷ Outputs qth and exits evaluating its performance. In contrast, the parking-lot topology violates these assumptions and allows us to assess the proposed mechanism in a setting where the fluid model may not apply. 
+
+Single-bottleneck dumbbell : We consider N = 60 pairs of sending and receiving hosts, connected through a single-bottleneck link. The link has a capacity of 100 Mbps, and is served by two routers R1, R 2 on either side. Although we use the term “router” for the nodes at either ends of the link, these nodes do not perform any routing, they simply forward packets on the output port leading to a single available path for each TCP flow. These nodes may represent any packet-forwarding device. Each host is connected to the respective router through a dedicated access link of 2 Mbps capacity. When the access links are fully utilized, the incoming traffic at the router on the sending end is 20% more than the service capacity of the link, creating congestion. The segment size is fixed as 1500 bytes. The buffer size B at the router is fixed as the bandwidth-delay product. For the given bandwidth and a round-trip time of 250 
+
+ms, which is generally used for buffer sizing [28], we obtain the buffer size as 2084 pkts. 
+
+Parking-lot : This topology has two bottleneck links of 100 
+
+Mbps capacity in series, with three routers R1, R 2 and R3
+
+serving them. We consider 90 pairs of sending and receiving hosts. Of the 90 sending hosts, 60 are connected to R1 and 
+
+30 are connected to R2. Similarly, of the 90 receiving hosts, 60 are connected to R3 and 30 are connected to R2. Out of the 60 hosts connected to R1, 30 hosts send traffic targetted for 30 hosts connected to R2, and the remaining send traffic to 30 hosts connected to R3. Further, the 30 sending hosts connected to R2 send traffic to 30 of the 60 receiving hosts connected to R3. Consequently, the first bottleneck link is shared by 60 sending hosts, and traffic pertaining to 30 of them gets diverted at R2, while 30 new hosts are added, along the network path, at R2. Each bottleneck link is thus shared by 60 sender-receiver pairs. All hosts are connected to their 8
+
+respective routers through a dedicated 2 Mbps access link. A schematic representation of the topology is presented in Fig. 5. 
+
+R1 R2       
+
+> 12
+> ...
+> 60
+> S12
+> ...
+> 60
+> D
+> BL
+> (a) Single-bottleneck dumbbell. Traffic flows between source-destination pair across the bottleneck link.
+
+R1 R2 R3                        
+
+> 12
+> ...
+> 30
+> S1
+> ...
+> 59 60
+> S2
+> 123. . . 29 30
+> S3
+> 123. . . 29 30
+> D1
+> 12
+> ...
+> 30
+> D2
+> ...
+> 59 60
+> D3
+> BL 1 BL 2
+> (b) Parking-lot. Traffic flows from S1to D1,S2to D2and from
+> S3to D3, each set has 30 hosts. Each of the bottleneck links, BL1 and BL2, carries traffic between 60 sending-receiving host pairs.
+
+Fig. 5: Schematic representation of the two topologies used in simulation. Each access link has a capacity of 2 Mbps, and each bottleneck link is of 100 Mbps. 
+
+B. Traffic composition 
+
+For each topology, we considered two traffic compositions. Similar to the choice of topologies, we choose one traffic composition that aligns with the assumptions of the fluid model, and one that serves as a systematic deviation from these assumptions and is hence closer to the real-world scenario. 
+
+Homogeneous traffic : All 60 sending nodes run FTP applica-tions, leading to long-lived TCP flows. For long lived TCP flows 
+
+BulkSendApplication was installed at each sending host, and a PacketSink was installed at each receiving host. The applications are started at the beginning of each simulation at a time instant chosen randomly from U[0 , 5] s. Once started, a long-lived flow remains throughout the simulation time. All the packets have a size of 1500 Bytes. 
+
+Heterogeneous traffic : In this case, 70 % of the sources run FTP applications over long-lived TCP flows, 20 % of them run UDP, while 10 % of the sending hosts run HTTP applications that generate short-lived TCP flows. For long-lived TCP flows BulkSendApplication was used, as before. For UDP flows, the OnOffApplication was installed at each sending host with OffTime attribute set to 0, and the 
+
+UdpSocketFactory was used to ensure that the transport-layer protocol used is UDP. The long-lived TCP flows and 
+
+150 200 250 300 00.20.40.60.81
+
+RTT (ms) Parameter estimate  ˆβ
+
+150 200 250 300 10 20 30 40 50 
+
+RTT (ms) Computed threshold  qth  (pkts)   
+
+> obtained using actual cwnd
+> obtained using predicted cwnd
+
+Fig. 6: A comparison of the estimated parameter ˆβ and the computed packet-dropping threshold qth when using the congestion window predicted by the Random Forest regressor with those obtained using the actual congestion windows maintained by the source hosts. The common legend is placed below the plots. Observe that the two curves for qth remain close throughout the range of RTT considered. UDP flows start at a time instant ∼ U [0 , 5] s. Meanwhile, the short-lived TCP flows start at a time instant chosen from an exponential distribution with a mean 0.1 s, and is bounded above by 1 s. The duration of each short-lived flow is chosen in a similar way. The time gap between consecutive short-lived flows from a given host is chosen randomly from 
+
+U[0 .1, 10] s. The short-lived flows are also configured using the 
+
+BulkSendApplication with the start and stops configured using random numbers chosen as described above. Appropriate 
+
+PacketSink applications are used in all the receiving hosts. All the packets have a size of 1500 Bytes. 
+
+C. Threshold policy with proposed mechanism 
+
+For queue management, at R1 in the single-bottleneck toplogy and R1 and R2 in the parking-lot topology, we used the threshold-based policy along with the four components of the proposed mechanism: congestion detection, congestion window prediction, parameter estimation, and threshold computation, implemented as separate functions emulating the SDN control server (see Fig. 1b). For congestion detection, we used Algorithm 1. For this, the parameter mz was set as 5, and the time window T was fixed as 5 s, a few multiples of the largest RTT used in the simulations. As observed through the ROC plots presented in Section III-A, Algorithm 1 detects congestion successfully for these, and regardless of these, values. The congestion window estimation runs in parallel and uses the sequence numbers of the packets along with the IP addresses and port numbers of the sender-receiver pairs to estimate the required wi(t) waveforms for all the sending hosts. Once congestion is detected, these wi(t) waveforms are fed into beta estimation function, which estimates the multiplicative decrease parameter using equation (10). The resultant estimate ˆβ, along with (i) w∗ obtained from the wi(t) waveforms for all hosts, (ii) the average RTT estimated using the sequence numbers, 9
+
+150 200 250 300 1.21.41.61.82
+
+RTT (ms) Throughput (Mbps) 
+
+150 200 250 300 1.21.41.61.82
+
+RTT (ms) Goodput (Mbps) 
+
+150 200 250 300 40 60 80 100 
+
+RTT (ms) Link Utilization (%) Our AQM DropTail ARED 
+
+> (a) Performance in terms higher-is-better metrics: throughput, goodput and link utilisation.
+
+150 200 250 300 00.511.52
+
+RTT (ms) Queuing Delay (ms) 
+
+150 200 250 300 400 500 600 
+
+RTT (ms) Flow Completion Time (s) 
+
+150 200 250 300 024
+
+RTT (ms) Packet Loss (%) 
+
+> (b) Performance in terms of lower-is-better metrics: queueing delay, flow completion time and packet loss percentage.
+
+Fig. 7: Single-bottleneck dumbbell, heterogeneous traffic . Plots showing the performance of the threshold-based queue policy, with the packet-dropping threshold tuned using the proposed mechanism, benchmarked against the DropTail and ARED policies. The legend placed in the top-right plot applies to all the plots. and (iii) the capacity of the outgoing link, is fed to Algorithm 2 which returns the packet-dropping threshold qth . This threshold is then used to make packet-dropping decisions at the router, thereby deploying the AQM. A schematic representation of the implementation is shown in Fig. 1a. 
+
+D. Benchmarking, variable factors and metrics 
+
+We benchmark the performance of the threshold-based policy with the proposed mechanism against two policies that are implemented in today’s routers/switches. The first one is the simple DropTail policy which simply drops packets once the buffer is full. Secondly, we consider the Adaptive Random Early Detection (ARED) which is implemented in most Linux-based packet-forwarding devices. For the ARED implementation, we used the parameters minQth = 50 pkts, maxQth = 100 pkts which are comparable with the qth computed for the threshold-based policy. Although numerous other AQMs are proposed in the literature, both classical as well as ML-aided, we choose these two for a comparative study given their implementation status. If an AQM is to be deployed in live-networks, it must outperform those that are already implemented and are hence closest to deployment. Along with varying the topology and traffic composition, as described above, we also consider two variable factors: the round-trip time, and the TCP variant. Round-trip time is a crucial factor as it is an uncontrollable network parameter; in that, longer paths with large propagation delay could cause large RTTs regardless of network conditions. Given that operating regimes with large RTTs are known to exhibit congestion in networks carrying TCP flows [27], [28], we vary RTT in the range [150 , 300] ms. In order to avoid RTT-induced synchronization among hosts, in each simulation with a fixed RTT of τ ∈ [150 , 300] ms, the RTT for each sender-receiver pair is chosen randomly as T ∼ U [τ − 5, τ + 5] ms. To fix the required RTT, each access link is configured with a one-way delay of T / 4, which results in a mean RTT of τ across flows. Two AIMD-based TCP variants, namely LinuxReno 
+
+and NewReno are considered. We consider six performance metrics: (i) throughput, (ii) goodput, (iii) link utilisation, (iv) packet-loss percentage, (v) queueing delay, and (vi) flow-completion time. Of these, the first three are higher-is-better metrics, and the remaining are lower-is-better. The choice of metrics is consistent with the recommendations in RFC 7928 [30] for evaluation of AQMs. For recording all metrics, each simulation is run until all clients have transmitted 100 MB Data. Among these metrics, throughput and goodput were recorded at the receiving hosts. Here, throughput considers all packet transfers while goodput measures the rate of transfer of useful packets, i.e. ,retransmissions do not contribute to goodput. Note that these two are user-oriented metrics. Link utilisation, queueing delay, and packet loss were recorded at the bottleneck link. These serve as system-oriented metrics. Flow completion time is defined as the time required to complete the transfer of a file 10 
+
+of a fixed size, and is often regarded as the most important user-oriented metric. For this, we fix a file size of 100 MB at the FTP application of each host and run the simulation until the last flow was completed. 
+
+E. Results and discussion 
+
+Firstly, to verify the efficiency of the proposed congestion window estimation using the Random Forest regressor, we simulated the two succeeding components, i.e. β estimation and qth computation, under two settings: (i) using the ac-tual congestion window ( cwnd ) traces obtained using the 
+
+CongestionWindow trace source of the socket at each TCP source, (ii) using the congestion window waveform estimated by the Random Forest. Here, the first setting serves as a baseline to compare the second setting with. The parameter estimate ˆβ
+
+and the computed packet-dropping threshold qth obtained for the two cases are plotted in Fig. 6. From these, we observe that using the congestion window estimates produced by the Random Forest, as prescribed by the proposed mechanism, does not cause any significant deviation in the threshold qth across the range of RTT considered. Notably, the curves get closer as the RTT increases, indicating that the window estimation is particularly effective in the large RTT regime which is prone to performance degradation in general. Next, we evaluate the performance of the proposed method using the required metrics in the RTT range considered. In each simulation, throughput, goodput and packet loss are recorded at the receiving hosts using FlowMonitor . Link utilisation and queueing delay are recorded at the router preceding the bottleneck link, through the appropriate calculations on the readouts of the PointToPointNetDevice/PhyTx and the RootQueueDiscList/ ∗/PacketsInQueue trace source, respectively. From the traces obtained for each simula-tion, the first few seconds of data corresponding to transient behaviour are discarded and mean and standard deviation of each metric are computed from the remaining data. For flow completion time, the time required for the 100 MB transfer is recorded for each flow, and the mean and standard deviation across flows is computed. The results for the single bottleneck dumbbell topology with the LinuxReno TCP variant used in heterogeneous traffic composition, for the whole range of RTT are presented in Fig. 7. For the same setting, the results obtained with the parking-lot topology are presented in Fig. 8. In all these plots, we used the dot-whisker representation, where the dot denotes the mean and the upper and lower whiskers are used to indicate the range of values that are within one standard deviation from the mean. We skip the results obtained for homogeneous traffic, and TCP NewReno as they qualitatively appear similar to the ones presented. We now discuss our observations. 
+
+User-oriented performance : In the single bottleneck network, the mean throughput and goodput offered by our AQM implementation is seen to be marginally below that of DropTail, and better than that of ARED. Notably, the throughput and goodput remain constant across RTT in the case of our AQM, and ARED exhibits a reduction in throughput and goodput as RTT increases. In particular, the goodput performance of our AQM is agnostic to the RTT, even in operating regimes with large RTTs. This is due to the fact that the qth is tuned according to condition (3) which guarantees network stability regardless of the RTT. In contrast, the goodput achieved by ARED suffers as RTT increases. Similar observations hold for the case of flow completion time, which is a lower-is-better metric as opposed to the former two. Our AQM has a marginally higher mean flow completion time as compared to DropTail, with the standard deviation of the two indicating that the observed flow completion time for a give flow is likely to be similar for the two policies. Meanwhile, the flow completion time of ARED is larger than that of our AQM, and shows a substantial increase as RTT increases. For the parking-lot topology, the three policies show similar relative performance. Additionally, for this topology, the standard deviation of throughput and goodput of ARED is much larger than that of our AQM and DropTail. This indicates that the hosts would experience pronounced throughput fluctuations during the life of a connection. Likewise, a large standard deviation in flow completion time indicates a large variation in the time taken by hosts to complete the file transfer, and hence is reflective of unfair network behaviour. 
+
+System-oriented performance : From the plots showing the link utilisation, it can be observed that DropTail guarantees a marginally better utilisation of the link than our AQM, with the gap being less for the parking-lot topology. ARED lacks in this aspect, with the utilisation reducing as RTT increases. Though this is seen in both topologies, it is more pronounced in the parking-lot topology. This is because DropTail does not take any action towards congestion mitigation, it simply drops packets once the buffer is full. In doing so, it keeps the buffer full most of the time, thereby never starving the link, and hence ensuring a higher utilisation. On the other hand, our AQM and ARED are meant to drop packets in a manner that congestion is alleviated. By dropping packets appropriately, they ensure that the queue size remains small, which could sometimes lead to loss of link utilisation. This is indeed reflected in the queueing delay and packet loss measurements. One can observe that our AQM and ARED ensure a much smaller queueing delay compared to DropTail. Although our AQM has a higher queueing delay than ARED, it can be observed that this delay does not reflect in the flow completion time. The observations regarding queueing delay are consistent across the two topologies. From the packet loss percentage, it is seen that in the single bottleneck dumbbell topology, DropTail drops the least number of packets while ARED drops the most, our AQM lies between the two. For large RTTs, the fraction of packets dropped by our AQM is very similar to that of DropTail, which indicates that our AQM is able to maintain substantially less queueing delay while dropping just marginally more packets. In the parking-lot topology, we see that our AQM exhibits a lower packet loss compared to DropTail, with the reduction being more evident for large RTTs. ARED shows a larger packet loss for small RTTs, and nearly converges to that of our AQM as RTT increases. Arguably, our AQM ensures better packet loss than DropTail in networks where links appear in tandem. These results show that our AQM drop packets optimally, signalling congestion to the TCP hosts who in turn respond by reducing 11 
+
+150 200 250 300 1.21.41.61.82
+
+RTT (ms) Throughput (Mbps) 
+
+150 200 250 300 1.21.41.61.82
+
+RTT (ms) Goodput (Mbps) 
+
+150 200 250 300 40 60 80 100 
+
+RTT (ms) Utilization (BL 1) (%) 
+
+150 200 250 300 40 60 80 100 
+
+RTT (ms) Utilization (BL 2) (%) Our AQM DropTail ARED 
+
+> (a) Performance in terms higher-is-better metrics: throughput, goodput and link utilisation.
+
+150 200 250 300 00.511.52
+
+RTT (ms) Queuing Delay (R1) (ms) 
+
+150 200 250 300 00.511.52
+
+RTT (ms) Queuing Delay (R2) (ms) 
+
+150 200 250 300 400 500 600 
+
+RTT (ms) Flow Completion Time (s) 
+
+150 200 250 300 00.511.52
+
+RTT (ms) Packet Loss (%) 
+
+> (b) Performance in terms of lower-is-better metrics: queueing delay, flow completion time and packet loss percentage.
+
+Fig. 8: Parking-lot, heterogeneous traffic . Plots showing the performance of the threshold-based queue policy, with the packet-dropping threshold tuned using the proposed mechanism, benchmarked against the DropTail and ARED policies. The common legend is placed in the top-right plot alone. their sending rates. This is the reason why the threshold-based policy implemented using the proposed mechanism is able to guarantee a performance similar to DropTail in terms of most metrics, while substantially outperforming DropTail in queueing delay. V. C ONCLUSIONS 
+
+Most Active Queue Management (AQM) strategies aimed at alleviating network congestion have tunable parameters that need to be co-designed with parameters of the transport protocols, such as TCP, implemented in the end hosts. Toward facilitating the deployment of such AQMs, we examined the possibility of estimating TCP parameters through packet traces accessible to the router and co-designing AQM parameters with these. In particular, we considered a threshold-based queue policy which requires the packet-dropping threshold to be co-designed with TCP parameters. This work outlines a mechanism that detects network congestion, predicts the evolution of the congestion window at end hosts, estimates the required TCP parameter, and produces a value of the packet-dropping threshold. Appropriate algorithms are outlined for congestion detection and threshold computation. The mechanism used to estimate the TCP parameter is supported by arguments based on existing results from the analysis of TCP fluid models. We conducted packet-level simulations to evaluate the performance of the threshold-based policy deployed as per the proposed mechanism. The results show that our implementation of the AQM performs equivalent to DropTail in terms of some metrics, and particularly outperforms it in terms of the queueing delay. It is also seen to be better than ARED, which is implemented in most Linux-based routers today, in terms of most performance metrics. Although the proposed mechanism is grounded in mathematical models that account for AIMD behaviour of TCP alone, our simulations reveal that it performs well in networks carrying unresponsive UDP flows and bursty short-lived TCP flows as well. The proposed mechanism appears to be a promising solution towards TCP-aware queue management through appropriate deployment of AQMs to alleviate congestion in packet-forwarding devices. It is particularly suited for SDN architectures, which provide the flexibility of control- and data-plane separation. 
+
+A. Future work 
+
+This work relies on results from analysis of a TCP fluid model that captures the behaviour of the AIMD congestion control algorithm. However, the proposed mechanism only needs to estimate the multiplicative decrease parameter, regard-less of those that govern the additive increase. This raises the question of whether the proposed mechanism would work for traffic comprising TCP flows that employ a congestion control algorithm that decreases the congestion window multiplicatively upon detecting congestion, but increases it using a different approach. For example, CUBIC (default in Linux OS), increases its congestion window in a non-linear manner, but reduces it 12 
+
+multiplicatively in the event of congestion. It is desirable to explore whether the proposed mechanism would work for such TCP flows. Further, it is desirable to evaluate the performance of the proposed mechanism in switches that support Explicit Congestion Notification (ECN), this would also pave the way for examining its performance with TCP variants that rely on ECN marks, instead of packet drops, for congestion feedback. REFERENCES [1] A. McFillin, “Bufferbloat may be solved, but it’s not over yet,” accessed July 2025. [Online]. Available: https://blog.apnic.net/2020/01/ 22/bufferbloat-may-be-solved-but-its-not-over-yet/ [2] J. Gettys and K. Nichols, “Bufferbloat: dark buffers in the internet,” 
+
+Communications of the ACM , vol. 55, no. 1, pp. 57–65, 2012. [3] M. Allman, “Comments on bufferbloat,” ACM SIGCOMM Computer Communication Review , vol. 43, no. 1, pp. 30–37, 2012. [4] V. G. Cerf, “Bufferbloat and other Internet challenges,” IEEE Internet Computing , vol. 18, no. 5, pp. 80–80, 2014. [5] K. Nichols and V. Jacobson, “Controlling queue delay,” Communications of the ACM , vol. 55, no. 7, pp. 42–50, 2012. [6] P. Harrison, “Buffer-bloated router? How to prevent it and improve performance,” Communications of the ACM , vol. 66, no. 6, pp. 73–77, 2023. [7] R. Adams, “Active queue management: A survey,” IEEE Communications Surveys & Tutorials , vol. 15, no. 3, pp. 1425–1476, 2012. [8] F. Baker and G. Fairhurst, “IETF recommendations regarding active queue management,” Tech. Rep., 2015. [9] M. P. Toopchinezhad and M. Ahmadi, “Machine learning approaches for active queue management: A survey, taxonomy, and future directions,” 
+
+Computer Networks , p. 111174, 2025. [10] N. Bouacida and B. Shihada, “Practical and dynamic buffer sizing using LearnQueue,” IEEE Transactions on Mobile Computing , vol. 18, no. 8, pp. 1885–1897, 2018. [11] E.-S. Jung, H. S. Kim et al. , “RLECN—A learning based dynamic threshold control of ECN,” ICT Express , vol. 9, no. 6, pp. 1007–1012, 2023. [12] K. Cheng, T. Wang, X. Du, S. Du, and H. Cai, “PET: Multi-agent independent PPO-based automatic ECN tuning for high-speed data center networks,” arXiv preprint arXiv:2405.11956 , 2024. [13] H. Jiang, Q. Li, Y. Jiang, G. Shen, R. Sinnott, C. Tian, and M. Xu, “When machine learning meets congestion control: A survey and comparison,” 
+
+Computer Networks , vol. 192, p. 108033, 2021. [14] R. Kundel, J. Blendin, T. Viernickel, B. Koldehofe, and R. Steinmetz, “P4-Codel: Active queue management in programmable data planes,” in 
+
+2018 IEEE Conference on Network Function Virtualization and Software Defined Networks (NFV-SDN) . IEEE, 2018, pp. 1–4. [15] L. C. De Almeida, P. D. Maciel, R. Pasquini, C. Papagianni, and F. L. Verdi, “iRED: A disaggregated P4-AQM fully implemented in programmable data plane hardware,” IEEE Transactions on Networking ,2026. [16] K. De Schepper, O. Bondarenko, I.-J. Tsang, and B. Briscoe, “PI2: A linearized AQM for both classic and scalable TCP,” in Proceedings of the 12th International on Conference on emerging Networking EXperiments and Technologies , 2016, pp. 105–119. [17] R. J. La, “Instability of a tandem network and its propagation under RED,” IEEE Transactions on Automatic Control , vol. 49, no. 6, pp. 1006–1011, 2004. [18] C. V. Hollot, V. Misra, D. Towsley, and W. Gong, “Analysis and design of controllers for AQM routers supporting TCP flows,” IEEE Transactions on Automatic Control , vol. 47, no. 6, pp. 945–959, 2002. [19] S. Manjunath and G. Raina, “Stability and performance of compound TCP with a proportional integral queue policy,” IEEE Transactions on Control Systems Technology , vol. 27, no. 5, pp. 2139–2155, 2018. [20] ——, “Compound TCP with Random Early Detection (RED): stability, bifurcation and performance analyses,” arXiv preprint arXiv:1907.06302 ,2019. [21] G. Raina, S. Manjunath, S. Prasad, and K. Giridhar, “Stability and performance analysis of compound TCP with REM and drop-tail queue management,” IEEE/ACM Transactions on Networking , vol. 24, no. 4, pp. 1961–1974, 2015. [22] G. F. Riley and T. R. Henderson, “The NS-3 network simulator,” in 
+
+Modeling and tools for network simulation . Springer, 2010, pp. 15–34. [23] P. Bosshart, D. Daly, G. Gibb, M. Izzard, N. McKeown, J. Rexford, C. Schlesinger, D. Talayco, A. Vahdat, G. Varghese et al. , “P4: Programming protocol-independent packet processors,” ACM SIGCOMM Computer Communication Review , vol. 44, no. 3, pp. 87–95, 2014. [24] V. Misra, W.-B. Gong, and D. Towsley, “Fluid-based analysis of a network of AQM routers supporting TCP flows with an application to red,” in Proceedings of the conference on Applications, Technologies, Architectures, and Protocols for Computer Communication , 2000, pp. 151–160. [25] G. Raina, D. Towsley, and D. Wischik, “Part II: Control theory for buffer sizing,” ACM SIGCOMM Computer Communication Review , vol. 35, no. 3, pp. 79–82, 2005. [26] H. Han, C. V. Hollot, D. Towsley, and Y. Chait, “Synchronization of TCP flows in networks with small droptail buffers,” in Proceedings of the 44th IEEE Conference on Decision and Control . IEEE, 2005, pp. 6762–6767. [27] D. Ghosh, K. Jagannathan, and G. Raina, “Right buffer sizing matters: Some dynamical and statistical studies on compound TCP,” Performance Evaluation , vol. 139, p. 102095, 2020. [28] G. Raina and D. Wischik, “Buffer sizes for large multiplexers: TCP queueing theory and instability analysis,” in Next Generation Internet Networks, 2005 . IEEE, 2005, pp. 173–180. [29] S. Gond, “Repository name: MTP,” https://github.com/somitgond/mtp, 2026. [30] N. Kuhn, P. Natarajan, N. Khademi et al. , “Characterization Guidelines for Active Queue Management (AQM),” IETF, Tech. Rep. RFC 7928, Jul. 2016. [Online]. Available: https://www.rfc-editor.org/info/rfc7928 [31] D. Katabi, M. Handley, and C. Rohrs, “Congestion control for high bandwidth-delay product networks,” in Proceedings of the 2002 con-ference on Applications, technologies, architectures, and protocols for computer communications , 2002, pp. 89–102. [32] Z. Wan, J. Zhang, S. Cheng, Y. Chen, T. Pan, P. Lin, and T. Huang, “ACC: addressing performance limitations in datacenters with atomic congestion control,” in IEEE INFOCOM 2025-IEEE Conference on Computer Communications . IEEE, 2025, pp. 1–10. [33] S. Fathalli, E. N. Weyulu, D. Zeynali, B. Chandrasekaran, and A. Feld-mann, “Network-assisted congestion feedback,” IEEE Transactions on Network and Service Management , vol. 23, pp. 1797–1815, 2025.
