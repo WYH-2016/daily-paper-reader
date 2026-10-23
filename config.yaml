@@ -165,6 +165,58 @@ subscriptions:
           source: manual
           note: ''
       updated_at: '2026-10-23T07:43:04.302Z'
+    - tag: lke
+      description: 请帮我查找 Linux 内核子系统（调度器、内存管理、文件系统、网络栈）以及eBPF内核可观测性以及性能分析相关的研究与改进论文
+      enabled: true
+      paper_sources:
+        - arxiv
+      keywords:
+        - keyword: Linux memory management
+          keyword_cn: Linux内存管理
+          query: >-
+            academic studies on optimization and analysis of Linux kernel memory management subsystem including page
+            allocation, slab allocator, and memory reclaim
+        - keyword: Linux file system
+          keyword_cn: Linux文件系统
+          query: >-
+            recent research on Linux kernel file system design, performance, consistency, and scalability for ext4, XFS,
+            Btrfs, and new filesystems
+        - keyword: Linux network stack
+          keyword_cn: Linux网络栈
+          query: >-
+            papers addressing performance, scalability, and programmability of the Linux kernel networking subsystem
+            including TCP/IP, packet filtering, and offloading
+        - keyword: eBPF performance analysis
+          keyword_cn: eBPF性能分析
+          query: >-
+            studies applying eBPF for low-overhead performance profiling, latency analysis, and resource usage
+            measurement in Linux systems
+        - keyword: kernel tracing
+          keyword_cn: 内核跟踪
+          query: >-
+            academic work on Linux kernel tracing techniques including ftrace, perf, and eBPF-based dynamic tracing
+            frameworks
+        - keyword: system performance optimization
+          keyword_cn: 系统性能优化
+          query: >-
+            research on operating system-level performance optimization methods targeting CPU scheduling, memory, I/O,
+            and network subsystems in Linux
+      intent_queries:
+        - query: >-
+            Find peer reviewed papers proposing novel eBPF based tools for deep kernel observability and their
+            evaluation on real world workloads
+          query_cn: 查找提出基于eBPF的新型内核可观测性工具并评估其在真实工作负载上效果的同行评审论文
+          enabled: true
+          source: manual
+          note: ''
+        - query: >-
+            Identify recent academic contributions that improve Linux kernel scheduler fairness, latency, or scalability
+            for modern heterogeneous hardware
+          query_cn: 识别近期在异构硬件上提升Linux内核调度器公平性、延迟或可扩展性的学术贡献
+          enabled: true
+          source: manual
+          note: ''
+      updated_at: '2026-10-23T07:48:55.128Z'
 source_backends:
   arxiv:
     papers_table: arxiv_papers
