@@ -10,7 +10,7 @@ import requests
 统一的 LLM 客户端封装。
 
 提供商/模型命名规则：'provider/model'，provider 大小写不敏感，model 保留大小写与路径。
-当前运行链路仅支持 DeepSeek；本地 reranker 不走 LLM API。
+支持 DeepSeek 和阿里云百炼（DashScope）；本地 reranker 不走 LLM API。
 """
 
 # 单次实验级别的全局 token 统计（需由调用方在实验开始前手动 reset）
@@ -37,6 +37,7 @@ GLOBAL_TOKENS = {
 GLOBAL_TIME_SECONDS: float = 0.0
 
 DEFAULT_DEEPSEEK_BASE_URL = "https://api.deepseek.com"
+DEFAULT_DASHSCOPE_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
 
 def reset_global_tokens():
@@ -151,6 +152,10 @@ class LLMClient:
                 return 'deepseek'
             if model.startswith('deepseek-'):
                 return 'deepseek'
+            if 'dashscope' in url or 'aliyuncs' in url:
+                return 'dashscope'
+            if model.startswith('qwen'):
+                return 'dashscope'
         except Exception:
             pass
         return 'llm'
@@ -647,7 +652,7 @@ class LLMClient:
                 last_error = e
                 if self._is_authentication_error(e):
                     print(
-                        "LLM 鉴权失败：当前 API Key 无效或无权限，请在本地配置中更新 DeepSeek API Key 后重试。"
+                        "LLM 鉴权失败：当前 API Key 无效或无权限，请检查对应提供商的 API Key 配置。"
                     )
                     if hasattr(e, "response") and e.response is not None:
                         try:
@@ -781,14 +786,16 @@ class DeepSeekClient(LLMClient):
 
 def parse_provider_model(model_str: str) -> Tuple[str, str]:
     """
+
     解析模型字符串为 (provider, model)。
 
     规则：第一个 '/' 之前为提供商（大小写不敏感），之后的全部为模型名（大小写敏感，允许包含 '/').
     示例：
     - "deepseek/deepseek-v4-flash" -> ("deepseek", "deepseek-v4-flash")
+    - "dashscope/qwen-plus" -> ("dashscope", "qwen-plus")
     """
     if not isinstance(model_str, str) or '/' not in model_str:
-        raise ValueError("缺少模型提供商：请使用 'deepseek/model' 格式，例如 'deepseek/deepseek-v4-flash'")
+        raise ValueError("缺少模型提供商：请使用 'provider/model' 格式，例如 'dashscope/qwen-plus'")
     provider, model = model_str.split('/', 1)
     return provider.lower(), model
 
@@ -816,7 +823,14 @@ class ClientFactory:
         if provider == 'deepseek':
             base_url = base_url or DEFAULT_DEEPSEEK_BASE_URL
             return DeepSeekClient(api_key=api_key or os.getenv('DEEPSEEK_API_KEY', ''), model=model, base_url=base_url)
-        raise ValueError(f"当前仅支持 DeepSeek API，请使用 'deepseek/模型名'，当前 provider={provider}")
+        if provider == 'dashscope':
+            base_url = base_url or DEFAULT_DASHSCOPE_BASE_URL
+            return LLMClient(api_key=api_key or os.getenv('DASHSCOPE_API_KEY', ''), model=model, base_url=base_url)
+        raise ValueError(
+            f"不支持的模型提供商: {provider}。"
+            f"请使用 'deepseek/模型名' 或 'dashscope/模型名' 格式，"
+            f"例如 'deepseek/deepseek-v4-flash' 或 'dashscope/qwen-plus'"
+        )
 
     @staticmethod
     def from_config(_config: dict | None = None):

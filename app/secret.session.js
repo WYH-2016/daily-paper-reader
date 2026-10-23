@@ -331,6 +331,49 @@
           ];
     return sanitizeModelList(defaults, 99);
   };
+  const getDefaultDashScopeBaseUrl = () => {
+    const utils = getLLMUtils();
+    return normalizeBaseUrlForStorage(utils.DEFAULT_DASHSCOPE_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1');
+  };
+  const getDefaultDashScopeChatModels = () => {
+    const utils = getLLMUtils();
+    const defaults = Array.isArray(utils.DEFAULT_DASHSCOPE_CHAT_MODELS)
+      ? utils.DEFAULT_DASHSCOPE_CHAT_MODELS
+      : ['qwen-plus', 'qwen-turbo', 'qwen-max'];
+    return sanitizeModelList(defaults, 99);
+  };
+  const getProviderPreset = (providerKey) => {
+    const utils = getLLMUtils();
+    if (typeof utils.getDeepSeekPreset === 'function') {
+      return utils.getDeepSeekPreset(providerKey);
+    }
+    const presets = utils.DEEPSEEK_PRESETS || {};
+    const preset = presets[providerKey];
+    if (!preset) return null;
+    return { key: preset.key, label: preset.label, baseUrl: preset.baseUrl, models: [...preset.models] };
+  };
+  const resolveProviderBaseUrlForDraft = (providerKey) => {
+    if (providerKey === 'dashscope') return getDefaultDashScopeBaseUrl();
+    return getDefaultDeepSeekBaseUrl();
+  };
+  const resolveProviderChatModelsForDraft = (providerKey) => {
+    if (providerKey === 'dashscope') return getDefaultDashScopeChatModels();
+    return getDefaultDeepSeekChatModels();
+  };
+  const PROVIDER_MODEL_LABELS = {
+    'qwen-plus': 'Qwen Plus · 默认推荐',
+    'qwen-turbo': 'Qwen Turbo · 速度快',
+    'qwen-max': 'Qwen Max · 高性能',
+    'deepseek-v4-flash': 'DeepSeek V4 Flash · 默认推荐',
+    'deepseek-v4-pro': 'DeepSeek V4 Pro · 高性能模型',
+  };
+  const buildProviderModelOptions = (providerKey) => {
+    const models = resolveProviderChatModelsForDraft(providerKey);
+    return models.map((model) => ({
+      value: model,
+      label: PROVIDER_MODEL_LABELS[model] || model,
+    }));
+  };
   const RERANKER_PROFILES = [
     {
       value: 'public-zwwen-rerank',
@@ -498,7 +541,7 @@
       }
     } catch (e) {
       if (controller.signal.aborted) {
-        throw new Error('DeepSeek 连接测试超时，请稍后重试');
+        throw new Error('大模型连接测试超时，请稍后重试');
       }
       throw e;
     } finally {
@@ -1129,7 +1172,7 @@
       }, 100);
     };
 
-    // 初始化向导：第 2 步（仅保留 DeepSeek API）
+    // 初始化向导：第 2 步（大模型 API 配置，支持 DeepSeek / 阿里云百炼）
     const renderInitStep2 = (password) => {
       setStep2Modal(true);
       const currentSecret =
@@ -1147,16 +1190,18 @@
         currentSecret.github && currentSecret.github.token,
       );
       const initialApiKey = normalizeText(currentSummaryLLM.apiKey || '');
-      const initialDeepSeekModel =
-        normalizeText(currentSummaryLLM.model || '') || 'deepseek-v4-flash';
-      const deepseekSummaryModels = getDefaultDeepSeekChatModels().map((model) => ({
-        value: model,
-        label: model === 'deepseek-v4-flash'
-          ? 'DeepSeek V4 Flash · 默认推荐'
-          : model === 'deepseek-v4-pro'
-            ? 'DeepSeek V4 Pro · 高性能模型'
-            : model,
-      }));
+      const initialProviderKey = (() => {
+        const inferred = inferProviderType(currentSecret);
+        if (inferred === 'dashscope') return 'dashscope';
+        const baseUrl = normalizeBaseUrlForStorage(currentSummaryLLM.baseUrl || '');
+        if (/dashscope\.aliyuncs\.com/i.test(baseUrl)) return 'dashscope';
+        const model = normalizeText(currentSummaryLLM.model || '').toLowerCase();
+        if (model.startsWith('qwen')) return 'dashscope';
+        return 'deepseek';
+      })();
+      const initialProviderModel =
+        normalizeText(currentSummaryLLM.model || '') || (initialProviderKey === 'dashscope' ? 'qwen-plus' : 'deepseek-v4-flash');
+      const deepseekSummaryModels = buildProviderModelOptions(initialProviderKey);
 
       modal.innerHTML = `
         <h2 style="margin-top:0;">🛡️ 新配置指引 · 第二步</h2>
@@ -1185,16 +1230,19 @@
             </div>
 
             <div id="secret-setup-deepseek-section" class="secret-setup-step2-block">
-              <div class="secret-setup-step2-title">DeepSeek API（必填）</div>
+              <div class="secret-setup-step2-title">大模型 API（必填）</div>
+              <div style="margin-bottom:8px;">
+                <select id="secret-setup-provider-preset" class="secret-setup-select" style="width:100%; box-sizing:border-box;"></select>
+              </div>
               <p class="secret-setup-step2-note">
-                DeepSeek 用于 query enrich、LLM refine、总结与聊天；Reranker 可在右侧单独选择。
+                用于 query enrich、LLM refine、总结与聊天；Reranker 可在右侧单独选择。
               </p>
               <div class="secret-setup-input-row multi-actions">
                 <input
                   id="secret-setup-deepseek"
                   type="password"
                   autocomplete="off"
-                  placeholder="DeepSeek API Key，例如：sk-xxxx"
+                  placeholder="API Key，例如：sk-xxxx"
                   style="width:100%; box-sizing:border-box; padding:6px 8px; font-size:13px;"
                 />
                 <button id="secret-setup-deepseek-test" type="button" class="secret-gate-btn secondary">
@@ -1205,15 +1253,15 @@
                 </button>
               </div>
               <div id="secret-setup-deepseek-status" style="min-height:18px; font-size:12px; color:#999; margin-bottom:8px;">
-                将通过一次 <code>hello world</code> 请求检查 DeepSeek 配置可用性。
+                将通过一次 <code>hello world</code> 请求检查当前大模型配置可用性。
               </div>
 
               <div style="font-weight:500; margin-bottom:4px; display:flex; align-items:center; gap:4px;">
                 用于工作流总结 / 过滤的大模型
                 <span class="secret-model-tip">!
                   <span class="secret-model-tip-popup">
-                    当前只保留 DeepSeek 官方 API。<br/>
-                    Reranker API Key 与 DeepSeek 分开配置。
+                    支持 DeepSeek 官方 API 和阿里云百炼（DashScope）。<br/>
+                    Reranker API Key 与大模型分开配置。
                   </span>
                 </span>
               </div>
@@ -1300,6 +1348,8 @@
       const deepseekTestBtn = document.getElementById('secret-setup-deepseek-test');
       const deepseekStatusEl = document.getElementById('secret-setup-deepseek-status');
       const deepseekModelSelect = document.getElementById('secret-setup-deepseek-model-select');
+      const providerPresetSelect = document.getElementById('secret-setup-provider-preset');
+      let currentProviderKey = initialProviderKey || 'deepseek';
       const customApiKeyInput = document.getElementById('secret-setup-custom-api-key');
       const customBaseUrlInput = document.getElementById('secret-setup-custom-base-url');
       const customModel1Input = document.getElementById('secret-setup-custom-model-1');
@@ -1330,6 +1380,7 @@
         !deepseekTestBtn ||
         !deepseekStatusEl ||
         !deepseekModelSelect ||
+        !providerPresetSelect ||
         !customApiKeyInput ||
         !customBaseUrlInput ||
         !customModel1Input ||
@@ -1352,6 +1403,25 @@
         return;
       }
 
+      // Populate provider preset dropdown
+      const PRESETS_LIST = [
+        { key: 'deepseek', label: 'DeepSeek 官方' },
+        { key: 'dashscope', label: '阿里云百炼（DashScope）' },
+      ];
+      providerPresetSelect.innerHTML = PRESETS_LIST
+        .map((p) => `<option value="${p.key}">${p.label}</option>`)
+        .join('');
+      providerPresetSelect.value = currentProviderKey;
+
+      const syncProviderModelDropdown = () => {
+        const options = buildProviderModelOptions(currentProviderKey);
+        deepseekModelSelect.innerHTML = options
+          .map((item) => `<option value="${item.value}">${item.label}</option>`)
+          .join('');
+        const defaultModel = currentProviderKey === 'dashscope' ? 'qwen-plus' : 'deepseek-v4-flash';
+        deepseekModelSelect.value = defaultModel;
+      };
+
       deepseekModelSelect.innerHTML = deepseekSummaryModels
         .map((item) => `<option value="${item.value}">${item.label}</option>`)
         .join('');
@@ -1360,12 +1430,21 @@
       deepseekInput.value = initialApiKey;
 
       providerInputs.forEach((input) => {
-        input.checked = input.value === 'deepseek';
+        input.checked = input.value === currentProviderKey;
       });
-      deepseekModelSelect.value = initialDeepSeekModel || 'deepseek-v4-flash';
+      deepseekModelSelect.value = initialProviderModel;
       if (!deepseekModelSelect.value) {
-        deepseekModelSelect.value = 'deepseek-v4-flash';
+        deepseekModelSelect.value = currentProviderKey === 'dashscope' ? 'qwen-plus' : 'deepseek-v4-flash';
       }
+
+      providerPresetSelect.addEventListener('change', () => {
+        currentProviderKey = providerPresetSelect.value || 'deepseek';
+        syncProviderModelDropdown();
+        resetDeepSeekStatus();
+        deepseekInput.placeholder = currentProviderKey === 'dashscope'
+          ? '阿里云百炼 API Key，例如：sk-xxxx'
+          : 'DeepSeek API Key，例如：sk-xxxx';
+      });
       rerankerProfileSelect.innerHTML = RERANKER_PROFILES
         .map(
           (item) =>
@@ -1444,8 +1523,9 @@
 
       const resetDeepSeekStatus = () => {
         deepseekOk = false;
+        const label = currentProviderKey === 'dashscope' ? '阿里云百炼' : 'DeepSeek';
         deepseekStatusEl.innerHTML =
-          '将通过一次 <code>hello world</code> 请求检查 DeepSeek 配置可用性。';
+          `将通过一次 <code>hello world</code> 请求检查${label}配置可用性。`;
         deepseekStatusEl.style.color = '#999';
       };
       const resetCustomStatus = () => {
@@ -1498,19 +1578,21 @@
       const collectProviderDraft = () => {
         const apiKey = normalizeText(deepseekInput.value);
         const model = selectedDeepSeekModel();
+        const providerLabel = currentProviderKey === 'dashscope' ? '阿里云百炼' : 'DeepSeek';
         if (!apiKey) {
-          throw new Error('请先输入 DeepSeek API Key。');
+          throw new Error(`请先输入${providerLabel} API Key。`);
         }
         if (!model) {
           throw new Error('请选择用于工作流总结的大模型。');
         }
-        const reranker = buildRerankerDraft(apiKey, getDefaultDeepSeekBaseUrl());
+        const baseUrl = resolveProviderBaseUrlForDraft(currentProviderKey);
+        const reranker = buildRerankerDraft(apiKey, baseUrl);
         return {
-          providerType: 'deepseek',
+          providerType: currentProviderKey,
           summaryApiKey: apiKey,
-          summaryBaseUrl: getDefaultDeepSeekBaseUrl(),
+          summaryBaseUrl: baseUrl,
           summaryModel: model,
-          chatModels: getDefaultDeepSeekChatModels(),
+          chatModels: resolveProviderChatModelsForDraft(currentProviderKey),
           skipRerank: false,
           reranker: {
             ...reranker,
@@ -1521,13 +1603,14 @@
       const buildPingEntries = () => {
         const apiKey = normalizeText(deepseekInput.value);
         const model = selectedDeepSeekModel();
+        const providerLabel = currentProviderKey === 'dashscope' ? '阿里云百炼' : 'DeepSeek';
         if (!apiKey || !model) {
-          throw new Error('请先填写 DeepSeek API Key 并选择模型。');
+          throw new Error(`请先填写${providerLabel} API Key 并选择模型。`);
         }
         return [
           {
             apiKey,
-            baseUrl: getDefaultDeepSeekBaseUrl(),
+            baseUrl: resolveProviderBaseUrlForDraft(currentProviderKey),
             model,
           },
         ];
@@ -1546,7 +1629,8 @@
         githubStatusEl.style.color = '#666';
       }
       if (initialApiKey) {
-        deepseekStatusEl.textContent = '已载入当前 DeepSeek 配置；如更换 API Key 或模型，建议点击测试按钮。';
+        const loadedLabel = currentProviderKey === 'dashscope' ? '阿里云百炼' : 'DeepSeek';
+        deepseekStatusEl.textContent = `已载入当前${loadedLabel}配置；如更换 API Key 或模型，建议点击测试按钮。`;
         deepseekStatusEl.style.color = '#666';
       }
 
@@ -1629,7 +1713,7 @@
         input.addEventListener('change', () => {
           syncProviderSections();
           setErrorText(
-            'DeepSeek 密钥将加密写入 GitHub Secrets（用于 GitHub Actions），并同步生成本地 secret.private 备份。',
+            '大模型密钥将加密写入 GitHub Secrets（用于 GitHub Actions），并同步生成本地 secret.private 备份。',
             '#999',
           );
         });
@@ -1702,14 +1786,15 @@
 
       deepseekVerifyBtn.addEventListener('click', async () => {
         const key = normalizeText(deepseekInput.value);
+        const verifyLabel = currentProviderKey === 'dashscope' ? '阿里云百炼' : 'DeepSeek';
         if (!key) {
-          deepseekStatusEl.textContent = '请先输入 DeepSeek API Key。';
+          deepseekStatusEl.textContent = `请先输入${verifyLabel} API Key。`;
           deepseekStatusEl.style.color = '#c00';
           deepseekOk = false;
           return;
         }
         deepseekVerifyBtn.disabled = true;
-        deepseekStatusEl.textContent = '正在测试 DeepSeek 配置...';
+        deepseekStatusEl.textContent = `正在测试${verifyLabel}配置...`;
         deepseekStatusEl.style.color = '#666';
         try {
           const models = await pingChatModels(buildPingEntries(), deepseekStatusEl);
@@ -1759,8 +1844,9 @@
           return;
         }
 
-        if (providerDraft.providerType === 'deepseek' && !deepseekOk) {
-          setErrorText('请先点击“测试当前配置”，确认 DeepSeek 配置可用。', '#c00');
+        if ((providerDraft.providerType === 'deepseek' || providerDraft.providerType === 'dashscope') && !deepseekOk) {
+          const label = providerDraft.providerType === 'dashscope' ? '阿里云百炼' : 'DeepSeek';
+          setErrorText(`请先点击”测试当前配置”，确认${label}配置可用。`, '#c00');
           return;
         }
 

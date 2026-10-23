@@ -8,9 +8,15 @@
   }
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   const DEFAULT_DEEPSEEK_BASE_URL = 'https://api.deepseek.com';
+  const DEFAULT_DASHSCOPE_BASE_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
   const DEFAULT_DEEPSEEK_CHAT_MODELS = [
     'deepseek-v4-flash',
     'deepseek-v4-pro',
+  ];
+  const DEFAULT_DASHSCOPE_CHAT_MODELS = [
+    'qwen-plus',
+    'qwen-turbo',
+    'qwen-max',
   ];
   const DEEPSEEK_V4_MAX_OUTPUT_TOKENS = 393216;
   const DEEPSEEK_PRESETS = Object.freeze({
@@ -19,6 +25,12 @@
       label: 'DeepSeek 官方',
       baseUrl: 'https://api.deepseek.com',
       models: Object.freeze(['deepseek-v4-flash', 'deepseek-v4-pro']),
+    }),
+    dashscope: Object.freeze({
+      key: 'dashscope',
+      label: '阿里云百炼（DashScope）',
+      baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+      models: Object.freeze(['qwen-plus', 'qwen-turbo', 'qwen-max']),
     }),
   });
 
@@ -116,6 +128,9 @@
     if (explicit === 'deepseek') {
       return 'deepseek';
     }
+    if (explicit === 'dashscope') {
+      return 'dashscope';
+    }
     return 'deepseek';
   };
 
@@ -139,6 +154,12 @@
     }
     if (normalizedModel.startsWith('deepseek-')) {
       return 'deepseek';
+    }
+    if (/(^|\/\/)(dashscope\.aliyuncs\.com)(?:$|\/)/i.test(normalizedBaseUrl)) {
+      return 'dashscope';
+    }
+    if (normalizedModel.startsWith('qwen')) {
+      return 'dashscope';
     }
     return 'unsupported';
   };
@@ -199,6 +220,8 @@
   return {
     DEFAULT_DEEPSEEK_BASE_URL,
     DEFAULT_DEEPSEEK_CHAT_MODELS,
+    DEFAULT_DASHSCOPE_BASE_URL,
+    DEFAULT_DASHSCOPE_CHAT_MODELS,
     DEEPSEEK_PRESETS,
     normalizeText,
     normalizeBaseUrlForStorage,
