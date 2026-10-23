@@ -217,6 +217,56 @@ subscriptions:
           source: manual
           note: ''
       updated_at: '2026-10-23T07:48:55.128Z'
+    - tag: gpu-ai-infra
+      description: 请帮我查找 GPU 集群、异构计算加速、AI 训练与推理基础设施相关的论文。
+      enabled: true
+      paper_sources:
+        - arxiv
+      keywords:
+        - keyword: GPU cluster
+          keyword_cn: GPU集群
+          query: >-
+            distributed computing infrastructure composed of multiple graphics processing units for high-performance AI
+            workloads
+        - keyword: heterogeneous computing
+          keyword_cn: 异构计算
+          query: >-
+            computing systems that integrate different types of processing units such as GPUs, FPGAs, and ASICs to
+            accelerate diverse workloads
+        - keyword: AI training infrastructure
+          keyword_cn: AI训练基础设施
+          query: >-
+            hardware and software systems designed to support large-scale model training including compute, memory,
+            interconnect, and storage optimization
+        - keyword: AI inference infrastructure
+          keyword_cn: AI推理基础设施
+          query: >-
+            low-latency, high-throughput hardware and system stack optimized for deploying trained machine learning
+            models in production environments
+        - keyword: interconnect topology
+          keyword_cn: 互连拓扑
+          query: >-
+            network architecture connecting accelerators in AI clusters, such as NVLink, InfiniBand, or custom fabrics,
+            affecting communication efficiency
+        - keyword: model parallelism
+          keyword_cn: 模型并行
+          query: >-
+            technique to distribute a single neural network across multiple devices by partitioning layers or tensors to
+            fit memory and compute constraints
+      intent_queries:
+        - query: What are the key system design principles for scalable GPU clusters used in large language model training?
+          query_cn: 用于大规模语言模型训练的可扩展GPU集群的关键系统设计原则是什么？
+          enabled: true
+          source: manual
+          note: ''
+        - query: >-
+            How do heterogeneous accelerator architectures improve end to end AI training and inference latency and
+            throughput?
+          query_cn: 异构加速器架构如何提升端到端AI训练与推理的延迟和吞吐量？
+          enabled: true
+          source: manual
+          note: ''
+      updated_at: '2026-10-23T07:50:38.111Z'
 source_backends:
   arxiv:
     papers_table: arxiv_papers
