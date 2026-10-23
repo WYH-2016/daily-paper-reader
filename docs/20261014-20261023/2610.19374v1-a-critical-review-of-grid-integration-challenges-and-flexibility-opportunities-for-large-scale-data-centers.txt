@@ -1,0 +1,3039 @@
+Highlights
+A Critical Review of Grid Integration Challenges and Flexibility Opportunities
+for Large-Scale Data Centers
+Bibek Dhakal, Manohar Chamana, Biswambhar Gayen, Jatendar Kumar, S M
+Shams Rahman, Aaqib Peerzada, Ki Yeob Lee, Olatunji M. Adeyanju, Bhaskar
+Mitra, Soumya Kundu, Stephen Bayne
+• Critical review of data center grid integration from bulk planning to feeder
+assets
+• Peak megawatts and annual energy cannot characterize data center grid risk
+• Harmonic, transformer-aging, and cable-ampacity mechanisms are mapped
+to feeders
+• Load-model classes are matched to study questions, time scales, and data
+needs
+• Nine research priorities link measurement, model governance, and sustain-
+ability
+arXiv:2610.19374v1  [eess.SY]  14 Oct 2026
+
+
+A Critical Review of Grid Integration Challenges and
+Flexibility Opportunities for Large-Scale Data Centers
+Bibek Dhakala,∗, Manohar Chamanab, Biswambhar Gayenb, Jatendar Kumarc, S M
+Shams Rahmanc, Aaqib Peerzadae, Ki Yeob Leee, Olatunji M. Adeyanjud, Bhaskar
+Mitrae, Soumya Kundue, Stephen Baynec
+aWind Science and Engineering Program, National Wind Institute, Texas Tech
+University, Lubbock, 79409, TX, USA
+bRenewable Energy Program, National Wind Institute, Texas Tech
+University, Lubbock, 79409, TX, USA
+cDepartment of Electrical and Computer Engineering, Texas Tech
+University, Lubbock, 79409, TX, USA
+dNational Wind Institute, Texas Tech University, Lubbock, 79409, TX, USA
+eElectrical Infrastructure and Buildings Division, Pacific Northwest National
+Laboratory, Richland, 99352, WA, USA
+Abstract
+The rapid proliferation of cloud computing and artificial intelligence workloads
+is fundamentally reshaping the magnitude, spatial concentration, and electrical
+characteristics of data center power demand. Data centers differ from conven-
+tional commercial loads because they combine high rack densities, converter-
+dominated interfaces, thermally coupled cooling, uninterruptible power supplies,
+programmable workloads, and increasingly complex behind-the-meter generation
+and storage within a single facility. This review examines their grid integration from
+utility and sustainable-energy perspectives across resource planning, large-load
+interconnection, distribution feeders, market operation, real-time dynamics, power
+quality, and asset management. Particular attention is given to distribution-level
+issues that receive limited treatment in broader energy reviews: bidirectional opera-
+tion on renewable-rich feeders, harmonic propagation and resonance, ride-through
+and reconnection, transformer derating, cable ampacity, neutral-conductor heating,
+protection, and measurement. Static, composite, physics-based dynamic, calibrated,
+impedance, electromagnetic transient, and hybrid load models are compared ac-
+∗Corresponding author.
+Email address: bibedhak@ttu.edu (Bibek Dhakal)
+Preprint submitted to Renewable and Sustainable Energy Reviews
+September 24, 2026
+
+
+cording to study purpose and data requirements, and utility coordination platforms,
+uninterruptible power supply and battery control, workload flexibility, renewable
+co-location, cogeneration, fuel cells, thermal storage, and clean firm supply are
+assessed. The central finding is that requested peak demand and annual energy
+matching alone cannot establish reliable or sustainable integration. Credible assess-
+ment must consider hourly and locational supply, network deliverability, marginal
+emissions, lifecycle and water impacts, backup obligations, rebound, asset health,
+and verified operating capability. Nine research priorities are identified, including
+measurement-driven models, distribution-level performance requirements, updat-
+able model governance, international comparison, and transparent sustainability
+counterfactuals.
+Keywords: Data centers, Large-load interconnection, Distribution systems,
+Dynamic load modeling, Power quality, Asset degradation, Demand flexibility
+Word count: approximately 7,300 words (abstract, main text, and headings;
+excluding title, author details, keywords, highlights, this list of abbreviations, table
+and figure content, declarations, and references).
+List of abbreviations
+ADMS: advanced distribution management
+system
+AI: artificial intelligence
+BESS: battery energy storage system
+CEMS: campus energy management system
+CHP: combined heat and power
+DER: distributed energy resource
+DERMS: distributed energy resource
+management system
+EHV: extra-high voltage
+EMS: energy management system
+EMT: electromagnetic transient
+FERC: Federal Energy Regulatory Commission
+H-OPF: harmonic-constrained optimal power
+flow
+HV: high voltage
+ISO: independent system operator
+IT: information technology
+LV: low voltage
+MV: medium voltage
+NERC: North American Electric Reliability
+Corporation
+OPF: optimal power flow
+PCC: point of common coupling
+PDU: power distribution unit
+PFC: power-factor correction
+PMU: phasor measurement unit
+POI: point of interconnection
+PUE: power usage effectiveness
+PV: photovoltaic
+QSTS: quasi-static time series
+RMS: root mean square
+RTO: regional transmission organization
+SCADA: supervisory control and data
+acquisition
+THD: total harmonic distortion
+UPS: uninterruptible power supply
+VFD: variable-frequency drive
+ZIP: constant impedance, constant current,
+constant power (load model)
+2
+
+
+1. Introduction
+Data centers support cloud services, enterprise computing, artificial intelligence
+(AI), high-performance computing, and digital communication. Their electricity
+use has become a planning and operating concern for power systems rather than
+only an internal efficiency issue. Multiple assessments project substantial growth,
+but their ranges differ because they depend on workload adoption, hardware and
+cooling efficiency, utilization, project realization, and siting assumptions [1–5].
+Earlier estimates provide useful historical baselines but should not be extrapolated
+directly to the current AI-driven buildout [6, 7]. Recent North American Elec-
+tric Reliability Corporation (NERC) reliability assessments and Federal Energy
+Regulatory Commission (FERC) staff market reports treat large computational
+loads as material considerations in resource adequacy, transmission planning, and
+electricity markets [4, 8].
+Annual energy use and requested peak demand do not, by themselves, describe
+grid risk. Two facilities with the same peak megawatt rating may have materially
+different effects. One may have controlled ramps, verified ride-through, timely
+telemetry, and coordinated storage; another may have voltage-sensitive protection,
+uncertain converter behavior, or a weak point of interconnection (POI). Data
+centers are better represented as concentrated, converter-interfaced, thermally
+coupled loads with high service-continuity requirements and partly programmable
+demand than as a single static demand block [9–11].
+The literature has developed along several partly disconnected lines. Facility re-
+views address cooling, power usage effectiveness (PUE), internal energy modeling,
+and integrated energy systems [12–14]. Flexibility and storage reviews examine
+workload scheduling, uninterruptible power supply (UPS) systems, batteries, and
+ancillary services [15–17]. Power-system surveys [18–20] and regional forecasts
+[21] examine AI demand, planning, markets, and stability. Less synthesis connects
+these topics to feeder behavior, measurement-driven load models, power quality,
+equipment aging, and implementation of emerging reliability requirements.
+The scope is the utility interface of large computational loads across grid layers
+and time scales. This interface is not confined to the transmission system. Although
+the largest hyperscale campuses typically connect at transmission voltage through
+dedicated substations, a substantial share of near-term growth is expected to be
+served from shared, mixed-use distribution systems, and distribution utilities are
+consequently receiving a growing volume of large-load interconnection requests
+that range from multi-megawatt edge facilities to campus expansions of tens of
+megawatts [22, 23]. Studies of data centers report effects on feeder reliability
+3
+
+
+[24], phase balance [25], voltage control [26], and reconfiguration and hosting
+capacity [27]. Adjacent work on power-electronic loading provides the transferable
+transformer and asset mechanisms needed to interpret these local effects [28, 29].
+This review develops an integrated grid-layer and time-scale taxonomy that
+links facility characteristics to planning, interconnection, distribution operation,
+markets, dynamics, power quality, and asset aging. It compares static, composite,
+physics-based dynamic, calibrated, converter, electromagnetic transient (EMT),
+and hybrid load models. It also connects harmonic-rich demand with transformer
+derating [28, 30], cable ampacity [31], neutral-current accumulation [32], and
+asset management using representative transformer, cable, and computer-load
+evidence. NERC [23, 33] and FERC [8, 34] developments are interpreted as
+a North American implementation case for reliability practice, computational-
+load modeling, interconnection, and market design. Mitigation pathways are
+organized around distributed energy resource management systems (DERMS)
+and advanced distribution management systems (ADMS) [35], UPS and storage
+control [36, 37], workload scheduling and demand-side measures [38], power-
+quality design, asset monitoring, and supply co-location. Figures 1 and 2 define
+the organizing framework for the remaining sections.
+2. Review methodology, scope, and positioning
+2.1. Scope, source selection, and evidence grading
+This article is a problem-oriented critical review of the grid interface of data
+centers and other large computational loads. The analysis spans facility operation,
+resource and transmission planning, interconnection, distribution-system perfor-
+mance, market participation, real-time dynamics, power quality, asset degradation,
+and sustainable supply. The synthesis asks how data centers differ from conven-
+tional large loads, how those differences propagate across grid layers and time
+scales, which measurements and model classes are appropriate for each study ob-
+jective, and which supply, control, and flexibility strategies can mitigate reliability
+and sustainability risks.
+Sources were assembled in three groups. Peer-reviewed journal and conference
+papers were prioritized for technical mechanisms, model development, experi-
+ments, and quantified results. Standards, national-laboratory, utility, and policy
+reports, and official NERC and FERC records were used to describe current en-
+gineering practice, reliability concerns, and regulatory implementation. Preprints
+were included only where they provide the earliest available evidence on rapidly de-
+veloping topics such as ride-through, reconnection, resonance, and calibrated data
+4
+
+
+UTILITY / GRID DOMAIN
+CUSTOMER / CAMPUS DOMAIN
+1
+Bulk
+generation
+conventional
+and
+renewable
+plants
+2
+Transmission
+network
+HV/EHV;
+ISO/RTO or
+utility operated
+3
+Step-down
+substation
+EHV/HV or
+HV/MV
+transformers,
+switchgear,
+protection
+4
+Distribution
+feeder
+MV primary
+feeder or HV
+subtransmission
+line; shared or
+dedicated
+5
+POI
+metering,
+protection,
+and telemetry
+hand-off
+transmission-level POI via dedicated HV/MV substation (hyperscale campuses)
+6. Data center campus electrical system
+6c. Power
+conversion /
+UPS
+rectifier/inverter,
+PDUs; in series with
+IT load
+6a. IT load
+servers, accelerators,
+network; pulsed
+compute demand
+6b. Cooling and
+thermal systems
+chillers, pumps, fans,
+VFDs; thermal
+storage
+6d. Auxiliary
+loads
+lighting, controls,
+security, fire
+protection
+6e. Onsite
+renewables
+PV and wind
+generation
+6f. Battery
+storage (BESS)
+charge and discharge
+6g. Backup,
+CHP, and fuel
+cells
+standby gensets via
+transfer switch; CHP
+and fuel cells
+grid-parallel
+campus main bus
+(MV/LV switchgear)
+A. ISO/RTO and
+transmission utility
+operation
+System and resource planning
+Reliability operations and
+reserves
+Market clearing and dispatch
+Large-load interconnection
+oversight
+B. Distribution utility:
+DERMS/ADMS coordination
+Distribution management and switching
+DER and demand-response
+coordination
+Volt/var optimization, hosting capacity
+Fault and outage management
+C. Campus energy
+management
+system (CEMS)
+Energy scheduling and
+optimization
+DER and storage
+dispatch
+Demand-response
+participation
+Power-quality and limit
+management
+D. Workload and
+facility control
+IT workload
+orchestration and
+power capping
+Cooling control
+UPS and battery
+management
+Real-time control
+setpoints
+direct ISO/RTO–campus exchange (transmission-connected or market-participating campuses)
+POI boundary
+Key grid-impact mechanisms arising from campus–utility interaction
+I. Interconnection
+and capacity
+Queue, studies,
+staged energization,
+and hosting capacity
+II. Load variability
+and ramping
+Workload pulses
+and ramps stress
+operations and
+reserves
+III. Voltage and
+reactive-power
+effects
+Voltage deviations,
+regulator duty, and
+reactive-power flows
+IV. Power quality
+and harmonics
+Harmonic distortion,
+resonance, flicker,
+and unbalance
+V. Protection and
+disturbance
+response
+Fault levels, relay
+coordination,
+ride-through,
+reconnection
+VI. Asset loading
+and thermal
+aging
+Transformer, cable,
+and neutral heating;
+insulation life
+consumption
+VII. Flexibility and
+coordination
+opportunities
+Demand response,
+storage, and
+controls provide grid
+support
+PHYSICAL POWER PATHWAY
+CONTROL AND
+COORDINATION
+GRID-IMPACT
+MECHANISMS
+Power flow (normal supply direction)
+Bidirectional power flow (export where permitted; BESS)
+Telemetry, control, and data exchange
+Campus main bus
+POI boundary
+Utility / grid
+Customer / campus
+Interface (POI)
+Grid-impact mechanisms
+Figure 1: Grid-layer and control-domain taxonomy for data center integration. Solid arrows denote
+physical power exchange, dashed arrows denote telemetry and control, and the vertical boundary
+marks the point of interconnection (POI). Connection voltage, ownership, and the location of
+co-located resources vary with facility scale and local topology. The seven grid-impact mechanism
+groups (interconnection and capacity; load variability and ramping; voltage and reactive-power
+effects; power quality and harmonics; protection and disturbance response; asset loading and
+thermal aging; and flexibility and coordination opportunities) arise from the interaction between
+the campus and the utility network [22, 23, 39].
+5
+
+
+center models; they are identified as preprints in the reference list and are treated as
+emerging rather than established evidence. Direct data-center measurements and
+models were distinguished from adjacent-mechanism studies of nonlinear computer
+loads, converters, transformers, cables, protection, and renewable-rich feeders, and
+the latter were retained only where the physical mechanism is transferable and their
+limitations could be stated explicitly. The resulting evidence base comprises 134
+sources published between 1986 and 2026. Publication status and active regulatory
+proceedings were checked at the time of writing; because these records can change,
+their status is reported wherever it affects interpretation.
+The review does not assume that one metric or one model can characterize
+every facility. Annual energy, peak demand, PUE, flexibility, harmonic distortion,
+and interconnection capacity answer different questions. The analytical frame-
+work therefore relates each claimed impact to the relevant grid layer, time scale,
+data requirement, model fidelity, and implementation constraint, and the evidence
+grading introduced here is carried through Tables 4, 5, and 8, which separate
+established mechanisms from emerging evidence and modeled potential from veri-
+fied operating capability. Making these distinctions explicit is necessary because
+much of the data center grid literature is recent, partly not yet peer reviewed, and
+changing quickly; without it a reader cannot judge which conclusions rest on field
+measurement, which on simulation, and which on regulatory text.
+2.2. Positioning relative to existing reviews
+Prior reviews fall into four overlapping groups: energy-estimation studies [2, 3],
+facility reviews [12–14], flexibility and storage reviews [15–17], and broader AI
+and grid surveys [18, 19, 40]. The power-system surveys establish the importance
+of demand growth, planning, markets, and stability, but a less developed connection
+remains between those topics and feeder operation, distribution asset degradation,
+measurement and calibration of computational-load models, power quality, and
+implementation of reliability requirements [20]. This review therefore uses the
+utility interface as its organizing unit, extending from large-load studies and hosting
+capacity to ride-through, reconnection, converter dynamics, harmonic propagation,
+equipment derating, and asset aging.
+Official reliability and regulatory records provide implementation context
+rather than substitutes for peer-reviewed technical studies. NERC records ad-
+dress risk characterization, practice gaps, interconnection studies, commissioning,
+and computational-load modeling [23, 33, 41], and FERC proceedings address
+transmission interconnection, co-location, forecasting, and market implications
+6
+
+
+Table 1: Positioning of the present review relative to existing literature streams
+Literature stream
+Representative coverage
+Contribution developed
+here
+Key
+citations
+Energy estimates and
+growth
+Historical and global data
+center electricity
+estimates and uncertainty
+in projections.
+Relates demand growth to
+grid-layer impacts,
+interconnection
+requirements, and model
+needs.
+[1–3, 5, 7]
+Facility energy and
+cooling
+Cooling technologies,
+PUE, energy-consumption
+models, waste heat, and
+internal reliability.
+Connects internal load
+composition and controls
+with grid-facing
+dynamics, power quality,
+and distribution assets.
+[12–
+14, 44, 45]
+Storage and flexibility
+UPS systems, batteries,
+hybrid storage, ancillary
+services, workload
+shifting, and flexible
+computing.
+Separates modeled
+flexibility from verified
+capability and places it
+alongside interconnection,
+standards, and asset
+measures.
+[15–17]
+Broad AI and data center
+grid reviews
+AI infrastructure, demand
+stages, planning, markets,
+stability, and broad
+solution categories.
+Adds a
+distribution-centered
+treatment of power
+quality, asset degradation,
+model governance, and
+implementation
+requirements.
+[18–20]
+Large-load reliability and
+regulation
+Emerging large-load risks,
+modeling gaps,
+interconnection,
+commissioning, and
+federal proceedings.
+Integrates official
+reliability and regulatory
+developments with
+peer-reviewed technical
+mechanisms and
+jurisdictional limits.
+[8, 23, 33,
+34, 41]
+[34, 42, 43]. These materials are treated as a North American case, not as a univer-
+sal regulatory framework. Table 1 positions the present contribution relative to the
+major review streams.
+7
+
+
+3. Data center operations and load characteristics
+3.1. Load mix and facility coupling
+Facility demand comprises information technology (IT) equipment, cooling,
+power-conversion stages, UPS systems, backup-generation interfaces, lighting,
+controls, and auxiliary services. Their shares vary with server utilization, cooling
+technology, rack density, climate, and electrical architecture [12–14]. A universal
+load-mix pie chart is therefore misleading. AI-oriented designs tend to increase
+rack density, accelerator concentration, and the coupling between IT loading and
+cooling demand, but the magnitude remains facility-specific [18, 46].
+At the facility boundary, a compact accounting identity is
+PDC(t) = PIT(t) + Pcool(t) + Ploss(t) + Paux(t),
+(1)
+where PDC is facility demand before explicit dispatch of on-site generation or
+storage, PIT is productive computing power, Pcool is thermal-management demand,
+Ploss includes transformer, UPS, power-distribution-unit, and conversion losses,
+and Paux includes controls, security, fire protection, lighting, and other balance-of-
+plant demand [13, 47, 48]. Eq. (1) is an accounting identity, not a dynamic load
+model. Grid exchange requires separate signed terms for generation, charging, and
+discharging.
+Component shares are case-dependent. A dynamic model of a 10 MW facility
+reports a prior estimate of approximately 60% IT energy use and 30% cooling
+energy use. At the study’s selected peak operating point, its simulated server-
+room and heating, ventilation, and air-conditioning components account for about
+85% and 15% of facility power, respectively [48]. The contrast shows why fixed
+pie charts can misstate both energy use and grid-facing dynamics. Illustrative
+next-generation AI electrical-architecture roadmaps likewise describe technology-
+specific scenarios rather than fleet-wide averages [46].
+Power usage effectiveness remains a useful energy-efficiency metric, but it is
+not a complete grid-impact metric. It is widely defined as the ratio of total facility
+power to IT equipment power [13, 14],
+PUE = Pfacility
+PIT
+,
+(2)
+where Pfacility is total facility power and PIT is IT equipment power. A lower
+PUE indicates less non-IT overhead, but says nothing directly about ramp rate,
+voltage sensitivity, harmonic spectrum, disturbance ride-through, load rejection, or
+8
+
+
+reconnection. Facilities with similar annual electricity use may therefore impose
+different grid requirements because their converter topology, UPS mode, workload
+scheduling, cooling control, and interconnection strength differ [18, 47, 49].
+Internal efficiency and grid compatibility are distinct attributes. A low-PUE
+facility may still require substantial network reinforcement or dynamic study if
+it connects at a weak location, changes power rapidly, or has uncertain distur-
+bance response. Conversely, a less efficient site may present a more predictable
+interface. Utility assessment should pair energy metrics with maximum and mini-
+mum demand, coincidence, ramping, active and reactive response, power quality,
+ride-through, reconnection, and controllable flexibility [23, 33, 41].
+3.2. Workload stages and electrical variability
+Computational demand is shaped by workload stage. Model preparation,
+training, fine-tuning, and inference differ in duration, accelerator utilization, syn-
+chronization, storage activity, and tolerance for delay. Training can sustain high
+utilization yet exhibit periodic communication or checkpointing transients; infer-
+ence follows user demand more closely and can be bursty; data preparation and
+fine-tuning often occupy intermediate regimes [18, 50, 51]. These patterns are
+not universal because model architecture, cluster size, scheduling, and hardware
+change the electrical profile.
+Hardware and software controls mediate the conversion from workload to
+electrical demand. Power capping, accelerator scheduling, workload shaping,
+cooling control, and rack-level storage can modify ramps and peaks [18, 51, 52].
+Such controls create useful flexibility, but also make the load partly dependent on
+internal policies that may be invisible to the utility unless models and telemetry are
+exchanged.
+For power-system analysis, flexibility is best separated into deferrable energy,
+fast power modulation, and interruptible service. Deferrable energy moves nonur-
+gent computation over hours or days and is bounded by deadlines and workload
+placement [15, 53, 54]. Fast modulation changes power over seconds or minutes
+without necessarily reducing total energy; storage-compute coordination and tie-
+line smoothing studies illustrate this distinct service [52, 55, 56]. Interruptible or
+flexible-interconnection service permits curtailment under specified conditions and
+therefore requires explicit baselines, notice, recovery, and nonperformance terms
+[34, 57].
+9
+
+
+3.3. Power electronics, UPS systems, cooling, and internal architecture
+At the utility interface, a data center appears through transformers, switchgear,
+rectifiers, power-factor-correction circuits, UPS systems, power distribution units,
+server power supplies, cooling drives, and sometimes on-site storage or generation.
+This chain differs from conventional motor-dominated demand because active and
+reactive response depend on converter controls, current limits, protection, and
+operating mode [10, 47, 58]. Depending on those controls, aggregate demand
+can exhibit near-constant-power behavior over part of the voltage range and then
+change sharply when current limits, transfer logic, or protection thresholds are
+reached [10, 58].
+UPS systems preserve critical computing service during supply disturbances
+and may also provide grid support when controls, battery state, and service obli-
+gations allow. Simulation, controller-hardware-in-the-loop, and demonstration
+studies report potential for frequency response [52, 59], dynamic active-power
+support and smoothing [36], line-interactive operation [37], and flexible-grid-asset
+operation on a national-laboratory test platform [60]. These results establish tech-
+nical potential rather than universal availability; backup reserve, duration, cycling,
+and customer reliability remain binding constraints.
+Cooling usually changes more slowly than compute demand because of ther-
+mal inertia, while pumps, fans, chillers, and variable-speed drives add motor and
+converter dynamics. Thermal storage and supervisory control can decouple part of
+the cooling demand from short IT-load variations [14, 45], but cooling equipment
+may also add harmonics and weather-sensitive peaks [61, 62]. Cooling dynamics
+belong in the load model when the study concerns feeder loading, electromechani-
+cal response, or power quality [12, 48]. Table 2 relates facility characteristics to
+grid mechanisms.
+4. Grid impacts across layers and time scales
+4.1. Transmission planning and large-load interconnection
+At bulk-system scale, difficulty arises from the size and pace of new demand.
+Large-load records and utility assessments describe individual requests ranging
+from tens to hundreds of megawatts, with some campus proposals larger still
+[4, 23, 70]. Serving such projects may require staged energization, transmission
+upgrades, generation procurement, and reliability studies [39, 57, 71]. When
+several requests cluster geographically, uncertain project maturity and overlapping
+in-service dates can distort forecasts and complicate sequencing [4, 39, 57].
+10
+
+
+Table 2: Data center load characteristics and grid-impact mechanisms. The time scales indicate
+dominant planning horizons or study resolutions and are not exclusive bounds.
+Characteristic
+Grid-relevant mechanism
+Affected layer and time scale
+Key sources
+High power
+density
+Large point load can exceed
+local transformer, feeder,
+substation, or transmission
+hosting capability.
+Transmission, subtransmission,
+distribution; years to months.
+[1, 4, 18, 22,
+39]
+Power-
+electronic
+interface
+Nonlinear current, fast control
+response, harmonic emission,
+resonance interactions, and
+converter-dependent
+disturbance response.
+Point of interconnection,
+feeder, protection; sub-cycle to
+seconds.
+[58, 63–65]
+Workload-
+induced
+variability
+Training, inference,
+synchronization, queueing, and
+power capping can create
+ramps or pulses not captured
+by annual energy forecasts.
+Operations, reserves,
+dynamics; days to seconds.
+[18, 50–
+52, 66]
+UPS and
+storage
+Ride-through and power
+smoothing are possible, but
+transfer, trip, and reconnection
+behavior must be coordinated.
+Point of interconnection and
+system dynamics; seconds to
+minutes.
+[52, 59, 67,
+68]
+Cooling
+coupling
+Thermal load follows
+computing demand and may
+add motor dynamics,
+harmonic-producing drives,
+and weather-sensitive peak
+demand.
+Facility, feeder, power quality;
+minutes to hours.
+[14, 44, 45,
+61, 62]
+Geographic
+clustering
+Large correlated loads can
+concentrate resource adequacy,
+transmission, water, and
+distribution constraints.
+Regional planning; years to
+months.
+[1, 4, 8, 18]
+A credible interconnection study needs more than the requested peak megawatts.
+Emerging large-load guidance calls for ramp rates, voltage sensitivity, ride-through,
+power quality, disturbance response, internal segmentation, backup generation, and
+the interaction between facility protection and the external network [23, 33, 72].
+Equipment-level studies reach the same conclusion from a different direction:
+UPS topology and converter controls [9], input impedance [65], and facility-level
+dynamic behavior [73, 74] shape grid response.
+Cost allocation and tariff design determine who bears the consequences of
+11
+
+
+Study horizon /
+resolution
+Dominant planning or
+operational phenomena
+Suitable model class (letters
+refer to Fig. 3)
+Typical data and
+measurement needs
+1. Decades to
+years
+Expansion planning, resource adequacy,
+siting, and infrastructure timing under
+uncertain project realization
+Capacity-expansion and
+resource-adequacy models with demand
+scenarios and static aggregate load
+assumptions (A)
+Annual and seasonal demand
+projections, project pipeline and
+maturity, in-service dates, planning
+assumptions
+2. Years to
+months
+Interconnection studies, reinforcement
+and hosting-capacity planning, staged
+energization, tariff design, asset planning
+Steady-state power flow and
+hosting-capacity analysis with static loads
+(A) and facility models for large loads (C);
+composite, calibrated, impedance, or
+EMT studies where screening requires
+them (B, D, E, F)
+Feeder and substation loading
+history, queue data, asset ratings,
+short-circuit strength, measured or
+bounded harmonic spectra
+3. Day-ahead to
+hours
+Scheduling and dispatch, workload
+shifting, storage scheduling, renewable
+variability, market and tariff response
+Operational optimization and hourly
+time-series simulation with calibrated or
+data-driven aggregate models (D),
+supported by static network and facility
+energy-state models (A, C)
+Hourly demand, renewable
+forecasts, storage state of charge,
+workload deadlines, market and
+tariff data
+4. Minutes
+Ramping, voltage regulation, control
+coordination; cooling and asset thermal
+response (minutes to hours)
+QSTS power flow with voltage-dependent
+static loads (A) and facility models of
+UPS, storage, and cooling ramps (C);
+extended-term dynamics with composite
+or calibrated models where tap-changer
+or recovery dynamics matter (B, D)
+SCADA and feeder telemetry,
+minute-level active and reactive
+power, voltage, regulator and
+capacitor states
+5. Seconds to
+cycles
+Electromechanical dynamics,
+ride-through and reconnection, fast
+control response, protection-interaction
+screening
+Phasor-domain (RMS) dynamic
+simulation with facility-specific models
+(C), supported by composite and
+calibrated models (B, D); EMT or hybrid
+checks where converter limits, low
+short-circuit ratio, or protection timing
+matter (F, G)
+PMU or fast telemetry, controller
+and protection settings, UPS
+transfer states, disturbance records
+6. Cycles to
+microseconds
+(waveform and
+frequency
+domain)
+Converter switching, harmonic emission
+and resonance, EMT phenomena,
+current limiting, relay behavior under fast
+events
+Impedance and converter models (E) and
+EMT models (F); hybrid multi-rate models
+(G) where the surrounding network is
+large
+Waveform capture, harmonic
+spectra, impedance scans, relay
+and converter parameters, filter
+data
+Slowest
+(strategic)
+increasing time resolution and electrical detail
+Fastest
+(physics-rich)
+Thermal duty and insulation aging are driven at minute-to-hour resolution (row 4) but are assessed over years (rows 1 and 2); harmonic and resonance
+effects require waveform-resolution measurement (row 6), but compliance is assessed from aggregated values over days to weeks.
+Figure 2: Alignment of planning horizons, operating phenomena, and model and data requirements
+for data center grid studies. The rows denote a decision horizon or required study resolution rather
+than the duration of every physical effect. Harmonic and resonance phenomena can persist, but
+their assessment requires waveform or frequency-domain information [18, 50, 69].
+a large-load connection. Network and resource upgrades may be assigned to
+the customer, the utility, or broader ratepayers depending on jurisdiction and
+service class. Policy analyses emphasize project-maturity tests, cost causation,
+and protection against speculative or unrealized requests [57, 75, 76]. FERC
+proceedings add federal questions concerning nondiscriminatory transmission
+access, co-location, forecasting, tariff clarity, and market treatment [34, 42, 43].
+4.2. Distribution-system and point of interconnection impacts
+The distribution system is a growing, not a marginal, part of the large-load
+problem. Many hyperscale campuses connect at transmission voltage through
+12
+
+
+dedicated substations, and a common assumption is that distribution utilities are
+therefore bystanders. The opposite is increasingly the case: because transmission
+headroom is limited and existing substations can often be expanded, a substantial
+share of near-term growth is expected to receive service from shared, mixed-use
+distribution systems, and distribution utilities are seeing a marked increase in
+interconnection requests from data centers and other large loads. A 2026 national
+assessment estimates that roughly 9–10 GW of the current United States project
+pipeline could feasibly interconnect at distribution voltages, that requests now
+range from edge facilities above 2 MW to campuses exceeding 100 MW, and
+that meeting this demand could require on the order of 3000–4000 new feeders
+and several thousand new substation transformers in the 13–34.5 kV classes [22].
+Large campuses may therefore connect through transmission, subtransmission, or
+dedicated distribution-like facilities at a bulk-system interface, while smaller and
+midsize sites, campus distribution networks, and downstream auxiliaries remain
+within utility distribution scope [22, 23]. Distribution studies show that data center
+demand and flexibility may alter feeder reliability [24], phase balance [25], voltage
+profiles [26], and post-fault reconfiguration and hosting capacity [27].
+Distribution effects require a different evidence base from transmission plan-
+ning. Assets are more numerous, observability is often lower, and equipment
+is electrically closer to other customers. Direct hyperscale measurements at dis-
+tribution points of interconnection remain scarce. Transformer studies establish
+harmonic-heating and derating mechanisms [28, 30, 77]; cable studies establish
+frequency-dependent ampacity and thermal constraints [31, 78, 79]; and computer-
+load studies establish triplen-harmonic and aggregation effects in neutral conductors
+[32, 80, 81]. These sources establish physical pathways, not universal magnitudes
+for every facility. Static planning models may also miss converter controls and
+disturbance behavior [20, 82].
+Distributed energy resources (DERs) change the feeder problem from one-
+way loading to time-varying net exchange. High photovoltaic penetration can
+cause voltage rise, variability, and reverse power flow that require coordinated
+voltage control [83]. Where export is permitted, a campus with photovoltaic or
+wind generation and storage may import heavily during compute peaks and export
+during maintenance, low utilization, or high renewable output [14, 84]. Import
+and export envelopes depend on coincidence, storage state, export limits, feeder
+impedance, and utility and behind-the-meter controls. Co-location therefore still
+requires analysis of reverse flow, regulator duty, contingencies, and, where relevant,
+harmonic and protection conditions.
+Hierarchical voltage control, active-network management, and DERMS or
+13
+
+
+ADMS coordination can increase usable hosting capacity or enforce export limits,
+although results remain feeder- and scenario-specific [35, 83, 85]. Data center
+demand may absorb local renewable production in some hours and worsen peak
+loading in others. Joint planning should consider facility demand, renewable
+output, storage, voltage control, and network reinforcement together rather than
+evaluate load and supply portfolios independently [14, 25, 84]. Effective operation
+also depends on observability, communications, model fidelity, and enforceable
+operating rules [86, 87].
+4.3. Markets, tariffs, and operational flexibility
+Data center demand affects wholesale and retail markets through energy use,
+coincident peaks, capacity obligations, congestion, and reserve requirements. Work-
+load scheduling and geographic shifting can reduce cost or congestion under spec-
+ified assumptions [15, 53, 54]. Storage-compute coordination can reduce peaks
+or tie-line variability [55, 56, 59]. Emissions outcomes remain conditional on the
+marginal generation mix and the time and destination of shifted demand [88, 89].
+Service-level agreements, latency, workload value, cooling, and recovery constrain
+the available response.
+Market design should ask which service a facility can provide, with what
+notice, duration, verification, and opportunity cost. The relevant products include
+load shifting, power capping, storage response, interruptible service, and flexible
+interconnection, not a binary classification of the site as flexible or inflexible.
+Technical studies [54, 90] and policy records [34, 43, 57] increasingly pair these
+products with improved forecasting, explicit tariff provisions, and performance
+obligations.
+Aggregation creates both value and common-mode risk. A common operator
+can coordinate geographically dispersed facilities, but shared scheduling, firmware,
+or protection logic may also synchronize recovery, disconnection, or reconnection.
+These outcomes are plausible coordination risks rather than universally observed be-
+havior. Programs should specify telemetry, recovery ramps, rebound management,
+and performance verification [11, 15, 56].
+4.4. Real-time dynamics, ride-through, and stability
+On sub-second to minute time scales, data centers interact with voltage and
+frequency through converter controls, UPS transfers, protection, load tripping, and
+workload modulation. Facility-level dynamic models represent aggregate UPS,
+cooling, converter, and workload behavior [10, 48, 73]. Impedance and resonance
+studies address frequency-dependent converter-network interactions [64, 91, 92].
+14
+
+
+EMT and ride-through models are needed when switching, protection, current
+limiting, or reconnection transients can change the conclusion [67, 69, 74].
+System risk depends on how the facility behaves during and after a disturbance:
+whether it stays connected, how active and reactive power change, whether internal
+blocks transfer or trip together, and how quickly demand returns. NERC guidance
+and alerts identify modeling, instrumentation, commissioning, protection, and
+control as immediate areas for computational loads [33, 41, 72]. Technical studies
+address the same issues through ride-through, reconnection, and stability analysis
+[67, 68, 93].
+Ride-through is not a binary attribute. Relevant parameters include voltage
+and frequency thresholds, delay, active and reactive response, recovery shape,
+internal segmentation, backup generation, UPS energy state, and reconnection
+ramp. Studies of low-voltage ride-through [67], safe reconnection [68], large
+power electronic loads [93], and fast frequency response [52] show that facility
+controls and grid requirements must be designed together. Table 3 summarizes the
+principal impact categories by grid layer and time scale.
+5. Power quality and distribution asset degradation
+5.1. Harmonics, resonance, and interpretation of power quality metrics
+Nonlinear conversion occurs at several voltage levels within a data center,
+including server power supplies, power-factor-correction rectifiers, UPS converters,
+variable-speed cooling drives, and auxiliary electronics. Measurements at facility
+distribution points document current and voltage distortion [63, 94], while cooling-
+drive and sensor studies show that emission and observability depend on subsystem
+and measurement location [61, 95]. Impedance studies show that facility and
+network impedances can amplify selected frequencies [64, 65, 92]. Risk therefore
+depends jointly on the emitted spectrum and the frequency-dependent network
+seen from the point of common coupling (PCC).
+A standard descriptor used in the reviewed measurement literature is current
+total harmonic distortion (THD),
+THDI =
+qPH
+h=2 I2
+h
+I1
+× 100%,
+(3)
+where Ih is the root-mean-square current at harmonic order h, I1 is the fundamental
+component, and H is the highest order retained [63, 95, 96]. Eq. (3) reports
+aggregate distortion but is not, by itself, a compliance, asset-health, or resonance
+15
+
+
+Table 3: Grid-impact categories by layer and time scale
+Layer or
+function
+Main impact
+Relevant study data
+Key sources
+Bulk system
+planning
+Resource adequacy,
+transmission expansion,
+regional clustering, capacity
+and energy forecasts.
+Load growth scenarios,
+in-service dates, location,
+coincident peak, expected
+flexibility.
+[1, 4, 7, 70]
+Large-load
+interconnection
+Study queues, upgrade scope,
+staged energization, cost
+allocation, ride-through and
+telemetry requirements.
+Peak MW, ramp rate, voltage
+sensitivity, power factor,
+protection settings,
+commissioning tests.
+[23, 33, 34,
+39, 72]
+Distribution
+feeder
+Voltage regulation, phase
+balance, hosting capacity, local
+reliability, DER coordination.
+Feeder topology, transformer
+loading, regulators, capacitor
+banks, local DER, load
+spectra.
+[22, 24, 25,
+27]
+Point of
+interconnection
+Power quality, ride-through,
+reconnection, active and
+reactive response.
+Voltage and current
+waveforms, phasors,
+harmonics, event logs, UPS
+state, telemetry.
+[33, 63, 67,
+68]
+Behind-the-
+meter campus
+Workload scheduling, UPS
+control, storage dispatch,
+cooling, backup generation.
+Facility operating state,
+workload class, battery energy
+storage system (BESS) state of
+charge, cooling mode, internal
+segmentation.
+[15, 52, 53,
+55, 59]
+metric. IEEE 519-2022 establishes steady-state distortion limits at the point of
+common coupling: voltage-distortion limits, which are the responsibility of the
+system owner, and current-distortion limits, which are the responsibility of the user
+[97]. Because the denominator in Eq. (3) is the contemporaneous fundamental
+current, comparisons across operating points and compliance assessments must use
+the metric, normalization, point-of-common-coupling definition, and individual
+harmonic limits required by the applicable standard. Consequence also depends on
+harmonic order and sequence, phase-angle diversity, loading, conductor geometry,
+transformer construction, thermal boundary conditions, and network impedance.
+These findings show why a scalar distortion index is insufficient. Triplen har-
+monics from single-phase nonlinear loads may accumulate in the neutral, although
+device diversity, attenuation, and phase-angle differences prevent a universal arith-
+metic sum [32, 80, 81]. Harmonic currents increase frequency-dependent conduc-
+tor, winding-eddy, and stray losses in cables and transformers [30, 77, 98]. Because
+16
+
+
+THD collapses the spectrum into one value, it cannot by itself rule out a narrow-
+band interaction between facility converters and upstream impedance [64, 92, 99].
+Screening should therefore combine harmonic spectra with frequency-dependent
+impedance or resonance analysis.
+5.2. Transformer heating, derating, and insulation aging
+The transformer literature combines studies of increased power-electronic
+penetration with broader nonlinear-load research. The former identify additional
+losses and thermal duty and motivate condition-informed management [28, 29].
+The broader literature shows that sustained loading raises top-oil and winding
+temperatures, while harmonic current increases winding-eddy and other stray
+losses [30, 77]; the resulting hot-spot temperature affects insulation-aging rate
+[100, 101]. Most thermal and derating studies are not field measurements from
+hyperscale service transformers. They establish transferable mechanisms whose
+magnitude must be determined from facility-specific spectra, loading, construction,
+and cooling.
+For a winding resistance Rdc evaluated at the relevant winding temperature, the
+ohmic component of winding loss under a nonsinusoidal current is
+Pohm = Rdc
+H
+X
+h=1
+I2
+h,
+(4)
+where the harmonic currents Ih are expressed as root-mean-square components.
+Eq. (4) represents only the direct-current-resistance component of winding loss. A
+transformer assessment must additionally model no-load or core loss, winding-eddy
+loss, other stray loss, harmonic-order weighting, ambient and cooling conditions,
+thermal time constants, and the applicable insulation-aging relationship [30, 98,
+101]. Harmonic-loss factors and K-factor-based specifications can support the
+evaluation of applicable transformer designs, but they do not replace manufacturer
+data or design-specific thermal analysis.
+Peak megawatts and total root-mean-square current are inadequate when spec-
+tral content is material. The reviewed methods support a sequence of spectrum
+measurement or estimation, harmonic-loss calculation, thermal modeling, and
+loading-margin or remaining-life assessment [30, 77, 100]. Where spectra are
+uncertain, analyses should use bounded sensitivity cases rather than assume ei-
+ther worst-case addition or cancellation. Transformer selection and loading limits
+should reflect the expected spectrum, cooling arrangement, contingency duty, and
+planned equipment changes.
+17
+
+
+5.3. Cable ampacity, underground thermal constraints, and neutral conductors
+Low-voltage cable studies show that nonsinusoidal current can increase phase-
+conductor and neutral losses, with sensitivity to conductor size, installation method,
+phase allocation, and zero-sequence content [31, 102, 103]. Underground medium-
+voltage studies add sheath loss, burial arrangement, soil thermal resistivity, mutual
+heating, and load-cycle effects [78, 79]. These effects are route- and design-specific;
+they do not imply one universal harmonic derating factor.
+Neutral conductors need separate assessment where many single-phase
+computer-type supplies are present. Balanced fundamental phase currents do
+not guarantee low neutral current because triplen harmonics are zero-sequence
+quantities. Surveys and aggregation studies report both high neutral currents
+and substantial sensitivity to device diversity, phase angles, and attenuation
+[32, 80, 81]. Design should use measured or equipment-derived spectra and actual
+phase allocation rather than assume complete addition or cancellation.
+Route-specific thermal studies show that underground circuits can become a
+limiting element under long duct banks, adverse soil conditions, multiple loaded
+circuits, or significant sheath loss [78, 79], and that zero-sequence harmonic current
+further erodes the margin [102, 103]. Applying that result to a data center campus
+is a planning inference rather than a universal field observation. Ampacity studies
+should therefore include the complete route, neutral or sheath paths, installation
+environment, load cycle, and expected harmonic duty.
+5.4. Protection, metering, and monitoring implications
+Direct field documentation of data center-induced protection misoperation re-
+mains limited. Rectifier and adjustable-speed-drive studies document distorted
+current and associated equipment or measurement effects [104]. Reviews of
+converter-dominated protection identify control-dependent fault-current magnitude,
+sequence content, and duration [105, 106]. These are engineering analogies, not
+proof that a given data center will produce the same relay response. NERC’s
+computational-load alert is more direct in calling for study, instrumentation, com-
+missioning, protection, and control actions for large computational loads [33].
+Risk-based monitoring can narrow this uncertainty. Depending on facility size,
+voltage level, and network strength, useful records include synchronized active
+and reactive power, voltage and current waveforms, harmonic spectra, event and
+protection logs, UPS state, transformer thermal estimates, feeder topology, and
+commissioning results [33, 95, 107]. The required package is study-specific; not
+every installation needs every measurement at the same resolution.
+18
+
+
+The principal gap is the integration of established physical methods with data
+center field measurements. Harmonic heating, ampacity, and neutral-current mod-
+els are mature in adjacent nonlinear-load literature [31, 32, 77], whereas current
+large-load guidance concentrates on capacity, modeling, ride-through, commission-
+ing, and operational coordination [23, 33, 72]. Few studies link measured facility
+spectra to feeder-asset aging and utility investment decisions. Table 4 distinguishes
+established mechanisms from their present applicability to data center planning.
+5.5. Harmonic-constrained optimal power flow for converter-dominated loads
+Conventional optimal power flow (OPF) formulations regulate fundamental-
+frequency quantities such as active and reactive power, voltage magnitude, and
+thermal loading, without representing the waveform distortion produced by non-
+linear and converter-interfaced equipment. In networks with substantial harmonic
+injection, a dispatch that is feasible at the fundamental frequency may still vi-
+olate voltage or current distortion limits, increase transformer and cable losses,
+disturb shunt capacitor banks or excite filter resonances, and shorten equipment
+life. Harmonic-constrained optimal power flow (H-OPF) therefore co-optimizes
+operating set points while enforcing harmonic power quality requirements such as
+those of IEEE 519-2022 [97], using harmonic power-flow representations of the
+kind described in IEEE 3002.8-2018 [108]. Formulations that embed IEEE 519
+distortion limits in planning and dispatch problems have been developed mainly
+for inverter-based distributed generation, where they determine the permissible
+penetration, location, and size of converter-interfaced sources under harmonic and
+protection constraints [109, 110].
+This framing is directly relevant to large data centers, and increasingly to
+AI-oriented facilities. Although accelerators operate internally from regulated
+direct-current supplies, their aggregate demand is served through extensive power-
+electronic infrastructure: high-capacity UPS rectifier and inverter stages, active
+power-factor-correction (PFC) converters in server power supplies, direct-current
+conversion stages supplying accelerator racks, battery-storage interfaces, and
+variable-frequency drives (VFDs) for chillers, pumps, cooling towers, and air-
+handling equipment [47, 58]. The simultaneous operation and rapid loading
+variation of these devices can alter harmonic injections and create frequency-
+dependent interactions with transformers, cables, capacitor banks, and harmonic
+filters [64, 92]. The concern is amplified by the rapid expansion of data-center
+electricity demand associated with AI workloads [1, 5].
+Significant gaps remain for data-center applications.
+Existing harmonic-
+constrained formulations generally assume balanced networks, fixed harmonic
+19
+
+
+Table 4: Distribution asset-stress mechanisms, applicability, and planning implications for data
+center loads
+Asset or
+function
+Established mechanism
+Applicability and
+limitation
+Planning implication
+and key sources
+Transformer
+Harmonic winding-eddy
+and stray losses combine
+with sustained loading to
+raise hot-spot
+temperature and affect
+insulation aging.
+Mainly nonlinear-load
+and
+power-electronic-load
+studies; limited
+hyperscale field aging
+data.
+Use measured or
+bounded spectra,
+design-specific loss
+allocation, and thermal
+modeling rather than
+MW alone
+[28–30, 77, 101].
+Low-voltage
+cable and
+neutral
+Frequency-dependent
+conductor loss and
+zero-sequence harmonic
+current reduce thermal
+margin.
+Computer-load and
+generic nonlinear-load
+studies provide
+transferable mechanisms.
+Check phase allocation,
+neutral sizing,
+installation, and
+harmonic ampacity
+[31, 32, 80, 81].
+Medium-
+voltage
+underground
+cable
+Conductor and sheath
+losses interact with daily
+cycling, soil, burial, and
+circuit geometry.
+Cable-thermal studies,
+not direct data center
+campus field campaigns.
+Include duct-bank and
+soil conditions in
+interconnection ampacity
+studies [78, 79, 112].
+Protection and
+metering
+Distorted waveforms and
+control-dependent
+converter response can
+affect measurement and
+protection assumptions.
+Mostly
+converter-dominated
+resource analogies;
+direct data center relay
+evidence is sparse.
+Require model review,
+commissioning tests,
+disturbance recording,
+and case-specific
+protection studies
+[33, 105, 106].
+Asset
+management
+Monitoring links load
+spectra and thermal duty
+to remaining-life
+estimates and upgrade
+timing.
+Predictive methods exist,
+but utility deployment
+for large computational
+loads is not well
+documented.
+Combine power quality
+records, loading history,
+thermal estimates, and
+model updates
+[29, 95, 100, 113].
+current spectra, and static load conditions, whereas AI data centers exhibit
+phase imbalance, fast workload-driven demand changes, uncertain equipment
+aggregation, and proprietary converter controls.
+Further research is needed
+on scalable, measurement-informed, unbalanced, and multi-time-scale H-OPF
+frameworks that jointly represent fundamental-frequency operation, harmonic
+and resonance constraints, uncertainty in converter emissions, and the distinction
+between conventional harmonics and higher-frequency supraharmonic emissions
+[97, 108, 111].
+20
+
+
+6. Modeling requirements for data center loads
+Figure 3 organizes model classes by the question they can answer. More
+detail is not automatically better. The appropriate fidelity follows from the time
+scale, network strength, protection behavior, data availability, and decision being
+supported.
+6.1. What static models can and cannot represent
+Constant-power, constant-current, and constant-impedance models, and their
+combination as the constant impedance-current-power (ZIP) model, remain useful
+for fundamental-frequency power-flow screening and scenario analysis. A conven-
+tional static voltage-dependence curve, however, cannot represent discrete UPS
+states, converter current limits, protection thresholds, reconnection logic, harmonic
+emission, storage state, or workload pulses [20, 33, 82]. This is a limitation of the
+model class, not a claim that every facility exhibits every behavior.
+Static models can identify steady-state thermal and voltage constraints, but
+they cannot determine whether a facility rides through a sag, transfers to storage,
+trips in blocks, excites a mode, or reconnects with an excessive ramp. Dynamic
+models of data centers address aggregated operating states [10, 73]; impedance and
+resonance models address modal interactions [92]; and EMT or transient-stability
+models address fast ride-through and reconnection behavior [67–69]. Facilities
+with the same net demand may need different dynamic representations because
+UPS topology, protection, converter controls, cooling composition, and internal
+segmentation differ [37, 82, 114].
+6.2. Dynamic, calibrated, impedance, EMT, and hybrid representations
+Physics-based aggregate models represent selected internal states such as UPS
+or storage response, cooling motors, electronic load fractions, and pulsed com-
+puting demand. They support phasor-domain stability and ride-through studies
+when parameters are available, but aggregation may hide control interactions and
+protection boundaries [48, 69, 74]. Calibrated or pattern-consistent models identify
+aggregate behavior from measurements and may reduce disclosure of internal
+equipment. Their validity can deteriorate when hardware, workload, or control
+settings change [73].
+Converter and impedance models address compatibility between the input be-
+havior of power supplies or UPS stages and network impedance. They are suited to
+resonance and control-stability questions but require frequency-dependent parame-
+ters and defensible aggregation [64, 65, 91]. They do not replace a facility-level
+ride-through model because the two representations answer different questions.
+21
+
+
+A
+Static (P, I, Z,
+ZIP) load
+models
+Demand
+scenarios and
+steady-state
+voltage and
+thermal
+screening;
+planning-level
+approximation
+B
+Composite
+load models
+Bulk stability
+with motor and
+electronic
+fractions and
+aggregate
+control blocks
+C
+Physics-based
+facility
+dynamic
+models
+UPS, cooling,
+storage,
+compute
+pulses, and
+local controls at
+facility or
+campus scope
+D
+Calibrated or
+data-driven
+aggregate
+models
+Measured
+response
+patterns;
+reduced
+disclosure of
+internal
+equipment
+E
+Converter and
+impedance
+models
+Resonance and
+control
+compatibility;
+frequency-
+dependent
+input behavior
+F
+EMT models
+Sub-cycle
+controls, faults,
+current limiting,
+protection, and
+reconnection
+transients
+G
+Hybrid /
+multi-rate
+approaches
+EMT detail at
+the facility and
+POI with the
+surrounding
+grid in RMS or
+equivalent form
+STUDY OBJECTIVE
+(rows)
+read across for the
+recommended model class
+MODEL CLASS (columns)
+1
+Long-term planning and
+resource adequacy
+2
+Interconnection and
+reinforcement studies
+(hosting capacity, staged
+energization)
+3
+Operational scheduling
+and dispatch
+4
+Voltage, ramping, and
+control-coordination
+studies
+5
+Electromechanical
+disturbance response
+(ride-through,
+reconnection)
+6
+Resonance, converter
+interaction, and
+protection fast-event
+behavior
+7
+Harmonic and
+power-quality compliance
+and asset thermal-duty
+assessment
+Primary fit: the class the study question needs
+Supporting or conditional fit: used alongside the primary class, or when sensitivity analysis shows it changes the conclusion. Blank: not normally required.
+CROSS-CUTTING MODEL QUALITY REQUIREMENTS (apply to every class and every study)
+Calibration from
+measurements and
+system tests
+Utility telemetry
+and disturbance
+data
+Uncertainty
+characterization
+and sensitivity
+analysis
+Validation against
+events, tests, or
+benchmarks
+Version control and
+update triggers
+Revalidation after
+hardware,
+firmware,
+protection, or
+control changes
+Figure 3: Study-oriented model-selection framework for data center loads. The model classes
+are not a universal ranking; selection follows the study question, time scale, network strength,
+protection behavior, data availability, and required uncertainty. Measurement, calibration, version
+governance, and revalidation after hardware or control changes apply across the model portfolio
+[33, 48, 69].
+EMT models are warranted when sub-cycle switching, converter controls,
+current limiting, protection, detailed fault response, or reconnection transients
+could change the conclusion. They are not necessary for every planning study.
+Their data and computational burden motivate hybrid approaches that retain detail
+at the facility and point of interconnection while reducing the surrounding network
+22
+
+
+or less influential internal equipment [58, 69, 82]. Sensitivity analysis should verify
+that the reduced portion does not remove the interaction of interest.
+6.3. Calibration, data exchange, and model governance
+Model validity depends on commissioning data and continued maintenance.
+Workload, equipment, protection, and control information may be commercially
+or security sensitive, while utilities still need enough behavior to assess stability,
+power quality, restoration, and operating limits. The literature supports aggregated
+or privacy-preserving exchange and digital assurance [113, 115], combined with
+standard templates, commissioning tests, and disturbance-based validation [33, 72,
+107].
+The minimum data set follows the study purpose. Resource-adequacy anal-
+ysis needs credible project maturity, energization dates, and demand scenarios.
+Power-flow and hosting-capacity studies need location, maximum and minimum
+demand, reactive capability, and voltage sensitivity. Dynamic studies need active
+and reactive response, protection and ride-through states, UPS transfer, segmen-
+tation, recovery, and reconnection. Power quality and asset studies need spectra,
+impedance, filters, loading history, and thermal parameters [33, 69, 74].
+Governance is needed because a computational facility may change after its
+interconnection study. New accelerators, power supplies, cooling systems, UPS
+modes, protection, or control settings may invalidate an accepted model. NERC
+guidance [87] and alerts [33, 72] call for validation, updated information, commis-
+sioning, instrumentation, and operational coordination for emerging or computa-
+tional loads. Table 5 summarizes the intended use and limitations of the principal
+model classes.
+7. Regulatory, reliability, and interconnection developments
+At the time of writing, the North American record had progressed from risk
+identification to alerts, directed standards development, proposed registration
+criteria, and regional tariff proceedings. These instruments do not have equal legal
+force. NERC white papers and reliability guidelines are advisory [23], and alerts
+request actions or information [33]. FERC orders can direct standards development
+[117] or open region-specific tariff proceedings [118], but draft registry criteria
+and standards do not become enforceable until the applicable NERC and FERC
+processes are completed.
+NERC’s 2025 white paper identified planning, operational, stability, power
+quality, observability, cybersecurity, and restoration risks associated with emerging
+23
+
+
+Table 5: Study-oriented comparison of data center load model classes
+Model class
+Study question and
+minimum
+representation
+Validation data
+Principal limitation
+and key sources
+Static P, I, Z,
+or ZIP
+Steady-state voltage and
+thermal screening;
+represent aggregate
+active/reactive voltage
+dependence.
+Metered steady-state
+points or accepted
+planning assumptions.
+Cannot represent discrete
+controls, protection,
+harmonics, or recovery
+[20, 36, 82].
+Composite
+dynamic
+Bulk stability with
+motors, electronic
+fractions, and aggregate
+control blocks.
+Disturbance response or
+calibrated component
+fractions.
+Generic blocks can
+conceal data
+center-specific UPS and
+protection behavior
+[10, 116].
+Physics-based
+data center
+dynamic
+Ride-through, ramping,
+and recovery with UPS,
+cooling, compute pulses,
+and active/reactive states.
+Commissioning tests and
+point of interconnection
+event records.
+Parameter and
+aggregation uncertainty;
+requires updates after
+facility changes
+[48, 69, 74].
+Calibrated or
+data-driven
+aggregate
+Reproduce measured
+response patterns with
+reduced disclosure of
+internal equipment.
+Representative operating
+and disturbance data
+across regimes.
+Extrapolation outside the
+calibration envelope can
+be unreliable [73, 107].
+Converter or
+impedance
+Resonance and control
+compatibility; represent
+frequency-dependent
+input behavior and
+network impedance.
+Frequency-response or
+component-model
+validation.
+Does not by itself
+represent all facility
+operating states or
+thermal behavior
+[64, 65, 91, 92].
+EMT or
+hybrid
+Sub-cycle controls,
+faults, current limiting,
+protection, and detailed
+reconnection.
+Equipment parameters,
+controller settings, event
+waveforms, and interface
+tests.
+High data and
+computational burden;
+model boundary must be
+sensitivity-tested
+[58, 69, 82].
+large loads, including computational facilities [23]. Its September 2025 Level
+2 recommendation addressed interconnection studies, models, commissioning,
+ramps, and operational coordination; the 2026 aggregated report found uneven
+readiness and process maturity [72, 119]. The 2026 gap assessment, mitigation
+guideline, and Level 3 computational-load alert extended the work to modeling,
+instrumentation, operations, protection, and control [33, 41, 87]. The Level 3
+alert was issued in May 2026, with registered-entity responses due in August
+24
+
+
+2026. The proposed Computational Load Entity rationale and Project 2026-02
+remained developmental [120, 121]. In July 2026, FERC directed NERC under
+section 215(d)(5) of the Federal Power Act to file, by the end of 2026, one or more
+new or modified Reliability Standards addressing computational-load integration,
+and under section 215(f) to submit by the same deadline revisions to its Rules of
+Procedure, including registry criteria for computational load entities [117]. The
+directive accelerates the standards pathway but does not itself make the draft criteria
+or standards enforceable. It also requires NERC to submit, by March 2027, an
+informational filing with a workplan for the subsequent (Phase II) standards.
+FERC and U.S. Department of Energy records address transmission service,
+forecasting, tariffs, and co-location. A November 2024 technical conference
+examined large loads co-located with generation [42]. FERC’s February 2025
+action involving PJM Interconnection sought tariff clarity for AI data center co-
+location, and a September 2025 letter asked regional operators to improve large-
+load forecasting [43, 122]. The Secretary of Energy’s October 2025 Section 403
+proposal was docketed as RM26-4 and treated as an advance notice of proposed
+rulemaking [34]. FERC stated its intent to act in April 2026 and in June 2026 issued
+six region-specific Section 206 show-cause orders directing regional transmission
+organizations (RTOs) and independent system operators (ISOs) to justify or reform
+aspects of their large-load tariffs [118, 123]. Currently, RM26-4 and the six regional
+proceedings have not established one nationwide final large-load interconnection
+rule. The Southwest Power Pool concurrence illustrates a load-limited approach
+and concerns about cost protection and electrically proximate generation, while the
+FERC staff market report provides context rather than binding Commission policy
+[8, 124].
+The scope of these records is bounded. NERC assessments address the bulk
+power system, and the 2025 Long-Term Reliability Assessment does not evaluate
+lower-voltage distribution reliability [4]. FERC proceedings concern federal trans-
+mission and wholesale-market jurisdiction. Neither source set replaces distribution
+engineering, state regulation, local tariffs, international grid codes, or asset-specific
+studies. They are used here as a North American implementation case that links
+technical evidence with evolving reliability and tariff practice. Table 6 summarizes
+the status and scope of the principal instruments.
+8. Integration strategies and implementation requirements
+Figure 4 groups mitigation options by the failure mechanism they address.
+Planning, dynamic, power-quality, asset, and sustainability risks require differ-
+25
+
+
+1
+Grid
+requirements
+and external
+context
+Reliability and security
+requirements
+Interconnection and tariff
+constraints
+Power-quality and
+protection limits
+Emissions and
+sustainability objectives
+Market and regulatory
+signals
+2
+Observability,
+coordination,
+and
+governance
+Utility telemetry and
+disturbance data
+DERMS / ADMS /
+transmission EMS
+coordination
+Metering and state
+estimation
+Operating rules and
+service-level constraints
+Tariff, governance, and
+contractual frameworks
+3
+Campus
+resources and
+controls
+Onsite storage
+and UPS
+Backup
+generation,
+cogeneration, or
+fuel cells
+Renewable
+generation (PV,
+wind)
+Cooling and
+thermal
+flexibility,
+thermal storage
+IT workload
+flexibility and
+power capping
+Campus energy
+management
+system (CEMS)
+Protection and
+local controls
+4
+Mitigation and
+control
+pathways
+(parallel, not
+sequential)
+Staged, flexible,
+or connect-and-
+manage service
+(I)
+Peak shaving
+and ramp
+mitigation (II)
+Voltage and
+reactive-power
+support (III)
+Harmonic and
+resonance
+mitigation (IV)
+Ride-through,
+frequency, and
+disturbance
+support (V)
+Asset-health-
+aware operation
+(VI)
+Carbon-aware
+scheduling and
+geographic
+shifting (VII)
+5
+Outcomes
+(claimed;
+verified in
+row 6)
+Reduced grid
+stress: peaks and
+ramps
+Improved reliability
+and resilience
+Better renewable
+integration, less
+curtailment
+Lower marginal
+emissions and
+water use, against a
+counterfactual
+Improved hosting
+capacity and
+interconnection
+performance
+Controlled asset
+aging and
+power-quality risk
+6
+Verification
+and feedback
+Performance
+verification
+(measurement and
+verification)
+Baseline and
+rebound
+assessment
+Event and
+disturbance
+validation
+Model updating and
+recalibration
+Asset-health
+monitoring
+Compliance and
+reporting
+requirements, limits, and price signals
+setpoints, dispatch, and operating limits
+telemetry, metering, and disturbance records
+resources actuated through control pathways
+intended effects
+claims tested against measured response, rebound, and asset records
+model updates, recalibration, compliance
+Requirements, control, and dispatch pathways (top-down)
+Verification feedback and governance updates
+Telemetry and measurement flow
+Blue, purple, and green follow the domain colors of Fig. 1; grey = mitigation pathways; orange = claimed outcomes; teal = verification.
+Roman numerals in row 4 refer to the grid-impact mechanisms of Fig. 1.
+Figure 4: Integrated mitigation and verification architecture for grid-compatible data center growth.
+Grid, market, and reliability requirements (row 1) are connected to campus resources and controls
+(row 3) through observability, coordination, and governance functions (row 2): utility telemetry and
+disturbance data, DERMS, ADMS, or EMS coordination, metering and state estimation, operating
+rules, and tariff and contractual frameworks. Mitigation and control pathways (row 4) lead to
+the intended outcomes (row 5), which are verified through performance verification, baseline
+and rebound assessment, event and disturbance validation, model updating and recalibration,
+asset-health monitoring, and compliance reporting (row 6). Claimed reliability, flexibility, and
+sustainability benefits should be verified against measured response availability, rebound, asset-
+health records, model updates, and carbon, water, and lifecycle counterfactuals [11, 35, 38].
+26
+
+
+Table 6: Status, scope, and applicability of selected NERC and FERC large-load developments
+Date and status
+Instrument
+Principal issue
+Status and limitation
+2025, NERC
+white paper
+Characteristics and risks
+of emerging large loads
+[23].
+Multi-domain risk
+taxonomy for emerging
+large loads.
+Technical risk framing;
+not an enforceable
+standard.
+Sep. 2025 to
+Mar. 2026,
+NERC alert and
+response report
+Level 2
+recommendation and
+aggregated industry
+report [72, 119].
+Model data, studies,
+commissioning, ramps,
+and operational
+coordination.
+Requested actions and
+industry-readiness
+evidence.
+Mar. to May
+2026, NERC
+guidance and
+Level 3 alert
+Gap assessment,
+mitigation guideline,
+and computational-load
+alert [33, 41, 87].
+Modeling,
+instrumentation,
+ride-through, protection,
+power quality, and
+operations.
+Reliability guidance and
+alert actions; scope
+centered on bulk-system
+reliability.
+Apr. to Jul.
+2026, standards
+and registration
+pathway
+Proposed Computational
+Load Entity, Project
+2026-02, and FERC’s
+RD26-7 directive
+[117, 120, 121].
+Registry criteria and
+computational-load
+Reliability Standards.
+Development remains
+underway; FERC
+directed filings by the
+end of 2026, but no new
+computational-load
+standard or registry
+criterion is currently
+enforceable.
+Nov. 2024 to
+Feb. 2025,
+FERC
+conference and
+action
+Co-location conference
+and PJM AI data center
+action [42, 122].
+Transmission service,
+resource adequacy, cost
+allocation, market and
+customer impacts.
+Federal co-location
+record; not a general
+finding that co-location
+eliminates grid
+dependence.
+Sep. 2025 to Jul.
+2026, federal
+forecasting and
+tariff actions
+Forecasting letter,
+RM26-4 advance notice,
+intent-to-act order, and
+six regional show-cause
+actions
+[34, 43, 118, 123].
+Project maturity, study
+process, flexible service,
+cost transparency, and
+tariff reform.
+Region-specific
+proceedings remained
+active at the time of
+writing; no nationwide
+final rule had been
+issued.
+2026, FERC
+staff and
+Commissioner
+materials
+State of the Markets and
+SPP concurrence
+[8, 124].
+Market context and a
+load-limited
+interconnection
+example.
+Staff or individual-
+Commissioner evidence,
+not a Commission-wide
+final rule.
+ent controls and verification methods. A credible integration strategy combines
+interconnection practice, validated models, storage or UPS control, workload man-
+agement, asset monitoring, and supply choices according to network conditions
+27
+
+
+and verified facility capability.
+8.1. Interconnection reform and study data
+A large-load application should separate five information classes. Project-
+maturity data cover site control, commercial readiness, staged energization, and
+forecast uncertainty. Steady-state data cover maximum and minimum demand,
+ramps, reactive capability, and contingency service. Dynamic data cover voltage
+and frequency sensitivity, ride-through, segmentation, UPS transfer, protection,
+and reconnection. Power quality data cover spectra, filters, switching states, and
+relevant impedance. Operational data cover telemetry, communications, commis-
+sioning, update obligations, and committed flexibility [23, 33, 72].
+Standard templates can reduce omissions and repeated study cycles without
+imposing identical requirements on every facility. Study scope should follow size,
+voltage level, network strength, equipment, controllability, and the consequence of
+common-mode behavior. Firm, flexible, staged, and connect-and-manage service
+[38, 54, 125] may accelerate energization only when curtailment rights, telemetry,
+operating limits, upgrade triggers, and cost allocation are explicit [57, 76].
+8.2. DERMS, ADMS, and utility coordination
+Distributed energy resource management systems and advanced distribution
+management systems offer an architecture for coordinating data center demand
+with feeder limits, voltage control, storage, and local generation. Most supporting
+studies are generic, simulation-based, or demonstration-oriented rather than evi-
+dence of routine production control of hyperscale fleets [35, 85, 86]. Their present
+contribution is therefore architectural and prospective.
+Implementation requires an operating agreement that converts planning as-
+sumptions into measurable obligations: available reduction or injection, response
+time, duration, state constraints, communications, measurement and verification,
+cybersecurity, and fallback behavior. Without this link, a planning study may credit
+flexibility that the operating platform cannot deliver reliably [15, 33, 107]. Field
+demonstrations should test the complete planning-to-operations chain.
+8.3. UPS and storage across time scales
+UPS energy storage is intrinsic to many facilities, while additional battery
+energy storage systems (BESS), flywheels, supercapacitors, and hybrid systems
+can extend the range of grid services [16, 17]. Studies report peak reduction and
+energy shifting [59, 125, 126], fast frequency or active-power support [36, 52], and
+grid-forming or line-interactive operation [37, 127].
+28
+
+
+Storage controls must preserve the facility’s primary reliability function. Re-
+sponse capability depends on state of charge, reserved backup energy, power and
+energy rating, converter limits, duration, thermal constraints, cycling cost, and
+recharge strategy. Correlated recharge after an event may create a secondary ramp
+if recovery is not coordinated [16, 37, 125]. Interconnection studies should state
+whether storage support is mandatory, contracted, or merely technically possible.
+8.4. Workload flexibility, tariffs, and geographic shifting
+Data center flexibility comprises distinct products: temporal shifting of delay-
+tolerant work [15, 53], geographic redistribution [54, 56], and short-term power
+capping, firm curtailment, and storage-mediated response [55]. These products dif-
+fer in response time, duration, energy recovery, baseline, service-level consequence,
+and network effect.
+Optimization studies demonstrate potential, not universal dispatchability. La-
+tency, service agreements, sunk computing capital, workload value, cooling re-
+covery, data locality, and customer commitments constrain response. Tariffs and
+contracts should define availability, measurement, compensation, rebound, non-
+performance, and recovery [8, 38, 43]. Geographic shifting also needs destination
+headroom and network bandwidth; moving computation can transfer congestion or
+emissions rather than remove them.
+8.5. Co-location, renewable integration, and clean firm supply
+Co-location may combine computational demand with photovoltaic or wind
+generation, storage, cogeneration, fuel cells, geothermal, nuclear, or other firm
+supply. For sustainable-energy assessment, physical proximity and annual energy
+matching are insufficient. Each configuration should be compared with a credible
+counterfactual using hourly and locational matching, congestion, renewable cur-
+tailment, marginal emissions, backup and balancing obligations, network upgrades,
+asset duty, water and land use, and lifecycle effects [14, 17, 128].
+On-site photovoltaic or wind generation with BESS may reduce net imports and
+improve resilience, but performance depends on resource quality, load coincidence,
+storage duration, export limits, and feeder hosting capacity. A Dublin case study
+co-optimizes grid imports, photovoltaic generation, wind, storage, and a prospec-
+tive small modular reactor portfolio; its findings are conditional on the assumed
+costs, market design, and project scale [128]. A Bangladesh photovoltaic-battery
+microgrid study similarly illustrates a location-specific resilience pathway, not a
+universal least-cost design [84].
+29
+
+
+Cogeneration or trigeneration can raise total fuel utilization when a useful heat
+or cooling sink is available. Fuel-cell cogeneration may also provide firm on-site
+electricity and useful heat [129]. Neither option is inherently low-carbon. Net
+benefit depends on fuel source and upstream emissions, electrical and thermal
+efficiency, local air quality, water use, capacity factor, heat-sink utilization, and
+the emissions of displaced grid supply [14, 130]. Natural-gas cogeneration should
+be reported as a conditional reliability and efficiency pathway, not as renewable
+supply.
+Waste-heat recovery and thermal storage can lower cooling demand or serve
+an external heat use, but feasibility depends on source temperature, the distance
+and timing of a heat sink, space, piping, and the energy required for recovery or
+upgrading. Heat pumps, district-heating links, chilled-water storage, and under-
+ground thermal storage illustrate different temperature and duration requirements
+[14, 44, 45]. Avoided energy and system emissions are more informative than
+recovered heat quantity alone.
+Co-location also does not establish electrical independence. A facility may
+continue to use transmission service, ancillary services, backup supply, and system
+balancing, and may alter deliverability or costs for other customers. The FERC co-
+location record identifies these issues in the United States, but outcomes depend on
+network and jurisdiction [42, 122, 131]. Table 7 compares the principal supply and
+flexibility pathways and the conditions under which their benefits can be claimed.
+8.6. Power quality design and asset monitoring
+Power quality mitigation should follow the measured or modeled emission
+spectrum and network impedance. Source-side converter design and filtering
+address harmonic emission [61, 63]. Phase allocation and neutral design address
+zero-sequence current [32, 80, 81]. Transformer decisions require harmonic-loss
+and derating analysis [30, 77], and cable decisions require ampacity analysis under
+nonsinusoidal current [31, 98]. Resonance screening requires both source and
+network impedance [64, 65]. IEEE 519-2022 provides PCC distortion goals but
+does not select a facility-specific filter, transformer, conductor, or resonance remedy
+[97]; those decisions depend on the measured spectrum, impedance, operating
+mode, and asset design.
+Commissioning and periodic reassessment matter because server power sup-
+plies, rack density, cooling drives, UPS modes, filters, and firmware can change
+after energization. Temperature estimation, harmonic trending, loading history,
+and event-triggered waveform capture support asset decisions and model updates
+30
+
+
+Table 7: Sustainable supply and flexibility pathways for data centers
+Pathway
+Potential system contribution
+Critical boundary conditions
+Key sources
+On-site
+photovoltaic or
+wind with
+BESS
+Reduce net import, absorb
+variable renewable output,
+provide resilience, and shift
+energy across hours.
+Resource quality, hourly
+coincidence, storage duration,
+export limits, land, feeder
+hosting capacity, and battery
+lifecycle.
+[14, 16, 84,
+128]
+Cogeneration,
+trigeneration,
+or fuel cells
+Firm electricity and useful heat
+or cooling; possible reduction
+in grid import and local
+backup dependence.
+Fuel carbon intensity,
+upstream emissions, heat-sink
+utilization, air quality, water,
+capacity factor, and islanding
+requirements.
+[14, 129,
+130]
+Waste-heat
+recovery and
+thermal storage
+Reduce cooling peaks, shift
+thermal demand, or supply
+nearby heat users.
+Heat temperature, seasonal
+demand, distance to heat sink,
+piping, recovery energy, space,
+and thermal constraints.
+[14, 44, 45]
+Firm onsite
+supply and
+microgrids
+Improve supply adequacy and
+resilience where renewable
+variability or network
+constraints are material.
+Technology-specific licensing,
+lead time, project scale, cost,
+fuel or water requirements,
+islanding and protection, and
+shared-grid obligations.
+[14, 42, 128,
+129]
+Temporal or
+geographic
+workload
+shifting
+Align demand with renewable
+availability, lower congestion,
+and reduce marginal emissions
+when the destination and time
+are cleaner.
+Service deadlines, data locality,
+network bandwidth, rebound,
+baseline, marginal rather than
+annual emissions, and
+destination capacity.
+[15, 53, 54,
+56, 115]
+[29, 95, 113]. Table 8 relates each impact to mitigation and present implementation
+maturity.
+9. Research gaps and priorities
+Nine connected research priorities emerge from the technical and implementa-
+tion gaps identified above.
+1. Point of interconnection measurements. Public or anonymized data sets
+should include active and reactive power, voltage and current waveforms,
+spectra, frequency response, protection or UPS states, recovery records, and
+the metadata needed for model validation. Existing measurement studies
+provide a starting point, but most models still rely on laboratory, simulation,
+or limited facility data [95, 107, 113].
+31
+
+
+Table 8: Impact-to-solution mapping and implementation maturity for data center grid integration
+Impact
+Candidate mitigation
+Implementation maturity
+and condition
+Key sources
+Interconnection
+delay and
+upgrades
+Standard data, staged or
+flexible service, model
+validation, and cost-allocation
+clarity.
+Official guidance and
+emerging tariff practice;
+outcomes remain
+jurisdiction-specific.
+[23, 34, 39,
+72]
+Distribution
+constraints
+Upgrades, voltage control,
+non-wires alternatives, and
+DERMS or ADMS
+coordination.
+Strong generic distribution
+methods; limited production
+evidence for hyperscale data
+center control.
+[22, 24, 35,
+85]
+Ride-through
+and
+reconnection
+UPS or BESS coordination,
+staged recovery, disturbance
+records, and validated settings.
+Modeling and emerging
+demonstration evidence;
+common-mode behavior needs
+system testing.
+[33, 52, 67,
+68, 93]
+Harmonics and
+asset stress
+Spectrum and impedance
+studies, filtering, phase
+balancing, thermal derating,
+and monitoring.
+Established physical
+mechanisms; direct hyperscale
+asset-aging data remain
+limited.
+[30, 31, 63,
+64, 77]
+Peak and
+market stress
+Distinct products for shifting,
+capping, storage response, and
+firm curtailment.
+Extensive optimization
+evidence; fewer verified field
+commitments.
+[8, 15, 53,
+54, 59]
+Renewable
+integration and
+supply
+adequacy
+Co-location, storage, clean
+firm supply, microgrids, and
+carbon-aware scheduling.
+Technology-specific evidence;
+must include deliverability,
+backup, lifecycle, and
+shared-grid obligations.
+[17, 37, 42,
+84, 129]
+2. Distribution performance requirements. Bulk-system large-load guidance
+should be complemented by risk-based utility criteria for harmonics, volt-
+age sensitivity, ride-through, reconnection, thermal loading, telemetry, and
+protection at the service voltage [24, 28, 33].
+3. Updatable multi-fidelity models. Static screening, phasor-domain dynam-
+ics, calibrated aggregates, impedance representations, and EMT submodels
+should share validation cases and version governance. The desired output is
+a study-oriented model portfolio, not one universal equivalent [69, 73, 74].
+4. Asset health in planning. Interconnection and expansion tools should
+translate measured spectra and duty cycles into transformer loss and aging
+[28, 30, 77], cable ampacity [31, 78], and neutral heating [80] before setting
+upgrade timing and flexible operating limits.
+5. Service-specific flexibility valuation. Studies should report availability,
+32
+
+
+Table 9: Research gaps and suggested technical outputs
+Gap
+Current limitation
+Suggested output
+Key sources
+POI
+measurements
+Limited public data across
+operating and disturbance
+regimes.
+Anonymized waveform,
+phasor, spectrum, telemetry,
+and event data sets with
+metadata.
+[33, 95, 107,
+113]
+Distribution
+performance
+requirements
+Bulk-system guidance does
+not fully define feeder and
+asset criteria.
+Risk-tiered utility rules for
+power quality, ride-through,
+recovery, thermal duty, and
+telemetry.
+[24, 28, 33,
+41]
+Multi-fidelity
+models
+Static, dynamic, impedance,
+and EMT studies often use
+disconnected assumptions.
+Versioned model suite with
+shared validation cases and
+sensitivity-tested boundaries.
+[58, 69, 73,
+74, 82]
+Asset health
+integration
+Transferable thermal methods
+exist, but direct data center
+asset data are sparse.
+Spectrum-informed
+transformer, cable, and neutral
+models linked to planning
+decisions.
+[29–
+31, 77, 101]
+Flexibility
+valuation
+Modeled technical potential is
+often not separated from
+verified availability.
+Product-specific baselines,
+service constraints, rebound
+tests, and measurement
+protocols.
+[15, 52, 54,
+56, 59]
+Sustainability
+counterfactuals
+Annual matching can omit
+curtailment, marginal
+emissions, fuel and heat-sink
+effects, network duty, and
+lifecycle impacts.
+Comparative co-location and
+scheduling studies with grid,
+carbon, water, land, heat, and
+asset metrics.
+[14, 17, 128–
+130]
+Renewable-
+rich feeder
+validation
+Optimization and generic DER
+studies rarely measure
+co-located generation,
+computing, storage, reverse
+flow, power quality, and asset
+duty together.
+Multi-season campus
+demonstrations with
+synchronized electrical,
+computing, thermal, and asset
+health data.
+[35, 83–85]
+International
+comparative
+evidence
+Current implementation
+evidence is concentrated in
+North America and selected
+European cases.
+Common technical and
+sustainability metrics applied
+across regulatory, market, and
+grid contexts.
+[1, 15, 34,
+42, 128]
+Tariff and
+governance
+linkage
+Technical capability is not
+always linked to enforceable
+service and update obligations.
+Tariffs and agreements tied to
+maturity, models, telemetry,
+curtailment, recovery, and cost
+allocation.
+[34, 43, 76,
+118]
+Cyber-physical
+resilience
+Programmable load behavior is
+rarely tested jointly with grid
+dynamics and protection.
+Integrated attack, detection,
+fail-safe, and recovery
+benchmarks.
+[132–134]
+33
+
+
+baseline, response time, duration, rebound, state-of-charge or thermal con-
+straints, service cost, and measurement and verification separately for tempo-
+ral shifting, geographic shifting, power capping, storage response, and firm
+curtailment [15, 52, 54].
+6. Sustainability counterfactuals. Co-location and flexible operation should
+be evaluated against explicit alternatives using renewable curtailment,
+marginal emissions, water and land use where relevant, lifecycle effects,
+network upgrades, shared-grid services, and asset life.
+Cogeneration
+analyses need fuel and heat-sink carbon accounting; renewable co-location
+analyses need time-varying import and export envelopes [14, 128, 130].
+7. Renewable-rich campus validation. Field studies should measure renew-
+able output, computing demand, storage, voltage-control action, reverse
+flow, harmonics, transformer and cable duty, and curtailment at the same
+site. Such measurements would test whether coordination increases hosting
+capacity without transferring stress to other assets [83–85].
+8. Comparative regulation and tariffs. Research should connect payment and
+service terms to verified technical performance and compare project-maturity
+tests, cost allocation, flexible service, co-location, forecasting, model updates,
+recovery duties, and behind-the-meter supply across diverse grid, market,
+and regulatory contexts. International energy-system context is available
+[1, 15, 128], whereas the current North American implementation record is
+represented by large-load policy and FERC proceedings [34, 42, 76].
+9. Cyber-physical resilience. Computational loads should be studied as pro-
+grammable grid interfaces because beneficial control and malicious or cor-
+related modulation may use the same actuation paths. Benchmarks should
+combine cyber scenarios with converter, protection, workload, and system-
+dynamic models and should test detection, fail-safe behavior, and recovery
+[132–134].
+Table 9 links these priorities to specific technical outputs.
+10. Conclusion
+Data center grid impacts are governed by more than annual electricity use
+or requested peak demand. Siting, project maturity, coincidence with system
+peaks, ramping, converter and UPS behavior, voltage sensitivity, ride-through,
+recovery, harmonic spectra, and verified flexibility determine the consequences for
+generation adequacy, transmission planning, distribution operation, and markets.
+34
+
+
+Interconnection studies should therefore be based on staged and updatable facility
+data rather than a single static megawatt value.
+Distribution-level mechanisms are technically credible but remain less well
+documented in hyperscale field settings than bulk-system impacts, even though
+a growing share of new large-load requests is arriving at distribution utilities.
+Harmonic and sustained current can increase transformer and cable thermal duty,
+triplen components can load neutral conductors, frequency-dependent impedance
+can produce resonance, and control or protection states can shape disturbance
+response. Case-specific measurement, commissioning, spectrum and impedance
+analysis, thermal assessment, and model revalidation are more defensible than
+universal derating or protection assumptions.
+Sustainable integration requires a similarly conditional assessment. Data cen-
+ters may absorb variable renewable output, shift computing, provide storage-
+mediated response, or support clean supply development, but they may also add
+peak demand, backup obligations, reverse power flow, rebound, water use, and
+asset stress. Annual renewable-energy matching or physical co-location alone
+does not establish a net system benefit. Credible claims should account for hourly
+and locational supply, network deliverability, marginal emissions, lifecycle effects,
+water and land impacts, shared-grid obligations, and the operating capability that
+is actually measured or contractually available. Coordinated planning, validated
+models, transparent tariffs, interoperable controls, and asset-health monitoring are
+therefore central to the reliable and sustainable growth of data center infrastructure
+in the grid.
+CRediT authorship contribution statement
+Bibek Dhakal: Conceptualization, Methodology, Investigation, Formal anal-
+ysis, Data curation, Visualization, Writing – original draft, Writing – review &
+editing. Manohar Chamana: Conceptualization, Supervision, Project adminis-
+tration, Funding acquisition, Writing – review & editing. Biswambhar Gayen:
+Resources, Writing – original draft. Jatendar Kumar: Writing – original draft.
+S M Shams Rahman: Visualization. Aaqib Peerzada: Writing – original draft,
+Writing – review & editing. Ki Yeob Lee: Writing – original draft, Writing –
+review & editing. Olatunji M. Adeyanju: Writing – review & editing. Bhaskar
+Mitra: Supervision, Writing – review & editing. Soumya Kundu: Writing –
+review & editing. Stephen Bayne: Funding acquisition, Supervision, Writing –
+review & editing.
+35
+
+
+Declaration of competing interest
+The authors declare that they have no known competing financial interests or
+personal relationships that could have appeared to influence the work reported in
+this paper.
+Funding
+This material is based upon work supported by the U.S. Department of Energy,
+Office of Cybersecurity, Energy Security, and Emergency Response (CESER),
+under Award Number DE-CR0000038.
+Acknowledgements
+The authors gratefully acknowledge support from the U.S. Department of
+Energy (DOE) and its Office of Cybersecurity, Energy Security, and Emergency
+Response (CESER). The pictograms in Figures 1 to 4 are from the Solar Icon
+Set by 480 Design (CC BY 4.0, https://creativecommons.org/licens
+es/by/4.0/), obtained through SVG Repo and recolored by the authors, and
+from Microsoft Visio stencils. Pacific Northwest National Laboratory is operated
+for the U.S. Department of Energy by Battelle Memorial Institute under Contract
+DE-AC05-76RL01830.
+Disclaimer
+This work was prepared as an account of work sponsored by an agency of the
+United States Government. Neither the United States Government nor any agency
+thereof, nor any of their employees, makes any warranty, express or implied,
+or assumes any legal liability or responsibility for the accuracy, completeness,
+or usefulness of any information, apparatus, product, or process disclosed, or
+represents that its use would not infringe privately owned rights. Reference herein
+to any specific commercial product, process, or service by trade name, trademark,
+manufacturer, or otherwise does not necessarily constitute or imply its endorsement,
+recommendation, or favoring by the United States Government or any agency
+thereof. The views and opinions expressed herein do not necessarily state or reflect
+those of the United States Government or any agency thereof.
+Data availability
+No data were used for the research described in the article.
+36
+
+
+References
+[1] International Energy Agency, Energy and AI, Tech. rep., International En-
+ergy Agency, Paris, France (2025).
+URL https://www.iea.org/reports/energy-and-ai
+[2] E. Masanet, A. Shehabi, N. Lei, S. Smith, J. Koomey, Recalibrating global
+data center energy-use estimates, Science 367 (6481) (2020) 984–986. doi:
+10.1126/science.aba3758.
+[3] D. Mytton, M. Ashtine, Sources of data center energy estimates: A compre-
+hensive review, Joule 6 (9) (2022) 2032–2056. doi:10.1016/j.joule.
+2022.07.011.
+[4] North American Electric Reliability Corporation, 2025 Long-Term Reliabil-
+ity Assessment, Tech. rep., North American Electric Reliability Corporation
+(Jan. 2026).
+URL https://www.nerc.com/globalassets/our-work/assessme
+nts/nerc_ltra_2025.pdf
+[5] A. Shehabi, S. J. Smith, A. Hubbard, A. Newkirk, N. Lei, M. A. B. Siddik,
+B. Holecek, J. Koomey, E. Masanet, D. Sartor, 2024 United States Data Cen-
+ter Energy Usage Report, Tech. Rep. LBNL-2001637, Lawrence Berkeley
+National Laboratory, Berkeley, CA, USA (Dec. 2024).
+URL https://eta-publications.lbl.gov/sites/default/file
+s/2024-12/lbnl-2024-united-states-data-center-energy-usa
+ge-report_1.pdf
+[6] J. G. Koomey, Growth in data center electricity use 2005 to 2010, Tech. rep.,
+Analytics Press, Oakland, California, USA, prepared at the request of The
+New York Times (Aug. 2011).
+URL https://www.koomey.com/koomey_blog/my-new-study-of-d
+ata-center-electricity-use-in-2010/
+[7] A. Shehabi, S. J. Smith, D. A. Sartor, R. E. Brown, M. Herrlin, J. G. Koomey,
+E. R. Masanet, N. Horner, I. L. Azevedo, W. Lintner, United States Data
+Center Energy Usage Report, Tech. Rep. LBNL-1005775, Lawrence Berke-
+ley National Laboratory (2016). doi:10.2172/1372902.
+URL https://escholarship.org/uc/item/84p772fc
+37
+
+
+[8] Federal Energy Regulatory Commission Staff, 2025 State of the Markets,
+Tech. rep., Federal Energy Regulatory Commission, staff report; does not
+necessarily reflect the views of the Commission or any Commissioner (Mar.
+2026).
+URL https://www.ferc.gov/sites/default/files/2026-03/26
+_State-of-the-Market_0324_1430.pdf
+[9] G. Zhabelova, A. Yavarian, V. Vyatkin, Data center power dynamics within
+the settings of regional power grid, in: 2015 IEEE 20th Conference on
+Emerging Technologies & Factory Automation (ETFA), IEEE, 2015, pp.
+1–5. doi:10.1109/ETFA.2015.7301633.
+[10] J. Sun, S. Wang, J. Wang, L. M. Tolbert, Dynamic model and converter-based
+emulator of a data center power distribution system, IEEE Trans. Power
+Electron. 37 (7) (2022) 8420–8432. doi:10.1109/TPEL.2022.3146354.
+[11] D. Al Kez, A. Foley, Programmable load risks and system flexibility: Re-
+thinking data center participation in modern power systems, SSRN preprint
+5395002 (2025). doi:10.2139/ssrn.5395002.
+URL https://ssrn.com/abstract=5395002
+[12] K. M. U. Ahmed, M. H. Bollen, M. Alvarez, A review of data centers
+energy consumption and reliability modeling, IEEE Access 9 (2021) 152536–
+152563. doi:10.1109/ACCESS.2021.3125092.
+[13] M. Dayarathna, Y. Wen, R. Fan, Data center energy consumption modeling:
+A survey, IEEE Commun. Surv. Tutor. 18 (1) (2015) 732–794. doi:10.1
+109/COMST.2015.2481183.
+[14] Y. Wang, Y. Han, J. Shen, K. Han, J. Li, W. Ji, H. Li, R. Jing, H. Hua,
+D. Wang, J. Han, S. Shao, J. Lin, J. Zhao, Q. Zhang, Y. Zhang, H. Zhang,
+Q. Yang, J. Yan, Data Center Integrated Energy System for Sustainability:
+Generalization, Approaches, Methods, Techniques, and Future Perspectives,
+The Innovation Energy 1 (1) (2024) 100014. doi:10.59717/j.xinn-ene
+rgy.2024.100014.
+[15] M. T. Takci, M. Qadrdan, J. Summers, J. Gustafsson, Data centres as a
+source of flexibility for power systems, Energy Rep. 13 (2025) 3661–3671.
+doi:10.1016/j.egyr.2025.03.020.
+38
+
+
+[16] S. Rahman, T. A. Khan, Energy Storage Systems for AI Data Centers: A
+Review of Technologies, Characteristics, and Applicability, Energies 19 (3)
+(2026) 634. doi:10.3390/en19030634.
+[17] S. Mohammadi, W. Wang, M. C. I. Wada, R. Haghighi, A. Hassan, H. Liu,
+A. Bhatnagar, A. Chen, W. Su, Grid integration of AI data centers: A critical
+review of energy storage solutions, arXiv preprint arXiv:2603.00415 (2026).
+doi:10.48550/arXiv.2603.00415.
+URL https://arxiv.org/abs/2603.00415
+[18] X. Chen, X. Wang, A. Colacelli, M. Lee, L. Xie, Electricity demand and
+grid impacts of AI data centers: Challenges and prospects, arXiv preprint
+arXiv:2509.07218 (2025). doi:10.48550/arXiv.2509.07218.
+URL https://arxiv.org/abs/2509.07218
+[19] E. Ginzburg-Ganz, P. Lifshits, R. Machlev, J. Belikov, Z. Krieger, Y. Levron,
+Technical challenges of AI data center integration into power grids—a
+survey, Energies 19 (1) (2025) 137. doi:10.3390/en19010137.
+[20] S. Viththarachchige, D. Alexander, S. Rajendran, A. Manoharan, V. Ar-
+avinthan, Concerns and redefining load modeling of large data centers in
+future power systems—a review, in: 2026 IEEE Green Technologies Con-
+ference (GreenTech), IEEE, 2026, pp. 1–6. doi:10.1109/GreenTech682
+85.2026.11471644.
+[21] C. C. Melnatami, AI Data Centers and U.S. Grids: A 2026–2030 Regional
+Forecast, in: 2026 IEEE Green Technologies Conference (GreenTech), 2026,
+pp. 1–6. doi:10.1109/GreenTech68285.2026.11471641.
+[22] G. Krishnamoorthy, V. Westfallen, K. McKenna, The role of the U.S. electric
+distribution system in serving data center and other large loads, Tech. Rep.
+NLR/TP-6A40-96783, National Laboratory of the Rockies, Golden, CO,
+USA (May 2026).
+[23] North American Electric Reliability Corporation, Characteristics and Risks
+of Emerging Large Loads, White paper, North American Electric Reliability
+Corporation (Jul. 2025).
+URL https://www.nerc.com/globalassets/who-we-are/standin
+g-committees/rstc/whitepaper-characteristics-and-risks-o
+f-emerging-large-loads.pdf
+39
+
+
+[24] J. Fan, Q. Zhao, W. Tang, Reliability evaluation method for distribution
+network with data center load based on two-stage optimization model, in:
+2025 4th International Conference on Smart Grids and Energy Systems
+(SGES), IEEE, 2025, pp. 118–126. doi:10.1109/SGES66701.2025.111
+56026.
+[25] W. Wang, N. Yu, Phase balancing in power distribution network with data
+center, in: Proceedings of the Eighth International Conference on Future
+Energy Systems, Association for Computing Machinery, 2017, pp. 64–69.
+doi:10.1145/3152042.3152064.
+[26] M. Yan, T. Joswig-Jones, B. Zhang, Y. Chen, W. Cui, Switching-reference
+voltage control for distribution systems with AI-training data centers, arXiv
+preprint arXiv:2603.15588 (2026). doi:10.48550/arXiv.2603.15588.
+URL https://arxiv.org/abs/2603.15588
+[27] R. Qiu, T. Zhang, G. Li, M. Zhou, Q. Zhou, J. Wang, Characterizing the
+dynamic hosting capacity of distribution networks integrated with distributed
+GAI data center, IEEE Trans. Ind. Appl. (2026). doi:10.1109/TIA.2026
+.3654323.
+[28] B. Mitra, A. Singhal, S. Kundu, J. P. Ogle, Analyzing distribution trans-
+former degradation with increased power electronic loads, in: 2023 IEEE
+Power & Energy Society Innovative Smart Grid Technologies Conference
+(ISGT), IEEE, 2023, pp. 1–5. doi:10.1109/ISGT51731.2023.1006638
+7.
+[29] A. Nair, M. Patel, O. Lavrova, T. Abreu, Predictive transformer management
+for renewables-rich and harmonics-rich distribution networks, in: 2026
+IEEE Green Technologies Conference (GreenTech), IEEE, 2026, pp. 1–6.
+doi:10.1109/GreenTech68285.2026.11471565.
+[30] J. Faiz, M. Ghazizadeh, H. Oraee, Derating of transformers under non-linear
+load current and non-sinusoidal voltage–an overview, IET Electr. Power
+Appl. 9 (7) (2015) 486–495. doi:10.1049/iet-epa.2014.0377.
+[31] C. Demoulias, D. P. Labridis, P. S. Dokopoulos, K. Gouramanis, Ampacity of
+low-voltage power cables under nonsinusoidal currents, IEEE Trans. Power
+Deliv. 22 (1) (2007) 584–594. doi:10.1109/TPWRD.2006.881445.
+40
+
+
+[32] T. M. Gruzs, A survey of neutral currents in three-phase computer power
+systems, IEEE Trans. Ind. Appl. 26 (4) (1990) 719–725. doi:10.1109/28
+.55999.
+[33] North American Electric Reliability Corporation, Essential Action to In-
+dustry: Computational Load Modeling, Studies, Instrumentation, Commis-
+sioning, Operations, Protection, and Control, Level 3 alert, North American
+Electric Reliability Corporation (May 2026).
+URL https://www.nerc.com/globalassets/programs/bpsa/aler
+ts/level-3-computational-load-alert.pdf
+[34] U.S. Department of Energy, Ensuring the Timely and Orderly Interconnec-
+tion of Large Loads, Advance Notice of Proposed Rulemaking submitted to
+the Federal Energy Regulatory Commission, Docket No. RM26-4-000 (Oct.
+2025).
+URL https://elibrary.ferc.gov/eLibrary/filelist?accessio
+n_Number=20251027-4001
+[35] L. Strezoski, Distributed energy resource management systems—derms:
+State of the art and how to move forward, WIREs Energy Environ. 12 (1)
+(2023) e460. doi:10.1002/wene.460.
+[36] B. A. Ross, X. Lyu, U. C. Nwaneto, S. M. Mohiuddin, A. B. Nassif,
+Using grid-forming energy storage systems to provide dynamic active
+power support for hyperscale data center, IEEE Access (2026).
+doi:
+10.1109/ACCESS.2026.3666746.
+[37] A. Azizi, S. Morovati, A. Zamani, J. Piruzza, D. Guo, Z. Liu, P. Taimela,
+Strengthening data center operations using grid-forming battery energy
+storage as a line-interactive uninterruptible power supply, Int. J. Electr.
+Power Energy Syst. 175 (2026) 111638. doi:10.1016/j.ijepes.2026.
+111638.
+[38] M. Specian, A. Aquino, Faster and Cheaper: Demand-Side Solutions for
+Rapid Load Growth, Tech. Rep. U2601, American Council for an Energy-
+Efficient Economy, Washington, DC, USA (2026).
+URL https://www.aceee.org/research-report/u2601
+[39] R. Quint, K. Thomas, C. Baker, Practical guidance and considerations for
+large load interconnections, Webinar presentation, Elevate Energy Consult-
+ing and GridLab, presented July 10, 2025 (Jul. 2025).
+41
+
+
+[40] R. R. Ahrabi, A. Mousavi, E. Mohammadi, R. Wu, A. K. Chen, AI-driven
+data center energy profile, power quality, sustainable siting, and energy
+management: A comprehensive survey, in: 2025 IEEE Conference on
+Technologies for Sustainability (SusTech), IEEE, 2025, pp. 1–8. doi:
+10.1109/SusTech63138.2025.11025802.
+[41] North American Electric Reliability Corporation, Assessment of Gaps in
+Existing Practices, Requirements, and Reliability Standards for Emerging
+Large Loads, White paper, North American Electric Reliability Corporation
+(Mar. 2026).
+URL https://www.nerc.com/globalassets/our-work/guidelin
+es/reliability/white-paper---assessment-of-gaps.pdf
+[42] Federal Energy Regulatory Commission, Commissioner-Led Technical Con-
+ference Regarding Large Loads Co-Located at Generating Facilities, Docket
+No. AD24-11-000 (Nov. 2024).
+URL https://www.ferc.gov/news-events/events/commissione
+r-led-technical-conference-regarding-large-loads-co-loc
+ated
+[43] Federal Energy Regulatory Commission, Chairman Rosner’s Letter to the
+RTOs/ISOs on Large Load Forecasting, Chairman letter (Sep. 2025).
+URL https://www.ferc.gov/news-events/news/chairman-rosne
+rs-letter-rtosisos-large-load-forecasting
+[44] W. E. Gnibga, A. A. Chien, Improving datacenter IT capacity, cooling
+efficiency and lifetime with underground thermal energy storage systems,
+in: Proceedings of the 17th ACM International Conference on Future and
+Sustainable Energy Systems (e-Energy ’26), Association for Computing
+Machinery, New York, NY, USA, 2026. doi:10.1145/3744255.379811
+1.
+[45] J. A. Winick, G. Zhu, K. Kitz, A. Adams, Reducing data center peak cooling
+demand and energy costs with underground thermal energy storage (UTES),
+in: Proceedings of the 50th Workshop on Geothermal Reservoir Engineering,
+Stanford, CA, USA, 2025, SGP-TR-229.
+[46] J. Huntington, M. Tu, 800 VDC architecture for next-generation AI infras-
+tructure, White paper, NVIDIA Corporation (Oct. 2025).
+42
+
+
+URL https://www.nvidia.com/en-us/data-center/technologi
+es/800-vdc-architecture/
+[47] Y. Chen, K. Shi, M. Chen, D. Xu, Data center power supply systems: From
+grid edge to point-of-load, IEEE J. Emerg. Sel. Top. Power Electron. 11 (3)
+(2023) 2441–2456. doi:10.1109/JESTPE.2022.3229063.
+[48] P. P. Gyang, P. Chakraborty, L. Meegahapola, X. Yu, Dynamic modeling of
+a data center for power system stability studies, IEEE Trans. Power Syst.
+41 (3) (2026) 2317–2330. doi:10.1109/TPWRS.2025.3639163.
+[49] M. Wiboonrat, Risk anatomy of data center power distribution systems, in:
+2008 IEEE International Conference on Sustainable Energy Technologies,
+IEEE, 2008, pp. 674–679. doi:10.1109/ICSET.2008.4747092.
+[50] K.-B. Kwon, S. Mukherjee, V. Adetola, Operational risks in grid inte-
+gration of large data center loads: Characteristics, stability assessments,
+and sensitivity studies, arXiv preprint arXiv:2510.05437 (2025).
+doi:
+10.48550/arXiv.2510.05437.
+URL https://arxiv.org/abs/2510.05437
+[51] E. Choukse, B. Warrier, S. Heath, L. Belmont, A. Zhao, H. A. Khan,
+B. Harry, M. Kappel, R. J. Hewett, K. Datta, et al., Power stabiliza-
+tion for AI training datacenters, arXiv preprint arXiv:2508.14318 (2025).
+doi:10.48550/arXiv.2508.14318.
+URL https://arxiv.org/abs/2508.14318
+[52] X. Tao, R. Gadh, Fast frequency response potential of data centers through
+workload modulation and UPS coordination, IEEE Access 13 (2025)
+214511–214519. doi:10.1109/ACCESS.2025.3646120.
+[53] M. Ghamkhari, H. Mohsenian-Rad, Energy and Performance Management
+of Green Data Centers: A Profit Maximization Approach, IEEE Trans. Smart
+Grid 4 (2) (2013) 1017–1025. doi:10.1109/TSG.2013.2237929.
+[54] Y. Chen, X. Zheng, To defer or to shift? The role of AI data center flexibility
+on grid interconnection, in: Proceedings of the 2026 ACM Sustainability
+Week, Association for Computing Machinery, New York, NY, USA, 2026,
+pp. 322–327. doi:10.1145/3765611.3815593.
+43
+
+
+[55] S. Liu, S. Shin, D. Deka, Watts vs. Bytes: Turning data centers into grid as-
+sets via storage compute co-optimization, arXiv preprint arXiv:2605.16190
+(2026). doi:10.48550/arXiv.2605.16190.
+URL https://arxiv.org/abs/2605.16190
+[56] T. Yang, Y. Hou, S. Cai, J. Yu, H. Pen, Multi-Data Center Tie-Line Power
+Smoothing Method Based on Demand Response, IEEE Trans. Cloud Com-
+put. 12 (4) (2024) 983–995. doi:10.1109/TCC.2024.3410377.
+[57] F. Kahrl, N. M. Frick, Speed to power: Solutions for accelerating large load
+connections, Tech. rep., Lawrence Berkeley National Laboratory, Berkeley,
+CA, USA (Jun. 2026).
+URL https://escholarship.org/uc/item/9jc3882v
+[58] Y. Li, Y. Li, AI load dynamics–a power electronics perspective, arXiv
+preprint arXiv:2502.01647 (2025). doi:10.48550/arXiv.2502.01647.
+URL https://arxiv.org/abs/2502.01647
+[59] I. Alaperä, S. Honkapuro, J. Paananen, Data centers as a source of dynamic
+flexibility in smart grids, Appl. Energy 229 (2018) 69–79. doi:10.1016/
+j.apenergy.2018.07.056.
+[60] D. Vaidhynathan, K. Prabakar, G. Martin, A. Ramesh, B. Wheeler, C. Coco,
+J. Clidaras, M. Monsch, S. Kim, S. Talukdar, S. Marti, Vulcan test platform:
+Demonstrating the data center as a flexible grid asset, Tech. Rep. NREL/TP-
+2C00-94844, National Renewable Energy Laboratory, Golden, CO, USA
+(Jun. 2025).
+URL https://www.nrel.gov/docs/fy25osti/94844.pdf
+[61] A. Hoevenaars, P. Hoevenaars, Data center cooling harmonics - how to get
+the good without the bad, in: 2020 IEEE/IAS 56th Industrial and Com-
+mercial Power Systems Technical Conference (I&CPS), 2020, pp. 1–7.
+doi:10.1109/ICPS48389.2020.9176824.
+[62] A. Mousavi, A. Yavarian, V. Vyatkin, X. Zhang, Power quality assessment
+of energy efficient cooling systems in data centers, in: IECON 2017–43rd
+Annual Conference of the IEEE Industrial Electronics Society, IEEE, 2017,
+pp. 7191–7196. doi:10.1109/IECON.2017.8217258.
+[63] K. Raiˇc Raguž, M. Mileti´c, V. Zeleniˇci´c, D. Sumina, I. Erceg, Ž. Nas-
+tasi´c, Analysis of current harmonics in data center power system, in:
+44
+
+
+2022 45th Jubilee International Convention on Information, Communi-
+cation and Electronic Technology (MIPRO), 2022, pp. 153–157. doi:
+10.23919/MIPRO55190.2022.9803460.
+[64] J. Sun, M. Xu, M. Cespedes, M. Kauffman, Data center power system
+stability—Part I: Power supply impedance modeling, CSEE J. Power Energy
+Syst. 8 (2) (2022) 403–419. doi:10.17775/CSEEJPES.2021.02010.
+[65] J. Sun, M. Xu, M. Cespedes, D. Wong, M. Kauffman, Modeling and analysis
+of data center power system stability by impedance methods, in: 2019 IEEE
+Energy Conversion Congress and Exposition (ECCE), IEEE, 2019, pp. 107–
+116. doi:10.1109/ECCE.2019.8913185.
+[66] Z. Wang, Y. Zhang, L. Wang, Y. Lin, Regime-adaptive weighted ensemble
+learning for computing-driven dynamic load forecasting in AI data centers,
+arXiv preprint arXiv:2604.27207 (2026). doi:10.48550/arXiv.2604.
+27207.
+URL https://arxiv.org/abs/2604.27207
+[67] Y. Xie, W. Cui, A. Wierman, Enhancing data center low-voltage ride-through,
+arXiv preprint arXiv:2510.03867 (2025). doi:10.48550/arXiv.2510.
+03867.
+URL https://arxiv.org/abs/2510.03867
+[68] A. M. Alkhudaydi, B. Cui, Safe reconnection time for large-scale data center
+loads: An analytical framework for transient stability assessment, arXiv
+preprint arXiv:2604.24009 (2026). doi:10.48550/arXiv.2604.24009.
+URL https://arxiv.org/abs/2604.24009
+[69] B. A. Ross, J. D. Follum, Electromagnetic transient modeling of large
+data centers for grid-level studies, Tech. rep., Pacific Northwest National
+Laboratory, Richland, WA, USA (Jan. 2026). doi:10.2172/3013288.
+URL https://www.osti.gov/biblio/3013288
+[70] R. Quint, J. J. Zhao, K. Thomas, An assessment of large load interconnec-
+tion risks in the Western Interconnection, Tech. rep., Western Electricity
+Coordinating Council, Salt Lake City, UT, USA (Feb. 2025).
+URL https://www.wecc.org/wecc-document/19111
+[71] L. F. Enriquez-Contreras, S. M. S. Alam, M. J. Culler, K. G. Cafferty, J. M.
+Tacke, H. Ackenhusen, Bridging the gap for powering data centers, Tech.
+45
+
+
+Rep. INL/RPT-26-89901, Idaho National Laboratory, Idaho Falls, ID, USA
+(Dec. 2025).
+[72] North American Electric Reliability Corporation, Large Load Interconnec-
+tion, Study, Commissioning, and Operations, Level 2 industry recommenda-
+tion, North American Electric Reliability Corporation (Sep. 2025).
+URL https://www.nerc.com/globalassets/programs/bpsa/aler
+ts/2025/nerc-alert-level-2--large-loads.pdf
+[73] S. Lu, C. Xiao, Y. Weng, Dynamic load model for data centers with pattern-
+consistent calibration, arXiv preprint arXiv:2602.07859 (2026). doi:10.4
+8550/arXiv.2602.07859.
+URL https://arxiv.org/abs/2602.07859
+[74] S. Talukdar, S. Marti, K. Prabakar, D. Vaidhynathan, Modeling framework
+for data center, Tech. Rep. NLR/TP-2C00-97716, National Laboratory of
+the Rockies, Golden, CO, USA (Feb. 2026).
+URL https://www.nlr.gov/docs/fy26osti/97716.pdf
+[75] M. Farmer, S. Walsh, K. Smaczniak, A. Zevin, N. Lobel, G. Daly,
+A. Clements, Y. Guo, T. Profeta, How DOE’s proposed large load intercon-
+nection process could unlock the benefits of load flexibility: Considerations
+for rulemaking, Policy brief, Nicholas Institute for Energy, Environment &
+Sustainability, Duke University (2025).
+[76] E. N. Anderson, P. B. Dave, A. L. Rackley, D. W. Powell, Policy and cost
+allocation considerations for large electric load interconnections: Emerg-
+ing policy trends in rate structures, interconnection, and cost impacts on
+other system users, Tech. Rep. PNNL-38455, Pacific Northwest National
+Laboratory, Richland, WA, USA (Sep. 2025).
+[77] M. T. Bishop, J. F. Baranowski, D. Heath, S. J. Benna, Evaluating harmonic-
+induced transformer heating, IEEE Trans. Power Deliv. 11 (1) (1996) 305–
+311. doi:10.1109/61.484029.
+[78] T. M. Elsharkawy, G. F. Osman, W. A. Salem, The effect of nonlinear loads
+on the underground distribution cables: a case study, J. Electr. Syst. Inf.
+Technol. 9 (1) (2022) 19. doi:10.1186/s43067-022-00061-2.
+[79] M. Rasoulpoor, M. Mirzaie, S. Mirimani, Thermal assessment of sheathed
+medium voltage power cables under non-sinusoidal current and daily load
+46
+
+
+cycle, Appl. Therm. Eng. 123 (2017) 353–364. doi:10.1016/j.applth
+ermaleng.2017.05.070.
+[80] J. J. Desmet, I. Sweertvaegher, G. Vanalme, K. Stockman, R. J. Belmans,
+Analysis of the neutral conductor current in a three-phase supplied network
+with nonlinear single-phase loads, IEEE Trans. Ind. Appl. 39 (3) (2003)
+587–593. doi:10.1109/TIA.2003.810638.
+[81] A. Mansoor, W. M. Grady, P. T. Staats, R. S. Thallam, M. T. Doyle, M. J.
+Samotyj, Predicting the net harmonic currents produced by large numbers
+of distributed single-phase computer loads, IEEE Trans. Power Deliv. 10 (4)
+(1995) 2001–2006. doi:10.1109/61.473351.
+[82] G. E. C. Reyes, C. Tomlin, R. Dye, D. Callaway, Effects of dynamic power
+electronic load models on power systems analysis using ZIP-E loads, in:
+2024 56th North American Power Symposium (NAPS), IEEE, 2024, pp.
+1–6. doi:10.1109/NAPS61145.2024.10741785.
+[83] H. Padullaparti, J. Wang, S. Veda, M. Baggu, A. Golnas, Evaluation of
+data-enhanced hierarchical control for distribution feeders with high pv
+penetration, IEEE Access 10 (2022) 42860–42872. doi:10.1109/ACCESS
+.2022.3168131.
+[84] S. M. Amin, N. Hossain, M. S. H. Lipu, S. Urooj, A. Akter, Development
+of a PV/battery micro-grid for a data center in Bangladesh: Resilience
+and sustainability analysis, Sustainability 15 (22) (2023) 15691. doi:
+10.3390/su152215691.
+[85] J. Castaneda, A. Ioan, Electric access system enhancement (EASE): Assess-
+ment of a distributed energy resource management system for enabling dy-
+namic hosting capacity, Tech. rep., Southern California Edison, Westminster,
+CA, USA, final report, U.S. Department of Energy Award DE-EE0008004
+(2022).
+[86] J. Wang, C. Chen, X. Lu, Guidelines for implementing advanced distribution
+management systems: Requirements for DMS integration with DERMS and
+microgrids, Tech. rep., Argonne National Laboratory, Argonne, IL, USA
+(2015).
+[87] North American Electric Reliability Corporation, Risk Mitigation for Emerg-
+ing Large Loads, Reliability guideline, North American Electric Reliability
+47
+
+
+Corporation (May 2026).
+URL https://www.nerc.com/globalassets/our-work/guidelin
+es/reliability/RG_Risk-Mitigation-For-Emerging-Large-Loa
+ds.pdf
+[88] S. C. Evans, S. P. Ekanayake, A. Duncan, B. Rose, H. Huang, I. Ndiaye,
+N. Dahlin, Sustainable grid through distributed data centers: Spinning AI
+demand for grid stabilization and optimization, in: 2025 IEEE Conference
+on Technologies for Sustainability (SusTech), IEEE, 2025, pp. 1–8. doi:
+10.1109/SusTech63138.2025.11025705.
+[89] J. Fattahi, D. Wright, H. Schriemer, An energy internet DERMS platform
+using a multi-level Stackelberg game, Sustain. Cities Soc. 60 (2020) 102262.
+doi:10.1016/j.scs.2020.102262.
+[90] M. Mughees, Y. Li, Z. Lin, Y. Chen, Y. R. Li, AI data center load forecasting:
+A liquid neural network approach, IEEE Trans. Smart Grid (2026). doi:
+10.1109/TSG.2026.3692769.
+[91] X. Zhao, J. Zhao, Dynamic modeling of data-center power delivery for
+power system resonance analysis, arXiv preprint arXiv:2604.06624 (2026).
+doi:10.48550/arXiv.2604.06624.
+URL https://arxiv.org/abs/2604.06624
+[92] L. Fan, A. Yazdanpanah, Y. Cheng, Z. Miao, F. Salehi, P. Gravois, et al.,
+Replicating real-world 23-hz oscillations caused by large electronic loads,
+arXiv preprint arXiv:2605.17190 (2026). doi:10.48550/arXiv.2605.
+17190.
+URL https://arxiv.org/abs/2605.17190
+[93] J. Conto, Y. Cheng, J. Rose, J. Schmall, Texas loads ride toward grid stability:
+Voltage ride through of large power electronic loads, IEEE Power Energy
+Mag. 23 (5) (2025) 56–67. doi:10.1109/MPE.2025.3564963.
+[94] J. Sutaria, S. Hajizadeh, S. Rönnberg, A. Krook-Riekkola, A perspective of
+energy and power quality of data center on the grid, in: CIRED 2021 - The
+26th International Conference and Exhibition on Electricity Distribution,
+Vol. 2021, 2021, pp. 881–885. doi:10.1049/icp.2021.2145.
+[95] F. Portillo, M. Fernandez-Ros, N. Novas, R. M. Garcia, E. Viciana, J. A.
+Gazquez, Monitoring harmonic ELF magnetic fields in data centers with
+48
+
+
+sensor-based instrumentation, IEEE Trans. Instrum. Meas. (2026). doi:
+10.1109/TIM.2026.3684676.
+[96] A. B. Nassif, Y. Wang, I. R. Pordanjani, Power quality characteristics and
+electromagnetic compatibility of modern data centres, in: 2018 IEEE Cana-
+dian Conference on Electrical & Computer Engineering (CCECE), IEEE,
+2018, pp. 1–4. doi:10.1109/CCECE.2018.8447607.
+[97] IEEE Standards Association, IEEE Standard for Harmonic Control in Elec-
+tric Power Systems, IEEE Std 519-2022 (Aug. 2022). doi:10.1109/IEEE
+STD.2022.9848440.
+[98] F. L. Tofoli, S. R. Sanhueza, A. de Oliveira, On the study of losses in cables
+and transformers in nonsinusoidal conditions, IEEE Trans. Power Deliv.
+21 (2) (2006) 971–978. doi:10.1109/TPWRD.2006.870986.
+[99] G. Ruan, M. D. Ilic, L. Xie, Data center control against sub-synchronous
+resonance: A data-driven approach, arXiv preprint arXiv:2511.14141 (2025).
+doi:10.48550/arXiv.2511.14141.
+URL https://arxiv.org/abs/2511.14141
+[100] D. M. Said, K. M. Nor, M. S. Majid, Analysis of distribution transformer
+losses and life expectancy using measured harmonic data, in: 2010 14th
+International Conference on Harmonics and Quality of Power (ICHQP),
+IEEE, 2010, pp. 1–6. doi:10.1109/ICHQP.2010.5625404.
+[101] E. Cazacu, V. Ionita, L. Petrescu, Thermal aging of power distribution
+transformers operating under nonlinear and balanced load conditions, Adv.
+Electr. Electron. Eng. 16 (1) (2018) 92. doi:10.15598/aeee.v16i1.27
+01.
+[102] A. Hiranandani, Calculation of cable ampacities including the effects of
+harmonics, IEEE Ind. Appl. Mag. 4 (2) (1998) 42–51. doi:10.1109/29
+43.655660.
+[103] A. P. S. Meliopoulos, M. A. Martin, Calculation of secondary cable losses
+and ampacity in the presence of harmonics, IEEE Trans. Power Deliv. 7 (2)
+(1992) 451–459. doi:10.1109/61.127037.
+49
+
+
+[104] D. E. Rice, Adjustable speed drive and power rectifier harmonics: Their
+effect on power systems components, IEEE Trans. Ind. Appl. IA-22 (1)
+(1986) 161–177. doi:10.1109/TIA.1986.4504707.
+[105] S. Cao, Q. Hong, D. Liu, C. Booth, Review and evaluation of control-based
+protection solutions for converter-dominated power systems, in: 2023 IEEE
+Belgrade PowerTech, IEEE, 2023, pp. 01–07. doi:10.1109/PowerTech5
+5446.2023.10202927.
+[106] IEEE Power System Relaying and Control Committee, Working Group
+C32, Protection challenges and practices for interconnecting inverter-based
+resources to utility transmission systems, Tech. Rep. PES-TR81, IEEE
+Power & Energy Society (Jul. 2020). doi:10.17023/vavk-ec87.
+URL https://resourcecenter.ieee.org/publications/technic
+al-reports/pes_tp_tr81_psrc_wgc32_071520
+[107] K. Chatterjee, J. D. Follum, A. C. Varghese, S. Biswas, E. Farantatos, L. Zhu,
+Measurement adequacy for monitoring data center oscillations, Tech. Rep.
+PNNL-39191, Pacific Northwest National Laboratory, Richland, WA, USA
+(Apr. 2026).
+URL https://www.pnnl.gov/publications/measurement-adequ
+acy-monitoring-data-center-oscillations
+[108] IEEE Standards Association, IEEE Recommended Practice for Conduct-
+ing Harmonic Studies and Analysis of Industrial and Commercial Power
+Systems, IEEE Std 3002.8-2018 (2018).
+[109] V. R. Pandi, H. H. Zeineldin, W. Xiao, Determining optimal location and
+size of distributed generation resources considering harmonic and protection
+coordination limits, IEEE Trans. Power Syst. 28 (2) (2013) 1245–1254.
+doi:10.1109/TPWRS.2012.2209687.
+[110] V. R. Pandi, H. H. Zeineldin, W. Xiao, A. F. Zobaa, Optimal penetration
+levels for inverter-based distributed generation considering harmonic limits,
+Electr. Power Syst. Res. 97 (2013) 68–75. doi:10.1016/j.epsr.2012.
+12.003.
+[111] M. H. J. Bollen, I. Y. H. Gu, Signal Processing of Power Quality Distur-
+bances, Wiley-IEEE Press, Hoboken, NJ, USA, 2006. doi:10.1002/0471
+931314.
+50
+
+
+[112] K. D. Patil, W. Z. Gandhare, Effects of harmonics in distribution systems
+on temperature rise and life of XLPE power cables, in: 2011 International
+Conference on Power and Energy Systems, IEEE, 2011, pp. 1–6. doi:
+10.1109/ICPES.2011.6156680.
+[113] M. J. Culler, R. V. Stolworthy, A. Tylecote, J. Kmiec, T. Ponto, L. Martin,
+Digital assurance for grid reliability in the era of large load growth, Tech.
+Rep. INL/RPT-26-90975, Idaho National Laboratory, Idaho Falls, ID, USA
+(Jan. 2026).
+[114] S. Shah, V. Gevorgian, P. Koralewicz, R. Wallen, B. Mather, B. Kroposki,
+J. Kurtz, Data Center Power Systems: Architectures, Impact on Grid Reli-
+ability, Modeling Considerations, and Megawatt-Scale Hardware Testing,
+Technical presentation, National Laboratory of the Rockies (formerly Na-
+tional Renewable Energy Laboratory), Golden, CO, USA (Mar. 2026).
+[115] J. Liu, F. Teng, F. Y. Hou, Synergising Hierarchical Data Centers and Power
+Networks: A Privacy-Preserving Approach, IEEE Trans. Smart Grid 16 (6)
+(2025) 5083–5098. doi:10.1109/TSG.2025.3603107.
+[116] Y. Mao, J. L. Mathieu, V. Dvorkin, Online feedback optimization of energy
+storage to smooth data center grid impacts, arXiv preprint arXiv:2603.20564
+(2026). doi:10.48550/arXiv.2603.20564.
+URL https://arxiv.org/abs/2603.20564
+[117] Federal Energy Regulatory Commission, Order Directing the North Ameri-
+can Electric Reliability Corporation to File Reliability Standard(s) Pertaining
+to Computational Load Integration, 196 FERC ¶ 61,031, Docket No. RD26-
+7-000 (Jul. 2026).
+URL https://www.ferc.gov/media/e-1-rd26-7-000
+[118] Federal Energy Regulatory Commission, FERC Launches Aggressive Tar-
+geted Action to Speed Large Load Integration, News release (Jun. 2026).
+URL https://www.ferc.gov/news-events/news/ferc-launche
+s-aggressive-targeted-action-speed-large-load-integrati
+on
+[119] North American Electric Reliability Corporation, Aggregated Report on
+NERC Level 2 Industry Recommendation: Large Load Interconnection,
+Study, Commissioning, and Operations, Tech. rep., North American Electric
+51
+
+
+Reliability Corporation (Mar. 2026).
+URL https://www.nerc.com/globalassets/programs/bpsa/aler
+ts/2025/aggregated-report-level-2-large-load-interconnec
+tion-study-commissioning-and-operations.pdf
+[120] North American Electric Reliability Corporation, Technical Reasoning:
+Proposed Computational Load Entity, Tech. rep., North American Electric
+Reliability Corporation (Apr. 2026).
+URL https://www.nerc.com/globalassets/who-we-are/rules
+-of-procedure/proposed/cle-technical-reasoning-april-202
+6-posting.pdf
+[121] North American Electric Reliability Corporation, Project 2026-02 Com-
+putational Loads: Reliability Standards to Address Computational Load,
+Phase I, Standard authorization request, North American Electric Reliability
+Corporation (May 2026).
+URL https://www.nerc.com/globalassets/standards/projects
+/2026-02/sar-comment-period/project-2026-02-computation
+al-loads-sar-clean-052026.pdf
+[122] Federal Energy Regulatory Commission, FERC Orders Action on Co-
+Location Issues Related to Data Centers Running AI, News release (Feb.
+2025).
+URL https://www.ferc.gov/news-events/news/ferc-orders-a
+ction-co-location-issues-related-data-centers-running-ai
+[123] Federal Energy Regulatory Commission, Order Regarding Intent to Act, 195
+FERC para. 61,045, Docket No. RM26-4-000 (Apr. 2026).
+URL https://elibrary.ferc.gov/eLibrary/docinfo?accession
+_Number=20260416-3003
+[124] D. Rosner, Concurrence to Order Accepting Tariff Revisions, Subject to
+Condition, Southwest Power Pool, Inc., Federal Energy Regulatory Com-
+mission, Docket No. ER26-247 (Jan. 2026).
+URL https://www.ferc.gov/news-events/news/commissioner-r
+osners-concurrence-order-accepting-tariff-revisions-sub
+ject
+[125] X. Lu, J. Qiu, J. Lin, S. An, M. Sun, J. Zhao, Battery-assisted operation
+of hyperscale AI data centers under connect-and-manage interconnection
+52
+
+
+practices, arXiv preprint arXiv:2605.14105 (2026). doi:10.48550/arXiv
+.2605.14105.
+URL https://arxiv.org/abs/2605.14105
+[126] Y. Yu, K. Shan, H. Tang, S. Wang, Reliability and Economic Impacts of
+Utilizing Battery Energy Storage in Data Centers for Energy Flexibility
+Services in Smart Grids, Energy Convers. Manag. 339 (2025) 119951.
+doi:10.1016/j.enconman.2025.119951.
+[127] A. Azizi, A. Aluko, S. Maleki, R. Salehi, H. Bayat, Grid-forming inverter
+applications for improved reliability and power quality in AI data centers,
+in: 2025 IEEE Power & Energy Society General Meeting (PESGM), IEEE,
+2025, pp. 1–5. doi:10.1109/PESGM52009.2025.11225523.
+[128] L. Ljungblom, Optimal planning of data centers with on-site generation
+and storage: A case study in Dublin, Ireland, Master’s thesis, Chalmers
+University of Technology, Gothenburg, Sweden (2025).
+[129] G. L. Guizzi, M. Manno, Fuel Cell-Based Cogeneration System Covering
+Data Centers’ Energy Needs, Energy 41 (2012) 56–64. doi:10.1016/j.
+energy.2011.07.030.
+[130] A. Siegle, The data center as a power plant: Solutions for accommodating
+data center load growth on a decarbonized grid, SSRN preprint 5138427
+(2025). doi:10.2139/ssrn.5138427.
+URL https://ssrn.com/abstract=5138427
+[131] North American Electric Reliability Corporation, Comments of the North
+American Electric Reliability Corporation, Filed before the Federal Energy
+Regulatory Commission in Docket Nos. EL25-49-000, AD24-11-000, and
+EL25-20-000 (Apr. 2025).
+URL https://www.nerc.com/globalassets/who-we-are/members
+hip/legal--regulatory/filings--orders/nerc-filings-to-f
+erc/2025/comments-re-large-loads-el25-49_signed.pdf
+[132] M. Shamseldein, Deep reinforcement learning-based load-side resonance
+forcing via hyper-scale data center load modulation, IET Smart Grid 9 (1)
+(2026) e70083. doi:10.1049/stg2.70083.
+[133] S. Huang, W. Gao, F. Qiu, J. Qi, Cascading failure model for power systems
+with large-scale data center load, in: 2026 IEEE Texas Power and Energy
+53
+
+
+Conference (TPEC), IEEE, 2026, pp. 1–6. doi:10.1109/TPEC67884.20
+26.11513123.
+[134] M. Barati, Resilience to dynamic load attacks under AI demand and hyper-
+scale data centers, in: 2025 IEEE 7th International Conference on Trust,
+Privacy and Security in Intelligent Systems, and Applications (TPS-ISA),
+IEEE, 2025, pp. 445–454. doi:10.1109/TPS-ISA67132.2025.00054.
+54

@@ -1,0 +1,1199 @@
+PlaneZip: Lossless Bit-Plane Compression of
+Training Activations Offloaded over PCIe
+Zhufan Gu, Qizhe Tang, Yuxin Wang, Xun Zhou, Hui Feng
+Abstract—Training under a device-memory budget relies on
+tensor rematerialization: an evicted activation is either swapped
+to host memory or dropped and recomputed. Because GPU com-
+pute has outgrown PCIe bandwidth, cost-model planners such as
+MegTaiChi, which charge a swap its full transfer time, almost
+never swap, and swaps that fill idle link time carry only a small
+fraction of the saved activations. Saved activations, however, are
+homogeneously typed arrays with bit-level redundancy beyond
+zeros, which lightweight bit-plane compressors can remove at line
+rate. We present PlaneZip, which compresses swapped tensors
+on the copy path and plans around the compression. Its codec
+picks, for every 128-byte block, the smallest of zero-value, delta
+bit-plane, bit-plane, and a new zero-masked bit-plane encoding.
+A per-tensor predictor reuses the ratio of the previous iteration,
+and the planner budgets link time in compressed transfer times.
+On activations captured from five models trained on real data, the
+codec compresses BF16 activations by 1.71x and FP32 activations
+by 1.39x (geometric means), against 1.18x and 1.20x for zero-
+value compression. In trace-driven simulation of a PCIe 3.0
+consumer GPU and a PCIe 4.0 datacenter GPU at half the
+activation memory, PlaneZip cuts the rematerialization overhead
+by 47% and 31% relative to a bandwidth-aware planner without
+compression, and by 73% and 54% relative to MegTaiChi’s cost
+model, with an estimated engine area of 0.036 square millimeters.
+Index Terms—DNN training, GPU memory management, ten-
+sor rematerialization, memory compression, bit-plane compres-
+sion
+I. INTRODUCTION
+The activations that the forward pass saves for the backward
+pass dominate the memory footprint of DNN training [1],
+[2]. When they exceed the device memory, systems either
+oversubscribe it through unified virtual memory (UVM),
+which migrates pages on demand [3], [4], or rematerialize
+the activations explicitly. A saved tensor is either swapped
+to host memory and prefetched before its backward use [5]–
+[7], or dropped and recomputed from its inputs [1], [8], [9].
+MegTaiChi [10] coordinates the two: when memory runs out,
+it evicts the tensor with the lowest cost, charging a swap its
+transfer time and a drop its recomputation time.
+The two mechanisms scale differently. Recomputation runs
+at GPU speed, and the two GPUs we model differ by 23×
+in peak math throughput, from a Turing-class consumer card
+training in FP32 to an Ampere-class datacenter card training
+in BF16, while their host links differ by only 2× (PCIe 3.0
+and 4.0). For the median saved byte, a swap takes 10–13×
+longer than recomputing the same tensor (Section II-C), so a
+per-tensor cost model almost never picks it: in our simulations
+MegTaiChi’s policy reduces to pure recomputation in 58 of 70
+configurations. Swapping still pays when it uses link time that
+would otherwise idle, which bandwidth-aware planners such
+as Capuchin [7] exploit. That idle time is short, though: during
+one iteration the link can move only 6–37% of the saved bytes
+of the five models we study.
+Compression enlarges that budget. Saved activations are
+large arrays of a single type, the property that Bit-Plane
+Compression (BPC) [11] exploits in GPU memory traffic.
+They contain zeros produced by ReLU and by causal attention
+masks, and neighboring floating-point values tend to share
+their high-order exponent bits. Hardware block compressors
+designed for GPU and main memory [11], [12] encode a 128-
+byte block in a few cycles, fast enough to sit on the copy path.
+The compressing DMA engine cDMA [13] applied zero-value
+compression (ZVC) to swapped activations, which captures
+ReLU sparsity but nothing else, and its swap schedule did not
+change with the compression it achieved.
+This paper presents PlaneZip, which compresses swapped
+tensors on the copy path and plans around the compression.
+It rests on three observations from activations that we capture
+in real training iterations:
+• Activations compress beyond their zeros. A per-block
+choice among four lightweight encodings, including a
+zero-masked bit-plane encoding that we add, compresses
+BF16 activations by 1.71× (geometric mean over five
+models), against 1.18× for ZVC (Section V-A).
+• Compressibility is a stable per-tensor property. Train-
+ing repeats the same operator sequence every iteration,
+which MegTaiChi exploits for its memory plans. Pre-
+dicting each tensor’s compressed size from the previous
+iteration errs by less than 1% of the transferred bytes
+(Section V-B).
+• Only a compression-aware planner turns compres-
+sion into speed. Compressing the swaps chosen by
+a compression-unaware planner shortens transfers but
+leaves the freed link time unused. Budgeting the link
+with compressed transfer times, and ranking tensors by
+the recomputation or memory they save per second of
+transfer, recovers it (Section V-D).
+We make the following contributions:
+• A characterization of the compressibility of saved activa-
+tions in three CNNs and two Transformers, for six codecs
+in FP32 and BF16.
+• The
+PlaneZip
+codec:
+element-width-aware
+selection
+among ZVC, BPC’s delta bit-plane transform, a bit-plane
+transform without the delta, and a new zero-masked bit-
+plane encoding, packed into 4 KB chunks that decode in
+arXiv:2610.25033v1  [cs.DC]  18 Oct 2026
+
+
+parallel, with a bit-exact reference implementation.
+• A per-tensor compressibility predictor and a compression-
+aware swap and recomputation planner.
+• A trace-driven evaluation on a PCIe 3.0 consumer GPU
+and a PCIe 4.0 datacenter GPU, in which PlaneZip
+reduces the rematerialization overhead at 50% of the acti-
+vation memory by 47% and 31% relative to a bandwidth-
+aware planner without compression.
+II. BACKGROUND AND MOTIVATION
+A. Tensor Rematerialization
+A training iteration runs a forward pass that saves activa-
+tions, a backward pass that consumes them in reverse order,
+and an optimizer step. A saved tensor t of mt bytes is idle
+between its last forward use and its first backward use, and
+the peak memory occurs near the boundary of the two passes,
+when nearly every saved tensor is alive. Rematerialization
+frees t during its idle interval in one of two ways:
+• Swap. Copy t to pinned host memory once it is final,
+free it when the copy completes, and prefetch it before
+its first backward use [5], [6]. A swap costs nothing if
+both copies overlap with computation, and stalls the GPU
+otherwise.
+• Drop. Free t after its last forward use and replay the
+operators that produced it before its backward use [1],
+[8]. The replay costs Cr(t), which grows if the inputs of
+those operators were dropped as well [9].
+MegTaiChi’s dynamic tensor evicting [10] decides between
+the two when memory runs out. It evicts the resident tensor
+that minimizes
+min (Cr(t), Cs(t))
+mt · st
+,
+Cs(t) = mt
+γ ,
+(1)
+where st is the staleness of t and γ the host-link bandwidth,
+and it swaps t only if Cs(t) < Cr(t). (The full cost also
+accounts for memory fragmentation and for how often t has
+been recomputed.) Capuchin [7] instead charges a swap only
+the transfer time that it cannot hide behind computation. UVM
+moves the same data at page granularity without a plan, so its
+cost depends on access-aware eviction and prefetching [4],
+[14].
+B. Memory Compression
+Hardware compressors for caches and memory operate on
+small blocks and must decode in a few cycles [15]. BPC [11]
+targets the homogeneously typed arrays that dominate GPU
+memory. Its Delta-BitPlane-XOR (DBX) transform subtracts
+neighboring 32-bit words of a 128-byte block, transposes the
+deltas into bit-planes, and XORs adjacent planes. Small deltas
+leave long runs of all-zero planes, which a simple prefix code
+compresses. Compresso [12] adapted BPC to compress main
+memory transparently to the operating system. It found that
+the DBX transform is not always beneficial and compresses
+each block with and without it, and it predicts incompressible
+pages to avoid the data movement that compression otherwise
+causes.
+10−1
+101
+103
+swap time / recompute time
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+cumulative share of bytes
+(a)
+Platform
+A
+B
+0
+20
+40
+saved bytes the link can move (%)
+ResNet-50
+DenseNet-121
+EffNet-B0
+ViT-B/16
+GPT-2
+A
+B
+A
+B
+A
+B
+A
+B
+A
+B
+(b)
+no compression
+ZVC
+PlaneZip
+Fig. 1.
+(a) Swap-to-recompute cost ratio of every saved tensor of the five
+models, weighted by size. (b) Share of the saved bytes that the host link can
+move during one iteration on platforms A and B, without compression, with
+ZVC, and with the PlaneZip codec.
+Swapping turns the GPU and the host into a two-tier
+memory: a small fast tier and a large tier behind a narrow link.
+Heterogeneous memory systems, from hybrid main memory to
+CPU-FPGA SoCs [16], place data across such tiers, sometimes
+compressing the fast tier to raise its capacity [17]. Yokoyama et
+al. [18] found that splitting a PC-indexed reuse predictor [19]
+by access type (vector or scalar) improves its accuracy at
+equal capacity. We apply the same idea to compressibility:
+a signature that identifies each tensor by the operator that
+produced it predicts its compressed size (Section III-B).
+C. Motivation
+Figure 1 quantifies the gap with the traces and platforms
+of Section IV. Figure 1a plots, for every saved tensor of the
+five models, the ratio between its transfer time Cs and the
+time to recompute it with its inputs resident. On the PCIe 3.0
+consumer platform (A), 95% of the saved bytes cost more to
+swap than to recompute, and the median ratio is 10.1×; on
+the PCIe 4.0 datacenter platform (B), over 99.9% do, and the
+median is 12.6×. Equation 1 therefore picks recomputation
+for nearly every tensor. Figure 1b shows how much swapping
+can still contribute: during one iteration, the link can move 7–
+37% of the saved bytes on platform A and 6–12% on platform
+B. Compressing the transfers with ZVC raises these shares by
+1.2× on average, and the PlaneZip codec by 1.4× (A) and
+1.7× (B).
+III. PLANEZIP DESIGN
+Figure 2 shows the three parts of PlaneZip. A compression
+engine on the GPU’s copy path compresses every swapped
+tensor on its way to host memory and decompresses it on the
+way back. A runtime predicts the compressed size of each
+saved tensor from the sizes that the engine reported in earlier
+iterations. A planner uses these sizes to decide, for every saved
+tensor, whether to keep, swap, or drop it, and when to prefetch
+it.
+A. Codec
+The engine splits a tensor into 128-byte blocks, the granu-
+larity of BPC [11], and interprets each block as N symbols
+of w bits, where w is the element width of the tensor: 64
+
+
+GPU
+Host
+Compute
+stream
+Device memory
+(activations)
+PlaneZip engine
+raw
+ZVC
+DBX
+BX
+ZBX
+keep smallest
+(3-bit tag)
+4 KB chunk packer / unpacker
+(byte-aligned chunks, per-chunk size header)
+128 B blocks
+Pinned
+chunk pool
+(compressed
+tensors)
+PCIe
+D2H
+H2D
+Runtime: operator trace →per-tensor CR predictor →compression-
+aware planner →KEEP / SWAP / DROP and prefetch points
+compressed sizes
+plan
+Fig. 2.
+PlaneZip overview. The engine encodes each 128 B block in four
+ways in parallel and keeps the smallest output or the raw block.
+symbols for BF16 and 32 for FP32. The runtime passes the
+element type in the copy descriptor; other types use w = 32.
+Each block is encoded in four ways:
+• ZVC [13]: an N-bit mask of non-zero symbols followed
+by the non-zero symbols.
+• DBX: BPC’s transform. A base symbol, then the w+1
+bit-planes of the N−1 deltas between neighboring sym-
+bols, with adjacent planes XORed.
+• BX: the w bit-planes of the symbols themselves, with ad-
+jacent planes XORed and no delta. Neighboring floating-
+point values often share their high-order exponent bits
+but not their low-order bits, so their deltas can be
+large while the high bit-planes stay constant. Compresso
+likewise found that skipping BPC’s transform sometimes
+compresses better [12].
+• ZBX: an N-bit zero mask, then BX over the n non-
+zero symbols compacted to the front of the block, so
+each plane is n bits wide. In a ReLU output or a
+causally masked attention matrix, zeros are interleaved
+with positive values of similar magnitude. ZVC stores
+the survivors verbatim, and in the planes of BX or DBX
+the zeros break every run; ZBX removes the zeros first
+and then compresses the shared high-order bits of the
+survivors.
+DBX, BX, and ZBX code each plane with BPC’s prefix
+code [11]: 3 bits for an all-zero plane and 6 or 7 for a run of
+them, 5 bits for an all-ones plane or one whose pre-XOR plane
+is zero, 5 bits plus the position for one or two adjacent ones,
+and a 1-bit flag before any other plane, stored verbatim. The
+field widths scale with the number and width of the planes.
+The engine keeps the smallest of the four encodings and the
+raw block and spends a 3-bit tag on the choice.
+Stream format. Thirty-two consecutive blocks form a 4 KB
+chunk. A chunk is byte-aligned and preceded by a 16-bit
+compressed size, so the decompressor finds every chunk
+with a prefix sum over the headers and decodes chunks in
+parallel; a chunk that would grow is stored raw. On the host,
+compressed tensors occupy fixed-size chunks of a pinned pool,
+so their variable sizes do not fragment the allocator, the same
+reason Compresso allocates compressed pages in fixed 512 B
+chunks [12]. Every ratio we report includes tags, headers, and
+padding.
+Validation. We implemented every encoder twice: a vectorized
+size model, used for all measurements, and a bit-exact encoder
+and decoder. On 4,000 blocks sampled from real FP32 and
+BF16 activations of the five models and 1,800 synthetic corner
+cases, the decoder reproduces every block and the bit counts
+of the two implementations agree exactly.
+B. Compressibility Predictor
+The planner needs the compressed size of a tensor before
+the tensor exists. Training repeats the same operator sequence
+every iteration, so PlaneZip identifies a saved tensor by the
+position of its producing operator in that sequence and its
+output slot, the tensor-level analogue of the PC signature of
+a reuse predictor [19]. The runtime stores one compression
+ratio per signature, a table of a few hundred entries. The
+engine reports the compressed size of every swap, the sum
+of its chunk headers, and the runtime overwrites the entry.
+Tensors that the plan does not swap are measured in a
+profiling iteration, in which the engine compresses them into
+a scratch buffer and discards the output. Until a signature has
+a measurement, the planner assumes a ratio of one.
+C. Compression-Aware Planner
+The planner runs on the host whenever the operator trace
+or the predicted ratios change, which in steady-state training
+happens only during profiling. Algorithm 1 lists it. A tensor t
+with predicted ratio ct occupies a copy queue for
+xt = min
+mt
+γ , max
+ mt
+ct γ ,
+mt
+BCE
+
+,
+(2)
+where BCE is the engine throughput: the transfer is limited
+by the link or by the engine, and the runtime bypasses the
+engine when compression would not shorten it.
+The first stage fills idle link time with swaps, and com-
+pression enters it twice. The stage admits swaps until their
+total copy time reaches its budget, so shorter compressed
+transfers admit more of them; and it ranks candidates by what
+they buy per second of copy time: the recomputation time a
+swap avoids, Cr(t)/xt, or the memory it frees, mt/xt. Both
+rankings favor compressible tensors. A candidate is admitted
+only if both copy queues still meet their deadlines: the device-
+to-host queue, ordered by production time, must drain before
+the forward pass ends, and the host-to-device queue, ordered
+by first backward use, must deliver each tensor before its
+use. The second stage covers any remaining deficit with
+recomputation, using the DTR heuristic Cr(t)/(mt·idlet) [9],
+where Cr(t) includes the replay of dropped inputs and is
+charged again for every dropped tensor whose replay needs
+t. It skips any candidate whose replay would push memory
+above the budget. Finally, each swapped tensor is prefetched
+at the earliest point from which the budget holds until its first
+use.
+The stage-one budget is a fraction η of the shorter of the for-
+ward and backward compute times. Which ranking and budget
+work best depends on the model, so the planner builds a small
+portfolio of plans: the two rankings above and recomputation
+
+
+Algorithm 1 One candidate plan for budget M
+Require: saved tensors T, predicted ratios ct, budget M, fraction η,
+ranking ρ(t) ∈{Cr(t)/xt, mt/xt, Cr(t)/mt}
+1: P ←KEEP for all t; B ←η · min(Tfwd, Tbwd)
+2: for all t ∈T in decreasing ρ(t), with xt from Eq. 2 do
+3:
+if xt fits in t’s windows, P
+SWAP x + xt ≤B, and both
+queues meet their deadlines then
+4:
+P[t] ←SWAP
+5:
+end if
+6:
+if peak memory of P ≤M then break
+7: end for
+8: while peak memory of P > M do
+9:
+t ←arg min Cr(t)/(mt · idlet) over KEEP tensors idle at
+the peak
+10:
+P[t] ←DROP
+11: end while
+12: schedule each prefetch at the earliest point where memory stays
+≤M
+13: return P
+saved per byte, Cr(t)/mt, each with η ∈{1, 0.75, 0.5, 0.25},
+plus plans built with uncompressed sizes, a plan from the per-
+tensor cost model of Equation 1 with compressed transfer
+times, and a recomputation-only plan. It simulates each of
+these 18 plans with the predicted ratios (Section IV), which
+takes milliseconds per plan, and keeps the fastest. Under its
+predictions, it therefore never does worse than recomputation
+alone, than compressing the swaps of an uncompressed plan,
+or than the compressed cost model.
+D. Hardware Cost
+BPC’s compressor occupies 48,000 µm2 in a 40 nm process
+at 800 MHz and encodes 128 bytes every four cycles with
+a latency of 11 cycles [11]. A PlaneZip lane adds the BX
+and ZBX encoders, which share BPC’s bit-plane transposition
+and pattern logic, a 64-entry compaction network for ZBX,
+and the size comparison. We estimate a lane at three times
+the area of BPC’s compressor and assume decompressors of
+equal size. Two compressor lanes for device-to-host copies
+and two decompressor lanes for host-to-device copies, each at
+1.5 GHz, deliver 96 GB/s per direction, above the 64 GB/s that
+we assume in the evaluation. Scaling 40 nm logic to a 7 nm
+process by a conservative 16× in density gives 0.036 mm2 for
+the four lanes, 0.004% of an 826 mm2 A100 die [20]; BPC’s
+7 mW of active power at 40 nm [12] suggests well under 0.1 W.
+The added latency, tens of cycles per block, is negligible next
+to the microseconds of a PCIe transfer.
+IV. METHODOLOGY
+Workloads. Table I lists the five models. The three CNNs
+and ViT-B/16 train on the 1,000 ImageNet sample images
+(one per class) [21] with the standard random-resized-crop and
+flip augmentation, starting from public timm checkpoints [22],
+[23] that represent steady-state training. GPT-2 (124M) [24],
+in the Hugging Face implementation [25], trains from scratch
+on WikiText-2 [26] with a 50,257-token byte-level BPE vo-
+cabulary learned on the same corpus. We train it for 300 steps,
+which lowers the validation loss from 10.9 to 6.0, so that its
+TABLE I
+WORKLOADS. SAVED ACTIVATIONS AT THE TRAINING BATCH SIZE IN
+FP32.
+Model
+Params
+Batch
+Saved Saved
+Ops
+tensors
+GB
+ResNet-50 [27]
+25.6M
+128
+216
+11.0
+896
+DenseNet-121 [28]
+8.0M
+128
+494
+16.7
+3,162
+EfficientNet-B0 [29]
+5.3M
+128
+314
+11.3
+1,276
+ViT-B/16 [30]
+86.6M
+64
+211
+9.0
+1,910
+GPT-2 [24]
+124.4M 8×1024
+275
+21.2
+2,115
+activations come from a model in training rather than from
+random weights.
+Tensor capture. We intercept every ATen operator of a
+training iteration in PyTorch [31] with a dispatch-mode hook
+and, like object-level GPU memory profilers [32], record for
+every tensor storage its producing operator, its size, and every
+read and write. A tensor produced in the forward pass and
+read in the backward pass is a saved activation, exactly the
+set that rematerialization can evict; PyTorch’s saved-tensor
+hooks confirm the set. We capture tensor contents on the
+CPU at a small batch (8 images, or one 1,024-token sequence)
+over three consecutive iterations with optimizer updates. We
+record operator traces at the training batch sizes on PyTorch’s
+meta device, which propagates shapes without data. Each
+captured tensor maps to its trace counterpart by producing
+operator and output slot; GPT-2’s operator sequence differs
+slightly between the two batch sizes, so we align the two
+sequences and treat the 4% of its saved bytes left unmatched
+as incompressible. Two adjustments make the CPU run match
+GPU training: dropout runs through the fused kernel that GPUs
+use, which saves a 1-byte mask, and Transformer attention
+uses the frameworks’ non-fused implementation, which saves
+the softmax output (Section V-F discusses fused attention).
+FP32 tensors are compressed as captured. BF16 tensors are
+their round-to-nearest-even conversions, which approximates
+BF16 mixed-precision training [33]. Tensors above 32 MB are
+compressed on every fourth 4 KB chunk.
+Simulator. An event-driven simulator replays each trace on
+the platforms of Table II. An operator takes a 4 µs launch
+overhead plus the larger of its FLOPs over the achievable
+math throughput and its bytes over the achievable memory
+bandwidth. The simulator models one compute stream, a
+device-to-host and a host-to-device copy queue (FIFO, with
+5 µs setup per transfer), the compression engine, and a hard
+budget for activation memory. An allocation that does not fit
+waits for pending swap-outs to finish, and a prefetch starts
+at its scheduled point once the swap-out of the same tensor
+has finished. A plan whose replay overflows the budget is
+re-planned with a tighter target. On small synthetic traces,
+the simulator reproduces hand-computed schedules, including
+stalls behind slow swap-outs and late prefetches. The budget
+is a fraction of the peak activation memory without eviction;
+parameters, gradients, and optimizer state lie outside it, and
+the optimizer step is modeled as a memory-bound pass. The
+
+
+TABLE II
+MODELED PLATFORMS. PERCENTAGES GIVE THE ACHIEVABLE FRACTION
+OF THE PEAK; LINK AND ENGINE BANDWIDTHS ARE PER DIRECTION.
+Platform A
+Platform B
+GPU
+RTX 2080 Ti [35]
+A100 40 GB [20]
+Precision
+FP32
+BF16 mixed
+Peak math
+13.4 TFLOPS (70%)
+312 TFLOPS (60%)
+Memory bandwidth
+616 GB/s (80%)
+1,555 GB/s (80%)
+Host link
+PCIe 3.0, 12 GB/s
+PCIe 4.0, 24 GB/s
+Compression engine
+64 GB/s
+64 GB/s
+modeled ResNet-50 throughput on platform B is 2,529 im-
+ages/s, within 3% of the 2,470 images/s that NVIDIA reports
+for an A100 with mixed precision [34].
+Policies. We compare six policies with the same simulator.
+The compressed policies plan with the ratios observed in one
+captured iteration and transfer with the ratios of the next.
+• RECOMP: recomputation only, with DTR’s heuristic [9].
+• SWAP: swapping only, choosing tensors by the largest
+product of size and idle time, in the spirit of vDNN [5].
+• DTE: MegTaiChi’s cost model (Equation 1) [10]. We
+omit its fragmentation and recomputation-count terms,
+which address problems orthogonal to the choice between
+swapping and recomputation, and give every policy a
+fragmentation-free allocator, which MegTaiChi’s TMA
+provides.
+• BW: the planner of Section III-C without compression,
+a Capuchin-style bandwidth-aware hybrid [7].
+• BW+ZVC: the same planner with the ZVC codec of
+cDMA [13].
+• PlaneZip: the same planner with the PlaneZip codec.
+V. EVALUATION
+A. Compression Ratio
+Figure 3 compares six codecs on all saved activations of one
+iteration, weighted by bytes. In BF16, PlaneZip compresses
+activations by 1.71× (geometric mean), from 1.31× for ViT-
+B/16 to 2.14× for DenseNet-121. ZVC compresses only the
+models with ReLU activations or causal masks and leaves
+EfficientNet-B0 and ViT-B/16 at 1.00×, for a geometric mean
+of 1.18×. BPC, which applies its delta transform to every
+block, reaches 1.50×, and no single encoding exceeds 1.57×:
+choosing per block adds 9% over the best of them. FP32
+activations compress less, 1.39× with PlaneZip, because their
+23-bit mantissas are nearly random and dilute the redundancy
+of the sign and exponent bits.
+Table III breaks the ratios down by the operator that pro-
+duced each tensor. Dense floating-point tensors (the outputs of
+convolution, linear, normalization, and elementwise operators)
+compress by 1.31–1.45×, and BX encodes 74–98% of their
+blocks: neighboring values share their high-order exponent
+bits but not their low-order bits. ReLU outputs compress by
+3.21×, against 2.16× with ZVC, and ZBX encodes 60% of
+their blocks because it removes the zeros and then compresses
+the exponents of the survivors. The same mechanism lifts
+1
+2
+compression ratio
+(BF16)
+1.88
+2.14
+1.40
+1.31
+1.97
+1.71
+BDI
+ZVC
+BPC
+BX
+ZBX
+PlaneZip
+ResNet-50
+DenseNet-121
+EffNet-B0
+ViT-B/16
+GPT-2
+Geomean
+1.0
+1.5
+2.0
+compression ratio
+(FP32)
+1.50
+1.74
+1.15
+1.11
+1.57
+1.39
+Fig. 3. Compression ratio of all saved activations per model and codec (higher
+is better). Labels give the PlaneZip ratio.
+TABLE III
+SAVED ACTIVATIONS BY PRODUCING OPERATOR (BF16). SHARE: RANGE
+OF THE PER-MODEL SHARES OF SAVED BYTES. RATIOS: BYTE-WEIGHTED
+OVER ALL MODELS, WITH THE 3-BIT TAG INCLUDED FOR PLANEZIP. TOP:
+MOST FREQUENT ENCODER.
+Producer
+Share (%)
+ZVC
+BX
+PlaneZip
+Top
+Conv output
+18–52
+1.00
+1.43
+1.45
+BX (74%)
+Elementwise
+26–39
+1.00
+1.33
+1.33
+BX (88%)
+ReLU output
+45–48
+2.16
+1.85
+3.21
+ZBX (60%)
+Copy/concat
+6–32
+1.02
+1.41
+1.41
+BX (84%)
+Softmax
+16–23
+1.51
+2.02
+2.10
+BX (62%)
+Linear output
+6–21
+1.00
+1.32
+1.32
+BX (96%)
+Dropout output
+23
+1.94
+2.21
+2.50
+ZBX (51%)
+Norm in/out
+0–11
+1.00
+1.31
+1.31
+BX (98%)
+Log-softmax
+0–8
+1.00
+2.20
+2.23
+DBX (72%)
+Dropout mask
+6
+1.00
+5.96
+5.86
+BX (100%)
+Indices
+0–2
+1.88
+3.01
+5.25
+ZBX (100%)
+GPT-2’s dropout outputs to 2.50× (ZVC: 1.94×). Attention
+probabilities compress by 2.47× in GPT-2, whose causal mask
+zeroes half of them, and by 1.40× in ViT-B/16. One-byte
+dropout masks compress by 5.86× and the 64-bit indices
+of max pooling by 5.25×. Coding BF16 blocks with 32-bit
+symbols, as the original BPC does, lowers the PlaneZip ratio
+from 1.71× to 1.65×: a 32-bit symbol is zero only if both of
+its BF16 values are.
+B. Predictability
+Table IV shows that compressibility is a stable property of
+each tensor. The ratio of each model changes by at most 1%
+across three iterations with optimizer updates, and predicting
+each tensor’s wire size from the previous iteration errs by
+0.2–0.8% of the wire bytes. A signature that keeps only the
+operator type, which would let one entry serve every layer,
+errs by 2.6–12.5%, and a single global ratio by up to 43%,
+because tensors of different layers and operators compress
+differently. Training progress matters more than iterations: at
+random initialization, the ratios differ from those of the trained
+models by −6% (ResNet-50) to +12% (GPT-2), so the runtime
+refreshes its table during training instead of reusing ratios
+across runs.
+
+
+TABLE IV
+STABILITY OF COMPRESSIBILITY (PLANEZIP CODEC, BF16): RATIO IN
+THREE CONSECUTIVE ITERATIONS, WIRE-SIZE ERROR OF THREE
+PREDICTOR SIGNATURES (ABSOLUTE ERRORS OVER TOTAL WIRE BYTES),
+AND RATIO AT RANDOM INITIALIZATION.
+Ratio per
+Wire-size error (%)
+Random
+Model
+iteration
+Tensor Op type Global
+init.
+ResNet-50
+1.88/1.88/1.89
+0.6
+9.7
+28.7
+1.78
+DenseNet-121 2.14/2.13/2.15
+0.7
+12.5
+43.1
+–
+EffNet-B0
+1.40/1.40/1.41
+0.8
+4.3
+4.8
+–
+ViT-B/16
+1.31/1.31/1.31
+0.3
+2.6
+4.3
+1.41
+GPT-2
+1.97/1.97/1.97
+0.2
+3.2
+29.8
+2.22
+C. Throughput Under a Memory Budget
+Figure 4 shows the throughput of each policy as the budget
+shrinks. At 50% of the peak, the mean overhead on platform
+A is 14.1% for RECOMP, 13.3% for DTE, 6.7% for BW,
+4.1% for BW+ZVC, and 3.5% for PlaneZip; on platform B
+it is 19.6%, 19.6%, 13.0%, 10.5%, and 9.0%. SWAP alone
+slows training by 2.8× (A) and 5.1× (B), because the link
+cannot move half of the activations within an iteration. DTE
+matches RECOMP in 58 of the 70 configurations: its cost
+model charges every swap its full transfer time and there-
+fore picks recomputation. Bandwidth-aware swapping halves
+DTE’s overhead on platform A and cuts it by a third on
+platform B, and PlaneZip then removes another 47% (A) and
+31% (B) of what remains. At 30% of the peak, PlaneZip cuts
+BW’s overhead from 17.4% to 12.2% (A) and from 33.2% to
+23.7% (B). Viewed the other way, PlaneZip stays within 5%
+of full speed down to a budget of 43% of the peak on platform
+A and 59% on platform B on average, against 54% and 67%
+for BW and 64% and 75% for DTE.
+The gain grows with compressibility and is largest when
+the link can cover part, but not all, of the memory deficit.
+GPT-2 gains the most: its attention tensors, half of its saved
+bytes, compress by 2.8×, so at 30% on platform B its overhead
+falls from 46% with BW to 28%. DenseNet-121 gains 11
+points at 50% on platform B (27% to 17%), but BW+ZVC
+captures nearly all of it: the tensors worth swapping are sparse
+ReLU outputs that ZVC already compresses by 3.1×, beyond
+the 2.7× at which the engine instead of the link limits the
+transfer. EfficientNet-B0 gains the least, 1.5 points at 50%
+on platform B: its activations compress by only 1.40×, and
+even compressed the link can move just 8% of them. On
+platform A, ViT-B/16 computes slowly enough that BW hides
+most transfers (1.0% overhead at 50%), which leaves little for
+compression.
+D. Where the Gains Come From
+Figure 5 isolates the components at a 30% budget. Com-
+pressing the swaps of a compression-unaware plan recovers
+only 0.3 of the 5.2 points that separate BW from PlaneZip on
+platform A and 0.2 of 9.5 points on platform B: shorter trans-
+fers free link time, but the plan does not fill it. In 67 of the 70
+configurations, the planner keeps a compression-aware plan.
+Adding compression to DTE’s cost model lowers its overhead
+from 24.4% to 21.3% (A) and from 41.7% to 30.6% (B), more
+than half of it through GPT-2, whose compressed attention
+probabilities become cheaper to swap than to recompute, but
+it still trails PlaneZip by 9.1 and 6.9 points. With ZVC instead
+of the PlaneZip codec, the planner keeps 52% of the gain
+on platform A and 33% on platform B, where dense BF16
+tensors that ZVC cannot compress dominate. Coding with 32-
+bit symbols costs 0.5 points on platform B; on platform A, the
+FP32 symbols are 32 bits anyway. The predictor matters little
+as long as it is per tensor: oracle ratios leave the overhead
+unchanged, while the operator-type signature raises it by 0.5
+(A) and 1.1 (B) points. Compared with BW, PlaneZip swaps
+1.5× (A) and 2.1× (B) more bytes and spends 30% (A) and
+31% (B) less time on recomputation, while stalls stay at or
+below 1.1% of the iteration.
+E. Sensitivity
+Figure 6a varies the link bandwidth of platform B from 12 to
+192 GB/s per direction. The gain peaks at intermediate band-
+widths. At 12 GB/s, which also approximates two PCIe 4.0
+GPUs sharing a switch uplink, PlaneZip lowers the mean
+overhead from 16.1% (BW) to 12.0%; at 24 and 48 GB/s it
+removes 5.7 and 6.4 points; at 192 GB/s the uncompressed link
+already carries everything worth swapping, and both policies
+stay at or below 0.4%. Figure 6b varies the engine throughput.
+An engine that is only as fast as the link never helps, because
+compressed transfers become engine-bound and the runtime
+bypasses it. At the default 64 GB/s the overhead is 9.0%, and
+the 96 GB/s of the two lanes estimated in Section III-D lowers
+it to 7.3%.
+F. Discussion and Limitations
+Fused attention. FlashAttention [36] recomputes the attention
+matrix instead of saving it. In GPT-2, the attention proba-
+bilities, their dropout outputs, and their masks account for
+51% of the saved bytes and compress by 2.82×, helped by
+the zeros of the causal mask; the remaining tensors compress
+by 1.46×, like the dense tensors of the other models. With
+fused attention, GPT-2 would gain less, closer to ViT-B/16 in
+Figure 4.
+Fidelity. Our timing model ignores kernel fusion and inter-
+ference between copies and kernels, our ratios come from
+CPU-executed iterations at small batch sizes, and our BF16
+tensors are conversions. Capturing tensors in GPU runs with an
+accelerator analysis framework such as PASTA [37] would re-
+move the last two approximations. The timing model matches
+published ResNet-50 throughput within 3%, the ratios reflect
+real data, weights, and training updates, and all policies share
+the same model, but absolute overheads on real hardware will
+differ. The planner also assumes that the operator sequence
+repeats; models with dynamic control flow need one plan per
+sequence, or MegTaiChi’s online eviction with the compressed
+cost of Equation 1.
+Software compression. GPU kernels could replace the engine,
+with a warp transposing a 128-byte block into bit-planes in 32
+
+
+0.8
+0.9
+1.0
+Platform A
+norm. throughput
+ResNet-50
+0.6
+0.8
+1.0
+DenseNet-121
+0.7
+0.8
+0.9
+1.0
+EffNet-B0
+0.8
+0.9
+1.0
+ViT-B/16
+0.7
+0.8
+0.9
+1.0
+GPT-2
+30
+50
+70
+90
+memory budget (%)
+0.7
+0.8
+0.9
+1.0
+Platform B
+norm. throughput
+30
+50
+70
+90
+memory budget (%)
+0.6
+0.8
+1.0
+30
+50
+70
+90
+memory budget (%)
+0.7
+0.8
+0.9
+1.0
+30
+50
+70
+90
+memory budget (%)
+0.7
+0.8
+0.9
+1.0
+30
+50
+70
+90
+memory budget (%)
+0.6
+0.8
+1.0
+PlaneZip
+BW+ZVC
+BW
+DTE (MegTaiChi)
+RECOMP (DTR)
+Fig. 4. Training throughput normalized to unlimited memory, as the activation-memory budget shrinks from 100% to 30% of the peak. SWAP is omitted
+because it falls below 0.5 at most budgets; RECOMP leaves the axis for DenseNet-121 at 30%.
+0
+5
+10
+15
+20
+25
+30
+35
+40
+mean rematerialization overhead at 30% budget (%)
+DTE
+DTE + compression
+BW
+BW + codec, unaware plan
+BW + ZVC
+PlaneZip, 32-bit symbols
+PlaneZip, op-type predictor
+PlaneZip
+PlaneZip, oracle ratios
+24.4
+21.3
+17.4
+17.1
+14.7
+12.2
+12.7
+12.2
+12.2
+41.7
+30.6
+33.2
+33.0
+30.1
+24.2
+24.8
+23.7
+23.7
+Platform A
+Platform B
+Fig. 5.
+Ablation at a budget of 30% of the peak: mean overhead over the
+five models (lower is better).
+12
+24
+48
+96
+192
+(a) host link (GB/s per direction)
+0
+5
+10
+15
+20
+mean overhead (%)
+24
+32
+48
+64
+96
+128
+(b) engine throughput (GB/s)
+RECOMP (DTR)
+BW
+PlaneZip
+Fig. 6.
+Mean overhead at a 50% budget on platform B. (a) Host-link
+bandwidth, with an engine four times faster than the link. (b) Engine
+throughput with a 24 GB/s link.
+or 64 ballot instructions, but they would compete with training
+for SMs and memory bandwidth.
+Other host traffic. The engine could compress any data that
+crosses the link, such as UVM page migrations in oversub-
+scribed training [3] and LLM inference [14], or the data that
+CPU-GPU hybrid LLM inference exchanges [38].
+VI. RELATED WORK
+Rematerialization. Checkpointing [1] and its optimal ILP
+formulation [8] trade memory for recomputation statically;
+DTR [9] does so online with a greedy heuristic. vDNN [5]
+and SwapAdvisor [6] swap activations to host memory; Ca-
+puchin [7] and MegTaiChi [10] combine swapping and re-
+computation, and MegTaiChi adds tensor partitioning and a
+fragmentation-free allocator. These planners treat a tensor’s
+transfer size as its raw size; PlaneZip supplies compressed
+sizes and a compression engine, and its planner could be
+replaced by any of them that accepts per-tensor transfer costs.
+Profilers such as DrGPUM [32] remove memory that an
+application wastes; rematerialization handles the memory it
+needs.
+Activation compression. cDMA [13] is the closest work: a
+ZVC compressor in the DMA engine that accelerates vDNN’s
+swaps. PlaneZip extends the codec beyond zeros, which mat-
+ters for activations without ReLU sparsity (Table III), and
+makes the planner aware of the compression, without which
+the gain largely disappears (Section V-D). Gist [39] encodes
+ReLU outputs as bitmaps or sparse matrices and stores other
+activations in reduced precision, and ActNN [40] quantizes
+activations to 2 bits. Lossy schemes reach higher ratios but
+change the numerics of training; PlaneZip is lossless.
+Hardware memory compression. BDI [15] and BPC [11]
+compress cache lines and memory blocks; Compresso [12]
+manages compressed main memory, and Buddy Compres-
+sion [41] applies BPC to GPU memory and spills incompress-
+ible lines to a slower peer memory. PlaneZip reuses BPC’s
+transform and code map and Compresso’s chunked allocation,
+but compresses only the data that crosses the slow link, where
+the latency of compression is hidden. ZipNN [42] exploits
+the same exponent redundancy in stored model weights.
+Baryon [17] combines compression and sub-blocking in hybrid
+memory, and PlaneZip carries the predictor-splitting idea of
+Yokoyama et al. [18] over to compressibility.
+VII. CONCLUSION
+GPU compute has outgrown the host link, so rematerial-
+ization planners recompute almost everything and swap only
+what fits in idle link time. PlaneZip enlarges that budget
+
+
+by compressing swapped activations with a per-block choice
+among four bit-plane and zero-value encodings, and turns the
+compression into speed by planning swaps in compressed
+bytes. Activations from five models compress by 1.71× in
+BF16 and 1.39× in FP32, each tensor’s compressibility carries
+over from one iteration to the next, and at half the activation
+memory the rematerialization overhead falls by 47% and 31%
+on the two platforms relative to a bandwidth-aware planner
+without compression. Next steps are a prototype on a GPU
+copy engine or in software, and compressed in-place storage
+for tensors that are expensive to recompute.
+REFERENCES
+[1] T. Chen, B. Xu, C. Zhang, and C. Guestrin, “Training deep nets with
+sublinear memory cost,” arXiv preprint arXiv:1604.06174, 2016.
+[2] V. A. Korthikanti et al., “Reducing activation recomputation in large
+transformer models,” in Proc. Machine Learning and Systems (MLSys),
+2023.
+[3] M. Lin and H. Jeon, “Understanding oversubscribed memory manage-
+ment for deep learning training,” in Proc. 5th Workshop on Machine
+Learning and Systems, 2025, pp. 46–55.
+[4] M. Lin, Y. Feng, G. Cox, and H. Jeon, “Forest: Access-aware GPU UVM
+management,” in Proc. 52nd Annu. Int. Symp. Computer Architecture
+(ISCA), 2025, pp. 137–152.
+[5] M. Rhu, N. Gimelshein, J. Clemons, A. Zulfiqar, and S. W. Keckler,
+“vDNN: Virtualized deep neural networks for scalable, memory-efficient
+neural network design,” in Proc. 49th Annu. IEEE/ACM Int. Symp.
+Microarchitecture (MICRO), 2016.
+[6] C.-C. Huang, G. Jin, and J. Li, “SwapAdvisor: Pushing deep learning
+beyond the GPU memory limit via smart swapping,” in Proc. 25th Int.
+Conf. Architectural Support for Programming Languages and Operating
+Systems (ASPLOS), 2020.
+[7] X. Peng et al., “Capuchin: Tensor-based GPU memory management
+for deep learning,” in Proc. 25th Int. Conf. Architectural Support for
+Programming Languages and Operating Systems (ASPLOS), 2020.
+[8] P. Jain et al., “Checkmate: Breaking the memory wall with optimal ten-
+sor rematerialization,” in Proc. Machine Learning and Systems (MLSys),
+2020.
+[9] M. Kirisame et al., “Dynamic tensor rematerialization,” in Proc. Int.
+Conf. Learning Representations (ICLR), 2021.
+[10] Z. Hu et al., “MegTaiChi: Dynamic tensor-based memory management
+optimization for DNN training,” in Proc. 36th ACM Int. Conf. Super-
+computing (ICS), 2022.
+[11] J. Kim, M. Sullivan, E. Choukse, and M. Erez, “Bit-plane compression:
+Transforming data for better compression in many-core architectures,” in
+Proc. 43rd ACM/IEEE Annu. Int. Symp. Computer Architecture (ISCA),
+2016, pp. 329–340.
+[12] E. Choukse, M. Erez, and A. R. Alameldeen, “Compresso: Pragmatic
+main memory compression,” in Proc. 51st Annu. IEEE/ACM Int. Symp.
+Microarchitecture (MICRO), 2018, pp. 546–558.
+[13] M. Rhu, M. O’Connor, N. Chatterjee, J. Pool, Y. Kwon, and S. W.
+Keckler, “Compressing DMA engine: Leveraging activation sparsity
+for training deep neural networks,” in Proc. IEEE Int. Symp. High
+Performance Computer Architecture (HPCA), 2018.
+[14] M. Lin, H. Feng, X. Ding, G. Cox, Q. Wang, and H. Jeon, “AutoUVM:
+Automated prefetching framework for LLMs under UVM oversubscrip-
+tion,” arXiv preprint arXiv:2609.06172, 2026.
+[15] G. Pekhimenko, V. Seshadri, O. Mutlu, P. B. Gibbons, M. A. Kozuch,
+and T. C. Mowry, “Base-delta-immediate compression: Practical data
+compression for on-chip caches,” in Proc. 21st Int. Conf. Parallel
+Architectures and Compilation Techniques (PACT), 2012.
+[16] Z. Du, Q. Zhang, M. Lin, S. Li, X. Li, and L. Ju, “A comprehensive
+memory management framework for CPU-FPGA heterogenous SoCs,”
+IEEE Trans. Computer-Aided Design of Integrated Circuits and Systems,
+vol. 42, no. 4, pp. 1058–1071, 2022.
+[17] Y. Li and M. Gao, “Baryon: Efficient hybrid memory management
+with compression and sub-blocking,” in Proc. IEEE Int. Symp. High
+Performance Computer Architecture (HPCA), 2023, pp. 137–151.
+[18] R. Yokoyama, M. Kumagai, K. Komatsu, M. Sato, and H. Kobayashi,
+“An analysis of memory access patterns in RISC-V vector workloads
+on heterogeneous memory architectures,” in Proc. Supercomputing Asia
+and Int. Conf. High Performance Computing in Asia Pacific Region
+Workshops (SCA/HPCAsia Workshops), 2026, pp. 255–262.
+[19] C.-J. Wu, A. Jaleel, W. Hasenplaugh, M. Martonosi, S. C. Steely Jr.,
+and J. Emer, “SHiP: Signature-based hit predictor for high performance
+caching,” in Proc. 44th Annu. IEEE/ACM Int. Symp. Microarchitecture
+(MICRO), 2011.
+[20] NVIDIA, “NVIDIA A100 tensor core GPU architecture,” Whitepaper,
+2020.
+[21] O. Russakovsky et al., “ImageNet large scale visual recognition chal-
+lenge,” Int. J. Computer Vision, vol. 115, no. 3, pp. 211–252, 2015.
+[22] R. Wightman, “PyTorch image models,” https://github.com/huggingface/
+pytorch-image-models, 2019.
+[23] R. Wightman, H. Touvron, and H. J´egou, “ResNet strikes back: An
+improved training procedure in timm,” arXiv preprint arXiv:2110.00476,
+2021.
+[24] A. Radford, J. Wu, R. Child, D. Luan, D. Amodei, and I. Sutskever,
+“Language models are unsupervised multitask learners,” OpenAI, Tech.
+Rep., 2019.
+[25] T. Wolf et al., “Transformers: State-of-the-art natural language process-
+ing,” in Proc. Conf. Empirical Methods in Natural Language Processing:
+System Demonstrations (EMNLP), 2020.
+[26] S. Merity, C. Xiong, J. Bradbury, and R. Socher, “Pointer sentinel
+mixture models,” in Proc. Int. Conf. Learning Representations (ICLR),
+2017.
+[27] K. He, X. Zhang, S. Ren, and J. Sun, “Deep residual learning for
+image recognition,” in Proc. IEEE Conf. Computer Vision and Pattern
+Recognition (CVPR), 2016.
+[28] G. Huang, Z. Liu, L. van der Maaten, and K. Q. Weinberger, “Densely
+connected convolutional networks,” in Proc. IEEE Conf. Computer
+Vision and Pattern Recognition (CVPR), 2017.
+[29] M. Tan and Q. V. Le, “EfficientNet: Rethinking model scaling for con-
+volutional neural networks,” in Proc. 36th Int. Conf. Machine Learning
+(ICML), 2019.
+[30] A. Dosovitskiy et al., “An image is worth 16x16 words: Transformers for
+image recognition at scale,” in Proc. Int. Conf. Learning Representations
+(ICLR), 2021.
+[31] A. Paszke et al., “PyTorch: An imperative style, high-performance deep
+learning library,” in Advances in Neural Information Processing Systems
+(NeurIPS), 2019.
+[32] M. Lin, K. Zhou, and P. Su, “DrGPUM: Guiding memory optimization
+for GPU-accelerated applications,” in Proc. 28th ACM Int. Conf. Archi-
+tectural Support for Programming Languages and Operating Systems
+(ASPLOS), 2023, pp. 164–178.
+[33] D. Kalamkar et al., “A study of BFLOAT16 for deep learning training,”
+arXiv preprint arXiv:1905.12322, 2019.
+[34] NVIDIA, “ResNet50 v1.5 for PyTorch: Performance,” NVIDIA NGC
+Catalog, Deep Learning Examples, https://catalog.ngc.nvidia.com/orgs/
+nvidia/dle/resources/resnet pyt/-/performance, accessed October 2026.
+[35] ——, “NVIDIA Turing GPU architecture,” Whitepaper, 2018.
+[36] T. Dao, D. Y. Fu, S. Ermon, A. Rudra, and C. R´e, “FlashAttention: Fast
+and memory-efficient exact attention with IO-awareness,” in Advances
+in Neural Information Processing Systems (NeurIPS), 2022.
+[37] M. Lin, H. Jeon, and K. Zhou, “PASTA: A modular program analysis
+tool framework for accelerators,” in Proc. IEEE/ACM Int. Symp. Code
+Generation and Optimization (CGO), 2026, pp. 520–534.
+[38] M. Lin, X. Wang, G. Cox, D. Li, and H. Jeon, “HybridGen: Efficient
+LLM generative inference via CPU-GPU hybrid computing,” arXiv
+preprint arXiv:2604.18529, 2026.
+[39] A. Jain, A. Phanishayee, J. Mars, L. Tang, and G. Pekhimenko, “Gist:
+Efficient data encoding for deep neural network training,” in Proc. 45th
+ACM/IEEE Annu. Int. Symp. Computer Architecture (ISCA), 2018.
+[40] J. Chen et al., “ActNN: Reducing training memory footprint via 2-
+bit activation compressed training,” in Proc. 38th Int. Conf. Machine
+Learning (ICML), 2021.
+[41] E. Choukse et al., “Buddy compression: Enabling larger memory for
+deep learning and HPC workloads on GPUs,” in Proc. 47th ACM/IEEE
+Annu. Int. Symp. Computer Architecture (ISCA), 2020.
+[42] M. Hershcovitch et al., “ZipNN: Lossless compression for AI models,”
+arXiv preprint arXiv:2411.05239, 2024.

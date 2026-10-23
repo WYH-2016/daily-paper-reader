@@ -1,0 +1,1177 @@
+CXLResume: Retained-State Checkpoint and Restore
+for In-Memory Services
+Haonan Li
+honyli321@gmail.com
+Zhaoxiang Huang
+zhaoxiang.huang@outlook.com
+Zhihao Zhang
+zhihaoz6@foxmail.com
+Yiming Zhang∗
+zhangyiming@cs.sjtu.edu.cn
+Abstract
+Checkpointing and restoring an in-memory service typically
+require writing its memory pages to checkpoint images and
+refilling them at the destination. When application state al-
+ready resides in shared memory that remains accessible after
+failover, copying those pages into and out of checkpoint im-
+ages is unnecessary. We present CXLResume, a prototype
+that retains the service’s main heap objects in shared mem-
+ory while checkpointing the remaining execution state and
+mapping metadata. Checkpointing preserves the shared heap
+at the same freeze point as the serialized process state. Dur-
+ing recovery, CXLResume remaps the same shared memory
+at its original virtual addresses before restoring execution,
+preserving direct pointers within and across shared and pri-
+vate memory. We evaluate CXLResume with Redis and Mem-
+cached using QEMU CXL functional emulation. At 6 GiB,
+CXLResume reduces combined checkpoint and restore time
+from 15.015 s to 0.242 s for Redis and from 19.770 s to 0.276
+s for Memcached in the evaluated deployments. These re-
+sults show that retaining shared application state removes
+large application heaps from the checkpoint data path and
+substantially reduces checkpoint and restore latency.
+1
+Introduction
+In-memory services must often move for maintenance, re-
+source rebalancing, or host replacement while preserving
+their application state. Checkpoint/restore captures a run-
+ning process and reconstructs it at a destination, but se-
+rializing and reloading a large heap can dominate service
+interruption. In our evaluation, checkpointing and restoring
+a Redis dataset with 6 GiB of values through local CRIU
+images takes 15.015 s. Shared checkpoint storage removes
+the need to transfer those images explicitly, yet application
+pages still pass through serialization and loading.
+Shared CXL memory offers an opportunity to avoid this
+work: application objects can remain in place while execu-
+tion moves. Memory-resident checkpoints, fabric-attached
+migration, and execution-environment reuse provide related
+mechanisms [1, 6, 12, 30]. The problem we address is how
+to resume a service over its existing writable objects while
+preserving native references between shared objects and
+ordinary process memory.
+∗Corresponding author.
+We present CXLResume, a prototype that places eligible al-
+locations in CXL memory before migration and checkpoints
+the remaining execution state. Shared objects and captured
+process state correspond to the same freeze point. The des-
+tination reconstructs the original virtual-address mappings
+before resuming threads, and the source remains stopped
+during takeover. This arrangement preserves direct pointers
+without traversing the application’s object model or defer-
+ring bulk heap retrieval until requests arrive.
+We implement this design with shared allocation and a
+CRIU mapping plugin, and evaluate Redis and Memcached
+using DRAM-backed QEMU CXL emulation. Our comparison
+uses local checkpoint storage for CRIU and shared check-
+point storage for CXLResume. At 6 GiB, CXLResume com-
+pletes Redis checkpoint and restore in 0.242 s. Continuous-
+request experiments connect this reduction to service re-
+sumption, while data-structure and trace-derived workloads
+examine continuation across different object layouts. The
+paper contributes the retained-object checkpoint design, its
+address-preserving implementation, and an evaluation of its
+effect on migration interruption.
+2
+Background and motivation
+2.1
+Checkpointing and service interruption
+Process migration must preserve both the objects a service
+has accumulated and the execution that uses them. CRIU
+captures a process tree’s memory layout, required page con-
+tents, thread contexts, and supported operating-system re-
+sources [5]. The destination reconstructs these dependencies
+before the application continues. For an in-memory service,
+reconstructing a logical key/value dataset alone would leave
+stacks, allocator state, and live resource references outside
+that continuation path.
+In a conventional checkpoint, required anonymous pages
+enter page images and are loaded into the destination ad-
+dress space during restore (Figure 1). The storage location
+changes how these images become available. Local images
+must be transferred before the destination can use them.
+Shared checkpoint storage provides access to the same im-
+age files, but the source still serializes the required pages and
+the destination still loads them. Shared image access there-
+fore leaves the application’s bulk memory on the checkpoint
+path.
+1
+arXiv:2610.27636v1  [cs.OS]  20 Oct 2026
+
+
+Li et al.
+network
+disk
+disk
+write
+read
+memory
+Process A
+CRIU
+checkpoint
+memory
+Process A′
+CRIU
+restore
+Source
+Target
+Figure 1. Conventional CRIU checkpoint and restore. Application pages pass through checkpoint images before execution
+resumes. Our CRIU configuration writes local images and transfers them before restore.
+Pre-copy and post-copy change when memory transfer
+occurs relative to execution [7, 34]. Pre-copy transfers pages
+while the source runs and captures the remaining changes at
+handoff; post-copy allows execution to resume while some
+memory is still being fetched. These mechanisms can reduce
+interruption without eliminating the underlying movement
+of state. Our starting point is a deployment in which the
+main application objects can remain accessible across the
+move. This raises a different question: which state must be
+reconstructed when the objects themselves need not move?
+2.2
+Memory placement as a migration decision
+CXL pooling and tiering systems separate memory place-
+ment from the compute node that uses it [16, 18]. For migra-
+tion, the useful property is that both endpoints can access
+the same retained contents. This property is stronger than
+placing checkpoint files on shared storage: the running ser-
+vice directly reads and writes the objects that the destination
+will later use. It also differs from merely adding memory
+capacity to one node. The destination must reach the same
+backing region and observe the writes that precede takeover.
+Object placement must precede migration to remove copy-
+ing from the interruption path. Moving an ordinary heap
+into shared memory only after the source stops would still
+require copying that heap before execution could continue.
+CXLResume instead makes shared placement part of alloca-
+tion during normal execution. Ordinary memory remains
+available for stacks, runtime structures, and allocations out-
+side the shared arena. Migration can then treat retained
+contents and ordinary process state differently without re-
+quiring every allocation to follow one path.
+This choice makes shared-region availability a prerequi-
+site for continuation. CXL access costs and failure behavior
+remain separate concerns [26, 27, 33]. The prototype evalu-
+ates the software mechanism with emulated CXL memory;
+shared accessibility does not by itself provide power-loss
+persistence or a second copy of the service’s state.
+2.3
+Why shared bytes do not resume execution
+Native references connect objects across memory regions.
+Consider a stack variable that points to a shared hash entry,
+which in turn points to an ordinary-memory buffer. Restor-
+ing the shared region at another virtual address breaks the
+stack reference. Restoring it at the original address over an-
+other backing region preserves the pointer bits but changes
+the referenced object. Restoring only shared memory leaves
+the entry’s reference to the ordinary buffer unresolved. Con-
+tinuation therefore requires both memory domains and their
+original relationship.
+The relationship is temporal as well as spatial. A captured
+stack cannot safely continue over a shared object that an-
+other writer has changed since the checkpoint. Freezing the
+source process tree establishes a common execution bound-
+ary for retained objects and captured process state. Keeping
+application writers inactive preserves that correspondence
+until the destination resumes. This is a process checkpoint
+boundary; it does not introduce an application transaction
+boundary or permit concurrent writers to proceed indepen-
+dently.
+These dependencies motivate address preservation and
+coordinated handoff. A destination must reconstruct the cap-
+tured ordinary state, reconnect the retained region using its
+saved mapping information, and restore supported resources
+before threads resume. Exposing the shared bytes is one part
+of this operation.
+2
+
+
+CXLResume: Retained-State Checkpoint and Restore for In-Memory Services
+2.4
+Relationship to replication
+Redis replication maintains a separate logical dataset through
+synchronization and an update stream, then promotes a
+replica [24]. CXLResume transfers execution over objects
+already in shared memory, including the captured allocator
+and process state needed to use them. It avoids maintaining
+another application-level dataset for this migration path and
+uses CRIU’s resource reconstruction across the evaluated
+services. The trade-off is a pause for capture and takeover,
+together with continued dependence on the shared region.
+Replication preserves another copy and has its own syn-
+chronization and promotion protocol. The two approaches
+serve different preparation and failure assumptions; retained-
+object migration does not replace the redundancy needed to
+survive loss of shared state.
+3
+Design
+3.1
+Separate retained objects from captured
+execution
+CXLResume combines an allocation layer with a CRIU map-
+ping extension (Figure 2). The allocation layer places eligi-
+ble application objects in CXL memory, and CRIU captures
+the process state needed to continue using those objects. A
+panic handler and a destination recovery daemon connect
+checkpoint and restore to the kernel’s panic path. These
+mechanisms allow the location of execution to change while
+the principal object contents remain in place.
+The state partition follows actual memory placement. Con-
+tents of supported shared mappings remain in the backing
+region, while registers, stacks, ordinary pages, and supported
+resources enter checkpoint images. Mapping records asso-
+ciate the retained contents with their original process ad-
+dresses. Allocator metadata belongs to the retained or cap-
+tured part according to where it resides. This partition avoids
+assuming that all application state is shared or that all allo-
+cator state is ordinary memory.
+The mapping is the classification unit, rather than an appli-
+cation object type. CRIU can distinguish the retained region
+without walking Redis or Memcached data structures or
+interpreting individual pointer fields. Objects outside that
+region continue through the ordinary checkpoint path. This
+permits a mixed address space while retaining CRIU’s re-
+sponsibility for the remaining process state.
+3.2
+Establish residency before checkpointing
+The allocation layer preserves the application’s allocation
+interfaces and object representation. It acquires a shared
+region during execution and directs eligible allocations into
+it. The service consequently builds its data structures over
+addresses that can be recreated at the destination. Choosing
+this placement before migration removes a conversion of the
+live object graph from the handoff procedure.
+An alternative is to copy or relocate objects into shared
+memory when a checkpoint is requested. That would retain
+the original allocation policy until migration, but the source
+would still need to traverse or copy its state on the migra-
+tion path. Relocation would also have to preserve references
+held outside the moved region. Preexisting shared placement
+avoids this work, at the cost of requiring applications to use
+an allocation path that reaches the shared arena.
+The design permits ordinary-memory fallback rather than
+treating partial shared residency as a different checkpoint
+format. If an allocation resides outside the arena, CRIU cap-
+tures the necessary pages containing it. The benefit therefore
+depends on how much state remains in shared memory and
+on the ordinary memory and resources still requiring re-
+construction. It does not follow from the size of a reserved
+shared region alone.
+Allocator continuity is part of object continuity. A new
+allocator initialized over a populated region would not
+automatically know which blocks contain live objects.
+CXLResume restores the existing allocator’s control state
+and references along with application execution. The
+destination resumes management of the retained allocations
+instead of rebuilding an empty heap over them.
+3.3
+Capture and publish one consistent checkpoint
+Checkpointing first freezes the source process tree. With no
+other application writer modifying the shared region, the
+retained objects and serialized execution state correspond to
+the same instant. CRIU records the ordinary pages, mapping
+information, and supported resources while the retained ob-
+jects remain accessible in their existing backing memory. The
+source stays inactive throughout destination reconstruction.
+This ordering matters for references in both directions.
+Capturing a stack before an object mutation, but retaining the
+object’s later contents, could resume execution against a state
+that the source never observed at that point. Freezing the
+whole process tree also captures the allocator and application
+threads together. The design assumes that writers outside
+the captured tree do not independently modify its retained
+objects during this interval.
+Checkpoint publication coordinates the image path with
+restore. In the shared-storage deployment, a CRIU post-
+checkpoint callback synchronizes the generated checkpoint
+files and publishes a completion marker. The destination
+waits for that marker and for the required container meta-
+data before starting restore. The marker establishes readiness
+of that checkpoint’s files; visibility of the retained memory is
+a separate prerequisite. Synchronizing files does not create
+a persistent snapshot of the shared heap.
+Local-image migration has an additional availability step:
+the checkpoint files must reach the destination before re-
+store. Shared checkpoint storage removes that explicit trans-
+fer, while shared application memory removes the retained
+contents from page serialization and loading. These changes
+3
+
+
+Li et al.
+Figure 2. CXLResume architecture. Shared application objects remain in CXL memory; other process state and mapping records
+follow the checkpoint-storage path. The panic handler and recovery daemon depict a recovery extension. The evaluation
+studies controlled migration with an emulated CXL device.
+affect different parts of migration. The evaluation compares
+the resulting deployment configurations and distinguishes
+core checkpoint processing from client-visible interruption.
+3.4
+Reconstruct mappings before resuming threads
+The destination reconnects each retained region using its
+captured virtual-address range, backing offset, protections,
+and shared attributes. It must attach the same backing region
+and observe the source’s completed writes. The prototype
+associates device paths with regions through deployment
+configuration. Equal path strings on two endpoints are in-
+sufficient unless that configuration makes them refer to the
+same contents.
+The initial allocation mapping may use an address chosen
+by the operating system. Restore reproduces the address that
+was captured, rather than requiring every service to start
+at a globally predetermined address. This preserves native
+pointers within shared memory and from ordinary memory
+into shared objects. References in the opposite direction
+additionally require CRIU to restore the ordinary pages and
+their virtual layout.
+Returning to the stack, shared-entry, and ordinary-buffer
+example, the destination restores the stack and buffer from
+the checkpoint and maps the entry’s retained contents at the
+saved address. Each pointer then denotes the same object
+as at capture. No application-specific pointer translation is
+needed. This argument depends on the target accepting the
+recorded mappings; a different address cannot be substituted
+transparently when a required mapping fails.
+Application threads resume after mappings and supported
+resources have been reconstructed. Retained objects are ad-
+dressable without a separate bulk-fetch phase for their con-
+tents. Ordinary page restoration, address-space construction,
+and resource handling still require work. This is why the
+design reduces state copying without equating remapping
+with an instantaneous service restart.
+3.5
+Takeover and recovery scope
+The source container stops before the destination resumes
+from its checkpoint, leaving only the destination to modify
+the retained objects. Reconstructing the process and taking
+over its network identity then make the service reachable.
+4
+
+
+CXLResume: Retained-State Checkpoint and Restore for In-Memory Services
+This ordering assumes one designated destination. A check-
+point completion marker does not select among competing
+destinations or prevent another node from writing to the
+shared region; deployments with independent recovery deci-
+sions require an additional mechanism to exclude concurrent
+writers.
+The panic handler provides a way to initiate this process
+when a source enters panic(). It attempts to create a check-
+point before the kernel stops the other CPUs. A recovery
+daemon at the destination waits for checkpoint completion
+and restores the container using the retained objects. This
+path requires scheduling, the container runtime, checkpoint
+storage, and the shared region to remain usable despite the
+triggering fault. It therefore targets faults that leave these fa-
+cilities functional, rather than failures that immediately pre-
+vent further execution. The evaluation below uses planned
+migration and does not measure this panic-triggered path.
+Pre-copy and post-copy optimize transfer while retaining
+some image-backed state movement [7, 34]. CXLResume re-
+lies on prior placement to keep its shared objects accessible
+through the move. The destination does not defer retrieval
+of those objects until subsequent requests, but it remains
+dependent on the shared backend. This makes the design ap-
+propriate to migration within a shared-memory deployment
+rather than to moving a service to an arbitrary host without
+access to its retained state.
+The retained heap is mutable, so its checkpoint association
+lasts only while the captured contents remain unchanged.
+Once the destination modifies an object, an older execution
+image no longer necessarily describes the corresponding
+heap. Another migration establishes a new freeze point. His-
+torical rollback, competing-writer recovery, and survival of
+shared-region loss require state preservation or coordination
+beyond this mechanism.
+4
+Implementation
+4.1
+Shared allocation and allocator state
+The allocation component is a C library loaded through
+LD_PRELOAD. Redis uses a libc-allocation build so that its
+requests reach the interposed interfaces. The component
+opens the CXL memory device, creates a readable/writable
+MAP_SHARED mapping, and registers an aligned part of it
+as a managed mimalloc 2.1.7 arena [19]. Initialization runs
+once per process, and per-thread heaps allocate from that
+arena (Figure 3).
+The mapped address range determines ownership. Alloca-
+tion requests use the shared arena, while deallocation and re-
+allocation first distinguish shared pointers from libc pointers.
+A shared pointer returns to mimalloc; an ordinary pointer
+returns to libc. This routing matters because the process
+can contain both kinds of allocation, including objects cre-
+ated outside the intercepted path. Passing a shared pointer
+to the ordinary allocator would not preserve its allocation
+metadata.
+Initial arena setup and later allocation failure follow dif-
+ferent paths. Failure to open, map, or register the region pre-
+vents shared initialization. After initialization, unsuccessful
+shared malloc and calloc requests can fall back to libc. Grow-
+ing a shared allocation uses mimalloc and reports failure if
+it cannot satisfy the request, leaving the original allocation
+available. These cases explain why the checkpoint follows
+actual mappings instead of inferring shared residency from
+the allocation interface alone.
+Arena bounds, initialization state, arena identifiers, and
+thread-local heap references are part of the captured pro-
+cess. Metadata located in ordinary memory follows CRIU’s
+page path; metadata located in the arena remains with the
+shared objects. Restore continues these structures at their
+original addresses. It does not rerun arena initialization over
+live allocations. This preserves the relationship needed by
+subsequent allocation, reallocation, and deallocation.
+4.2
+CRIU device admission and mapping
+reconstruction
+The plugin extends CRIU 3.19’s device-mapping interface.
+During memory-map inspection, it admits character-device
+mappings whose device identity matches an exposed CXL
+memory device. Other device mappings remain subject to
+CRIU’s existing support checks. Admission lets the sup-
+ported region use the file-backed shared-mapping path; it
+does not make arbitrary device state migratable.
+CRIU’s native mapping records retain the virtual range,
+backing offset, permissions, and sharing attributes. The re-
+tained contents stay outside ordinary page-image processing,
+while required anonymous and other ordinary pages con-
+tinue through existing CRIU mechanisms. During restore,
+the file-handling path reopens the backing device and the
+restorer recreates the saved mapping with MAP_FIXED. The
+plugin thus supplies device recognition while CRIU preserves
+the address-space and resource relationships around that de-
+vice.
+An open device descriptor and an existing memory map-
+ping have different lifetimes. The allocation library closes its
+initialization descriptor after creating the mapping, which
+remains valid. Native mapping records support reconstruc-
+tion of that region. If a process retains an open supported
+device descriptor, additional plugin callbacks save and re-
+store its device-path information in a versioned descriptor
+record. That record identifies how to reopen the descriptor;
+it does not contain the shared heap or replace the mapping
+metadata.
+This division keeps the extension focused on the retained-
+memory path. Process-tree reconstruction, thread contexts,
+ordinary memory, namespaces, and supported descriptors
+and sockets remain CRIU responsibilities. The destination
+still needs a compatible execution environment and access
+5
+
+
+Li et al.
+memory
+Process A
+CXL
+memory
+Process A
+Process A
+Redis /
+Process A
+hook
+malloc()
+LD_PRELOAD
+mimalloc
+Source
+Figure 3. Shared allocation in CXLResume. Allocation interception places eligible objects in CXL memory; checkpoint and
+restore preserve their mappings and allocator state.
+to referenced files. Sharing the application heap does not
+remove those dependencies.
+4.3
+Checkpoint triggering and service recovery
+CXLResume uses Docker’s checkpoint interface with CRIU
+3.19. A compatible destination container is prepared in
+a stopped state, with the application image and shared-
+memory device available. The source checkpoint captures
+the running container’s execution rather than starting a
+fresh application and importing its logical dataset. This
+permits the destination to resume the recorded process and
+allocator state together.
+The prototype invokes the panic handler near the start of
+panic(), before the kernel’s CPU-stop sequence. Through syn-
+chronous user-mode helpers, the handler requests a Docker
+checkpoint, copies the resulting images to shared storage,
+synchronizes them, and publishes a completion marker. The
+destination recovery daemon waits for that marker, checks
+the checkpoint images and required container metadata, and
+starts the stopped container from the checkpoint. This im-
+plementation depends on the kernel services identified in
+the recovery scope above.
+The planned migrations evaluated below initiate check-
+pointing through migration scripts instead of the panic han-
+dler. With shared checkpoint storage, the destination in-
+dependently watches the checkpoint directory. The post-
+checkpoint callback synchronizes generated files and pub-
+lishes its completion marker only after that synchronization.
+Container-runtime metadata may become available sepa-
+rately, so the destination also waits for the required config-
+uration and descriptor records. Restore begins when both
+the checkpoint and the container metadata are available;
+it does not depend on a separate source-issued restore re-
+quest. Local-image migration transfers its files before the
+corresponding restore step.
+In the continuous-request experiments, network activa-
+tion follows process restoration. The destination initially
+avoids claiming the service’s original link-layer identity. Af-
+ter the process and its supported sockets have been restored,
+the migration scripts activate the original network identity
+and announce it to the local network. This sequencing keeps
+traffic directed away from an unprepared destination and
+accounts for interruption beyond CRIU’s core phases.
+6
+
+
+CXLResume: Retained-State Checkpoint and Restore for In-Memory Services
+The allocation integration targets applications whose re-
+quests reach the interposed interfaces. Statically linked pro-
+grams and runtimes with independent allocators would re-
+quire a separate integration path. The implementation also
+relies on configured access to one shared region and a single
+destination writer. The QEMU setup supplies those memory-
+access conditions for functional evaluation. The prototype
+does not implement distributed failure detection or a fencing
+protocol.
+5
+Evaluation
+5.1
+Experimental setup
+We evaluate two deployment configurations in virtual ma-
+chines on one host. QEMU exposes the same host-DRAM-
+backed region as an 8 GiB CXL Type-3 device to both end-
+points [23]. The virtual machines run openEuler 24.03 LTS-
+SP1 with Linux 6.6 and Docker 17.06.2-ce. Both configura-
+tions use CRIU 3.19, Redis 5.0.14, and Memcached 1.6.31.
+CRIU uses ordinary memory, libc allocation, and local ext4
+checkpoint storage; CXLResume uses shared CXL memory,
+mimalloc, and shared NFS 4.2 storage.
+Dataset size denotes the total bytes in values or structure
+members, excluding keys and metadata. We vary datasets
+from 1–6 GiB and use a separate 3 GiB dataset for continuous
+GET, SET, and equal read/write workloads. Constructed data
+structures and states derived from Twitter and Meta cache
+workloads broaden allocation coverage [4, 28, 35]. Trace
+replay preserves operation order, value lengths, and logical
+expiration times using synthetic values and anonymized
+keys. Replay prepares the state before migration; Meta lease
+operations map to GET and SET without implementing the
+lease protocol.
+We measure elapsed CRIU checkpoint and restore time,
+including checkpoint synchronization. Their sum excludes
+migration steps outside CRIU, such as image transfer and
+network takeover. Client-visible interruption includes these
+additional stages. The comparison evaluates the complete de-
+ployment: allocator, checkpoint storage, and available mem-
+ory capacity differ together. The emulated device supports
+functional evaluation rather than physical CXL performance
+measurement.
+5.2
+Checkpoint cost as the dataset grows
+Figure 4 compares checkpoint and restore as the dataset
+grows. Retaining application objects limits the amount of
+state that must pass through CRIU’s page-image path.
+At 6 GiB, CRIU’s combined checkpoint and restore time
+is 15.015 s for Redis and 19.770 s for Memcached, compared
+with 0.242 s and 0.276 s for CXLResume. CRIU’s core time
+is therefore 61.98 and 71.56 times that of CXLResume, re-
+spectively. The retained-object path reduces the growth in
+checkpoint processing while preserving the ordinary-state
+work required to reconstruct the process.
+5.3
+Service interruption under continuous requests
+To relate checkpoint processing to service continuity, we
+drive a continuous workload with memtier 2.2.0 [25]. A sin-
+gle TCP connection with one outstanding request is capped
+at 10,000 requests/s. The workload lasts 90 s, with migration
+initiated near 15 s. The client remains at the destination,
+accessing the remote source before migration and the local
+service afterward.
+We define the migration interval from the trigger to ob-
+served restore completion. The response gap is the longest
+interval between consecutive successful responses that over-
+laps this period, measured using the client’s monotonic clock.
+Figure 5 uses one trace per configuration, selected for the
+closest match between this response gap and the checkpoint,
+image-transfer, and restore total. These traces illustrate the
+recovery sequence rather than migration variability.
+The traces show steady request processing before mi-
+gration, an interruption during takeover, and resumed
+processing at the destination. In the selected GET traces,
+CXLResume has response gaps of 0.396 s for Redis and
+0.410 s for Memcached; CRIU’s corresponding gaps are
+15.540 s and 15.214 s. SET and mixed workloads show the
+same ordering. Both configurations return close to the
+configured request rate, so the observed benefit is earlier
+resumption.
+Response gaps exceed core checkpoint and restore time
+because they also include work outside CRIU, such as image
+transfer and network takeover. Retaining objects shortens
+the state-processing stages, while the client measurement
+captures when that reduction becomes visible to the service.
+5.4
+Continuation across application states
+We evaluate Redis String, Hash, List, Set, and Sorted
+Set states, and Memcached states with fixed-size, small,
+large, mixed-size, and expiring objects. Each service also
+uses Twitter- and Meta-derived states. Figure 6 compares
+checkpoint and restore across these layouts.
+The two configurations use the same logical dataset within
+each workload. Across workloads, keys, indexes, and allo-
+cation metadata change the process state associated with a
+given value-data size. Meta-derived states also use a smaller
+dataset. Checkpoint cost therefore depends on state layout
+as well as value-data size.
+Across the evaluated states, CRIU requires seconds for
+checkpoint and restore, while CXLResume completes the
+core phases in less than one second. Sampled values and
+data-structure fingerprints remain consistent after migra-
+tion, accounting for expired entries. Together, these results
+support service continuation across the tested object layouts.
+7
+
+
+Li et al.
+1
+2
+3
+4
+5
+6
+0
+5
+10
+15
+20
+Redis
+Time (s)
+(a) Checkpoint
+1
+2
+3
+4
+5
+6
+0
+1
+2
+3
+4
+5
+Time (s)
+(b) Restore
+1
+2
+3
+4
+5
+6
+0
+5
+10
+15
+20
+Time (s)
+(c) Core total
+1
+2
+3
+4
+5
+6
+Dataset size (GiB)
+0
+5
+10
+15
+20
+Memcached
+Time (s)
+(d) Checkpoint
+1
+2
+3
+4
+5
+6
+Dataset size (GiB)
+0
+1
+2
+3
+4
+5
+Time (s)
+(e) Restore
+1
+2
+3
+4
+5
+6
+Dataset size (GiB)
+0
+5
+10
+15
+20
+Time (s)
+(f) Core total
+CRIU (local)
+CXLResume
+Figure 4. Checkpoint and restore time versus dataset size. Time axes are linear and start at zero, with the same scale for each
+metric across services. CRIU uses local images; CXLResume uses shared images.
+0
+5
+10
+Redis
+krequests/s
+Migration
+(a) GET
+0
+5
+10
+krequests/s
+Migration
+(b) SET
+0
+5
+10
+krequests/s
+Migration
+(c) Mixed
+0
+15 30
+60
+90
+0
+5
+10
+Memcached
+krequests/s
+Migration
+(d) GET
+0
+15 30
+60
+90
+0
+5
+10
+krequests/s
+Migration
+(e) SET
+0
+15 30
+60
+90
+0
+5
+10
+krequests/s
+Migration
+(f) Mixed
+Time (s)
+CRIU (local)
+CXLResume
+Figure 5. Successful request completions during the 90 s workload, in 0.25 s bins. Time zero is workload start; migration
+begins near 15 s. Each curve is a selected migration. Dotted horizontal lines mark the 10,000-request/s cap.
+8
+
+
+CXLResume: Retained-State Checkpoint and Restore for In-Memory Services
+String
+Hash
+List
+Set
+Sorted set
+Twitter
+Meta
+0
+5
+10
+Checkpoint + restore (s)
+4.62
+9.01
+5.23
+10.02
+10.28
+10.02
+6.24
+0.25
+0.25
+0.23
+0.25
+0.24
+0.28
+0.27
+(a) Redis
+Fixed size
+Small
+Large
+Mixed size
+Expiring
+Twitter
+Meta
+0
+5
+10
+Checkpoint + restore (s)
+5.76
+10.93
+4.75
+5.50
+5.39
+9.78
+6.50
+0.27
+0.27
+0.26
+0.26
+0.27
+0.32
+0.31
+(b) Memcached
+CRIU (local)
+CXLResume
+Figure 6. Checkpoint and restore across application states, on a common zero-origin linear scale. Most states contain 2.5 GiB
+of value or member data; Meta-derived states target 2 GiB.
+6
+Related work
+Checkpoint placement and migration. Live migra-
+tion distinguishes service downtime from total migration
+time [7], and post-copy systems such as M3U optimize mem-
+ory transfer [34]. VAS-CRIU uses copy-on-write snapshots
+with CRIU resource capture [30]; fabric-attached post-copy
+uses shared memory for checkpoint and page-transfer
+state [6]. CXLResume instead places writable application
+objects in shared memory before migration and coordinates
+their continued use with captured execution.
+Execution reuse and remote fork. Snapshot-loading sys-
+tems reduce startup work through memory and operating-
+system reuse [2, 11, 29]. TrEnv shares execution environ-
+ments across functions and nodes [12]; Mitosis and CXLfork
+support remote process cloning using RDMA and CXL, re-
+spectively [1, 31]. Their reuse mechanisms create instances.
+CXLResume transfers a service’s writable use of existing ob-
+jects while preserving references across shared and ordinary
+memory.
+Shared-memory recovery. Shared allocation and recov-
+ery systems address reference management and partial fail-
+ures [20, 36]; persistent-memory systems address relocation
+and coordinated checkpoints [17, 32]. CXL failure models
+and checking tools make ordering and failure assumptions
+explicit [9, 33], while Tigon studies CXL shared memory
+for databases [13]. These mechanisms complement process
+continuation by addressing allocation, persistence, and coor-
+dination.
+Other systems recover through redundancy at the shared-
+memory, object, remote-memory, or storage layer [14, 15,
+21, 22, 37]. Remus coordinates virtual-machine replication
+with external output [8]. CXLResume assumes continued
+access to retained objects; it does not supply the redundancy
+needed to survive loss of that state.
+Live update. Ksplice and Kitsune preserve service while
+changing kernel or application code [3, 10]. CXLResume
+addresses a change in placement while preserving the exe-
+cutable and captured state. Combining migration with code
+or schema evolution remains outside the evaluated mecha-
+nism.
+7
+Discussion
+The measurements compare complete deployments whose
+allocators, checkpoint storage, and available memory capac-
+ity differ. They do not isolate retained-object checkpointing
+from storage I/O or memory-pressure effects. Isolating these
+factors would require matched allocators, checkpoint stor-
+age, and memory budgets.
+The service experiments use a paced closed-loop connec-
+tion, and the selected traces illustrate recovery rather than
+its variability. High-concurrency queuing and tail latency
+9
+
+
+Li et al.
+remain unmeasured. Content validation is limited to sampled
+values and structure fingerprints, and trace-derived states
+broaden allocation coverage without reproducing production
+workloads.
+The prototype also assumes that both endpoints can access
+the same shared region and that only one writer resumes.
+A single-host, DRAM-backed emulation does not establish
+physical CXL performance or survival of power loss, backend
+loss, arbitrary source crashes, or partitions with competing
+writers. Extending the mechanism to those failures requires
+shared-region visibility and exclusive takeover guarantees [9,
+33].
+8
+Conclusion
+CXLResume combines shared allocation with address-
+preserving checkpoint and restore so that execution can
+move while application objects remain in place. Redis and
+Memcached experiments on DRAM-backed CXL emulation
+show shorter core phases and subsecond response gaps
+in the evaluated service traces. Retained-object migration
+reduces the state copied during takeover while relying on
+shared-memory availability and a single destination writer.
+10
+
+
+CXLResume: Retained-State Checkpoint and Restore for In-Memory Services
+References
+[1] Chloe Alverti, Stratos Psomadakis, Burak Ocalan,
+Shashwat Jaiswal, Tianyin Xu, and Josep Torrellas. 2025.
+CXLfork: Fast Remote Fork over CXL Fabrics. In Pro-
+ceedings of the 30th ACM International Conference on
+Architectural Support for Programming Languages and
+Operating Systems, Volume 2. 210–226. doi:10.1145/
+3676641.3715988
+[2] Lixiang Ao, George Porter, and Geoffrey M. Voelker.
+2022. FaaSnap: FaaS made fast using snapshot-based
+VMs. In Proceedings of the Seventeenth European Con-
+ference on Computer Systems. 730–746. doi:10.1145/
+3492321.3524270
+[3] Jeff Arnold and M. Frans Kaashoek. 2009. Ksplice: au-
+tomatic rebootless kernel updates. In Proceedings of
+the 4th ACM European conference on Computer systems.
+187–198. doi:10.1145/1519065.1519085
+[4] CacheLib contributors. [n. d.]. Evaluating SSD hard-
+ware for Facebook workloads: official kvcache trace re-
+lease. https://cachelib.org/docs/Cache_Library_User_
+Guides/Cachebench_FB_HW_eval/ Accessed 19 Octo-
+ber 2026.
+[5] Checkpoint/Restore in Userspace contributors. [n. d.].
+CRIU, release 3.19.
+https://github.com/checkpoint-
+restore/criu/tree/v3.19 Accessed 19 October 2026.
+[6] Chih Chieh Chou, Yuan Chen, Dejan Milojicic,
+Narasimha Reddy, and Paul Gratz. 2019.
+Optimiz-
+ing Post-Copy Live Migration with System-Level
+Checkpoint Using Fabric-Attached Memory. In 2019
+IEEE/ACM Workshop on Memory Centric High Per-
+formance Computing (MCHPC). 16–24.
+doi:10.1109/
+MCHPC49590.2019.00010
+[7] Christopher Clark, Keir Fraser, Steven Hand, Ja-
+cob Gorm Hansen, Eric Jul, Christian Limpach, Ian
+Pratt, and Andrew Warfield. 2005.
+Live Migra-
+tion of Virtual Machines. In 2nd Symposium on
+Networked Systems Design & Implementation (NSDI
+05). https://www.usenix.org/conference/nsdi-05/live-
+migration-virtual-machines
+[8] Brendan Cully, Geoffrey Lefebvre, Dutch Meyer, Mike
+Feeley, Norm Hutchinson, and Andrew Warfield.
+2008.
+Remus: High Availability via Asynchronous
+Virtual Machine Replication. In 5th USENIX Symposium
+on Networked Systems Design and Implementation
+(NSDI 08).
+https://www.usenix.org/conference/nsdi-
+08/remus-high-availability-asynchronous-virtual-
+machine-replication
+[9] Simon Guo, Conan Truong, and Brian Demsky. 2026.
+CXLMC: Model Checking CXL Shared Memory Pro-
+grams. In Proceedings of the 31st ACM International
+Conference on Architectural Support for Programming
+Languages and Operating Systems, Volume 2. 546–562.
+doi:10.1145/3779212.3790150
+[10] Christopher M. Hayden, Edward K. Smith, Michail
+Denchev, Michael Hicks, and Jeffrey S. Foster. 2012.
+Kitsune: efficient, general-purpose dynamic software
+updating for C. In Proceedings of the ACM international
+conference on Object oriented programming systems lan-
+guages and applications. 249–264. doi:10.1145/2384616.
+2384635
+[11] Ben Holmes, Baltasar Dinis, Lana Honcharuk, Adam
+Belay, and Joshua Fried. 2026. Rethinking Process Snap-
+shots for Near-Warm Serverless Cold Starts. In 20th
+USENIX Symposium on Operating Systems Design and
+Implementation (OSDI 26). 2007–2025.
+https://www.
+usenix.org/conference/osdi26/presentation/holmes
+[12] Jialiang Huang, MingXing Zhang, Teng Ma, Zheng Liu,
+Sixing Lin, Kang Chen, Jinlei Jiang, Xia Liao, Yingdi
+Shan, Ning Zhang, Mengting Lu, Tao Ma, Haifeng Gong,
+and YongWei Wu. 2024. TrEnv: Transparently Share
+Serverless Execution Environments Across Different
+Functions and Nodes. In Proceedings of the ACM SIGOPS
+30th Symposium on Operating Systems Principles. 421–
+437. doi:10.1145/3694715.3695967
+[13] Yibo Huang, Haowei Chen, Newton Ni, Yan Sun, Vi-
+jay Chidambaram, Dixin Tang, and Emmett Witchel.
+2025.
+Tigon: A Distributed Database for a CXL
+Pod. In 19th USENIX Symposium on Operating Sys-
+tems Design and Implementation (OSDI 25). 109–
+128.
+https://www.usenix.org/conference/osdi25/
+presentation/huang-yibo
+[14] Zhaoxiang Huang, Jianqin Yan, Hao Chen, Jiaxin Li,
+and Yiming Zhang. 2025. Oak: A Fault-Tolerant Shared-
+Memory System Atop Memory-Semantic Fabrics. In
+2025 IEEE 43rd International Conference on Computer
+Design (ICCD). 726–729. doi:10.1109/ICCD65941.2025.
+00109
+[15] Youngmoon Lee, Hasan Al Maruf, Mosharaf Chowd-
+hury, Asaf Cidon, and Kang G. Shin. 2022. Hydra :
+Resilient and Highly Available Remote Memory. In
+20th USENIX Conference on File and Storage Technolo-
+gies (FAST 22). 181–198.
+https://www.usenix.org/
+conference/fast22/presentation/lee
+[16] Huaicheng Li, Daniel S. Berger, Lisa Hsu, Daniel Ernst,
+Pantea Zardoshti, Stanko Novakovic, Monish Shah,
+Samir Rajadnya, Scott Lee, Ishwar Agarwal, Mark D.
+Hill, Marcus Fontoura, and Ricardo Bianchini. 2023.
+Pond: CXL-Based Memory Pooling Systems for Cloud
+Platforms. In Proceedings of the 28th ACM International
+Conference on Architectural Support for Programming
+Languages and Operating Systems, Volume 2. 574–587.
+doi:10.1145/3575693.3578835
+[17] Suyash Mahar, Mingyao Shen, TJ Smith, Joseph Izraele-
+vitz, and Steven Swanson. 2024. Puddles: Application-
+Independent Recovery and Location-Independent Data
+for Persistent Memory. In Proceedings of the Nineteenth
+European Conference on Computer Systems. 575–589.
+11
+
+
+Li et al.
+doi:10.1145/3627703.3629555
+[18] Hasan Al Maruf, Hao Wang, Abhishek Dhanotia, Jo-
+hannes Weiner, Niket Agarwal, Pallab Bhattacharya,
+Chris Petersen, Mosharaf Chowdhury, Shobhit Kanau-
+jia, and Prakash Chauhan. 2023.
+TPP: Transparent
+Page Placement for CXL-Enabled Tiered-Memory. In
+Proceedings of the 28th ACM International Conference
+on Architectural Support for Programming Languages
+and Operating Systems, Volume 3. 742–755. doi:10.1145/
+3582016.3582063
+[19] Microsoft and mimalloc contributors. [n. d.]. mimalloc,
+version 2.1.7. https://github.com/microsoft/mimalloc/
+tree/v2.1.7 Accessed 19 October 2026.
+[20] Newton Ni, Yan Sun, Zhiting Zhu, and Emmett Witchel.
+2026. Cxlalloc : Safe and Efficient Memory Allocation
+for a CXL Pod. In Proceedings of the 31st ACM Inter-
+national Conference on Architectural Support for Pro-
+gramming Languages and Operating Systems, Volume 2.
+528–545. doi:10.1145/3779212.3790149
+[21] Diego Ongaro, Stephen M. Rumble, Ryan Stutsman,
+John Ousterhout, and Mendel Rosenblum. 2011. Fast
+crash recovery in RAMCloud. In Proceedings of the
+Twenty-Third ACM Symposium on Operating Systems
+Principles. 29–41. doi:10.1145/2043556.2043560
+[22] Adarsh Patil, Vijay Nagarajan, Nikos Nikoleris, and
+Nicolai Oswald. 2023.
+¯Apta: Fault-tolerant object-
+granular CXL disaggregated memory for accelerating
+FaaS. In 2023 53rd Annual IEEE/IFIP International Con-
+ference on Dependable Systems and Networks (DSN). 201–
+215. doi:10.1109/DSN58367.2023.00030
+[23] QEMU contributors. [n. d.].
+Compute Express Link
+(CXL).
+https://www.qemu.org/docs/master/system/
+devices/cxl.html Accessed 19 October 2026.
+[24] Redis.
+[n. d.].
+Redis
+replication.
+https:
+//redis.io/docs/latest/operate/oss_and_stack/
+management/replication/
+Accessed 19 October
+2026.
+[25] Redis
+and
+memtier
+contributors.
+[n. d.].
+memtier_benchmark, release 2.2.0. https://github.com/
+RedisLabs/memtier_benchmark/tree/2.2.0 Accessed 19
+October 2026.
+[26] Zhenyuan Ruan, Malte Schwarzkopf, Marcos K. Aguil-
+era, and Adam Belay. 2020. AIFM: High-Performance,
+Application-Integrated Far Memory. In 14th USENIX
+Symposium on Operating Systems Design and Implemen-
+tation (OSDI 20). 315–332.
+https://www.usenix.org/
+conference/osdi20/presentation/ruan
+[27] Yan Sun, Yifan Yuan, Zeduo Yu, Reese Kuper, Chi-
+hun Song, Jinghan Huang, Houxiang Ji, Siddharth
+Agarwal, Jiaqi Lou, Ipoom Jeong, Ren Wang, Jung Ho
+Ahn, Tianyin Xu, and Nam Sung Kim. 2023.
+De-
+mystifying CXL Memory with Genuine CXL-Ready
+Systems and Devices. In 56th Annual IEEE/ACM In-
+ternational Symposium on Microarchitecture. 105–121.
+doi:10.1145/3613424.3614256
+[28] Twitter. [n. d.]. Twitter anonymized production cache
+traces.
+https://github.com/twitter/cache-trace
+Ac-
+cessed 19 October 2026.
+[29] Dmitrii Ustiugov, Plamen Petrov, Marios Kogias,
+Edouard Bugnion, and Boris Grot. 2021. Benchmark-
+ing, analysis, and optimization of serverless function
+snapshots. In Proceedings of the 26th ACM International
+Conference on Architectural Support for Programming
+Languages and Operating Systems. 559–572. doi:10.1145/
+3445814.3446714
+[30] Ranjan Sarpangala Venkatesh, Till Smejkal, Dejan S.
+Milojicic, and Ada Gavrilovska. 2019. Fast in-memory
+CRIU for docker containers. In Proceedings of the Inter-
+national Symposium on Memory Systems. 53–65. doi:10.
+1145/3357526.3357542
+[31] Xingda Wei, Fangming Lu, Tianxia Wang, Jinyu Gu,
+Yuhan Yang, Rong Chen, and Haibo Chen. 2023. No
+Provisioned Concurrency: Fast RDMA-codesigned Re-
+mote Fork for Serverless Computing. In 17th USENIX
+Symposium on Operating Systems Design and Implemen-
+tation (OSDI 23). 497–517.
+https://www.usenix.org/
+conference/osdi23/presentation/wei-rdma
+[32] Fangnuo Wu, Mingkai Dong, Gequan Mo, and Haibo
+Chen. 2023. TreeSLS: A Whole-system Persistent Micro-
+kernel with Tree-structured State Checkpoint on NVM.
+In Proceedings of the 29th Symposium on Operating Sys-
+tems Principles. 1–16. doi:10.1145/3600006.3613160
+[33] Yi Xu, Suyash Mahar, Ziheng Liu, Mingyao Shen, and
+Steven Swanson. 2024.
+CXL Shared Memory Pro-
+gramming: Barely Distributed and Almost Persistent.
+arXiv:2405.19626. doi:10.48550/arXiv.2405.19626
+[34] Yizhe Xu, Yuan Tao, Zhibin Zhang, Kang Yan, Chao
+Zhang, Shuo Shi, Zongpu Zhang, Xu Huan, Yibin Shen,
+Xudong Zheng, Jiesheng Wu, Jian Li, and Haibing Guan.
+2026. M3U: Scalable Kernel Memory Management for
+Efficient Post-Copy Live Migration of High-End Vir-
+tual Machines. In 20th USENIX Symposium on Oper-
+ating Systems Design and Implementation (OSDI 26).
+1715–1730. https://www.usenix.org/conference/osdi26/
+presentation/xu-yizhe
+[35] Juncheng Yang, Yao Yue, and K. V. Rashmi. 2020. A
+large scale analysis of hundreds of in-memory cache
+clusters at Twitter. In 14th USENIX Symposium on Op-
+erating Systems Design and Implementation (OSDI 20).
+191–208. https://www.usenix.org/conference/osdi20/
+presentation/yang
+[36] Mingxing Zhang, Teng Ma, Jinqi Hua, Zheng Liu, Kang
+Chen, Ning Ding, Fan Du, Jinlei Jiang, Tao Ma, and
+Yongwei Wu. 2023.
+Partial Failure Resilient Mem-
+ory Management System for (CXL-based) Distributed
+Shared Memory. In Proceedings of the 29th Symposium
+on Operating Systems Principles. 658–674. doi:10.1145/
+3600006.3613135
+12
+
+
+CXLResume: Retained-State Checkpoint and Restore for In-Memory Services
+[37] Yang Zhou, Hassan M. G. Wassel, Sihang Liu, Jiaqi Gao,
+James Mickens, Minlan Yu, Chris Kennelly, Paul Turner,
+David E. Culler, Henry M. Levy, and Amin Vahdat. 2022.
+Carbink: Fault-Tolerant Far Memory. In 16th USENIX
+Symposium on Operating Systems Design and Imple-
+mentation (OSDI 22). 55–71. https://www.usenix.org/
+conference/osdi22/presentation/zhou-yang
+13

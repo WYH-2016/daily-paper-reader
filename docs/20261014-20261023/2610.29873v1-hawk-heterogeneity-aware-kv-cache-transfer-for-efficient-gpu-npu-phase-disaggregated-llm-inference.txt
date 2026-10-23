@@ -1,0 +1,1987 @@
+HAWK: Heterogeneity-Aware KV Cache Transfer for Efficient
+GPU-NPU Phase-Disaggregated LLM Inference
+Junhyeok Park∗
+Georgia Institute of Technology
+Atlanta, USA
+junhyeokpark@gatech.edu
+Jungeun Yoon
+Electronics and Telecommunications
+Research Institute (ETRI)
+Daejeon, Republic of Korea
+jeyoon@etri.re.kr
+Kyungmin Kim
+Electronics and Telecommunications
+Research Institute (ETRI)
+Daejeon, Republic of Korea
+kyungmin.kim@etri.re.kr
+Hunsoon Lee
+Electronics and Telecommunications
+Research Institute (ETRI)
+Daejeon, Republic of Korea
+hunsoon@etri.re.kr
+Shinyoung Ahn
+Electronics and Telecommunications
+Research Institute (ETRI)
+Daejeon, Republic of Korea
+syahn@etri.re.kr
+Kangho Kim
+Electronics and Telecommunications
+Research Institute (ETRI)
+Daejeon, Republic of Korea
+khk@etri.re.kr
+Abstract
+Large language model (LLM) inference exhibits distinct compu-
+tational characteristics across its two phases: prefill is compute-
+intensive, whereas decode is more memory-bound. As a result, AI
+accelerators achieve varying levels of efficiency across the two
+phases. GPUs are well suited to prefill, but are often underuti-
+lized during decode. By contrast, NPUs can utilize their compute
+resources more effectively during decode. Motivated by this ob-
+servation, we explore a heterogeneous architecture that integrates
+GPUs and NPUs, mapping prefill to GPUs and decode to NPUs to
+achieve high performance and efficiency. However, realizing such
+heterogeneous integration is challenging because LLM phase disag-
+gregation requires KV cache transfer from prefill to decode—that is,
+from GPUs to NPUs—which is complicated by differences in inter-
+device communication mechanisms and KV cache tensor layouts.
+To address this, we propose HAWK, a transfer mechanism that en-
+ables rapid KV cache transfer across heterogeneous devices. HAWK
+establishes a remote direct memory access (RDMA) path for direct
+cross-device transfers while handling inter-device tensor layout
+discrepancies as part of the transfer process. In particular, HAWK
+allocates tensor-layout-aware RDMA buffers on the NPU side to
+match the target tensor layout. Leveraging these buffers, HAWK
+orchestrates data transfer from a conventional contiguous GPU
+RDMA buffer to the corresponding NPU buffers, allowing trans-
+ferred tensors to be consumed directly without additional data re-
+arrangement while maintaining transfer efficiency. We implement
+and evaluate HAWK on a system built with commercially available
+GPUs and NPUs, demonstrating performance within 7.88% of a
+GPU-only system under the same SLO constraints while achieving
+up to 1.26× higher power efficiency and 1.72× higher cost efficiency.
+Keywords
+Large language models (LLMs), Graphic processing units (GPUs),
+Neural processing units (NPUs), Heterogeneous Architecture
+1
+Introduction
+LLMs have become a dominant foundation for modern artificial
+intelligence systems and are widely used across a broad range
+∗Work completed while the auther was at ETRI; the author is the corresponding author.
+Performance
+GPU
+NPU
+NVIDIA A100
+Tenstorrent p150a
+Prefill phase throughput
+(input tokens/𝑡𝑝𝑟𝑒𝑓𝑖𝑙𝑙)
+133.16
+52.74
+Decode phase throughput
+(output tokens/𝑡𝑑𝑒𝑐𝑜𝑑𝑒)
+15.27
+13.17
+Decode phase power efficiency
+(output tokens/𝑡𝑑𝑒𝑐𝑜𝑑𝑒/kW)
+77.11
+107.20
+Decode phase cost efficiency
+(output tokens/𝑡𝑑𝑒𝑐𝑜𝑑𝑒/$1,000)
+0.40
+2.35
+Table 1: Performance comparison of GPUs and NPUs for LLM
+inference using requests with 512 input tokens, 128 output
+tokens, and a batch size of 32. The performance gap narrows
+from 2.52× in prefill to 1.16× in decode, while NPUs achieve
+higher power and cost efficiency during decode. Power effi-
+ciency is based on device ASIC power; efficiency measure-
+ment details are described in Section 5.4.
+of applications, including conversation agents and assistants for
+coding and research [10, 24, 86, 91]. To improve model capabilities,
+LLMs have grown substantially in scale and complexity, driving a
+corresponding increase in AI infrastructure requirements [40, 57,
+60, 75, 88]. In particular, GPUs have emerged as a primary platform
+for LLM inference due to their programmability, versatility, and
+high performance [7, 8, 65, 66, 74].
+GPU Underutilization in LLM Inference: However, GPU effi-
+ciency varies across different phases of LLM inference: prefill and
+decode. During prefill, the model processes input tokens in parallel,
+resulting in general matrix-matrix multiplication (GEMM) oper-
+ations that efficiently map onto GPU tensor cores [6, 61, 65] and
+enable high computing utilization. In contrast, during decode, the
+model generates one token at a time and the computation is domi-
+nated by general matrix-vector multiplication (GEMV). Since GEMV
+provides limited tile-level parallelism and data reuse, it results in
+lower compute utilization. [2, 3, 29, 59, 76, 79, 106].
+Opportunities for NPUs: In this context, neural processing units
+(NPUs)1 offer an alternative platform for decode. NPUs are often
+designed around dataflow-oriented execution models [4, 14, 18, 37,
+41, 51, 90, 101] that provide explicit control over on-chip buffering
+1In this paper, NPU broadly refers to specialized AI accelerators other than GPUs.
+arXiv:2610.29873v1  [cs.AR]  21 Oct 2026
+
+
+and compute-memory scheduling. These characteristics can benefit
+decode by enabling finer-grained coordination and overlap between
+computation and memory accesses, thereby reducing the impact of
+off-chip memory accesses during decode.
+Table 12 compares LLM inference performance between commod-
+ity GPUs (NVIDIA A100 [62]3) and commodity NPUs (Tenstorrent
+p150a board [92]4). GPUs outperform NPUs during prefill, achiev-
+ing 2.52× higher performance. During decode, however, the per-
+formance gap narrows to 1.16×. Notably, NPUs achieve 1.39× and
+5.88× higher power and cost efficiency, respectively, than GPUs dur-
+ing decode, highlighting their potential for efficient decode serving
+while maintaining comparable performance. In particular, modern
+LLM inference systems increasingly adopt disaggregated prefill-
+decode architectures [12, 16, 27–29, 34, 35, 50, 78, 81, 83, 85, 87, 105,
+108, 110], which decouple the two phases to reduce interference
+between them and improve system scalability. In this setting, a
+heterogeneous system that uses GPUs for prefill and NPUs for decode
+can achieve both high performance and efficiency.
+Challenges: Despite its potential advantages, this heterogeneous
+system faces several challenges to practical adoption. The first chal-
+lenge is transferring KV caches generated during GPU prefill to
+NPUs for decode. In homogeneous GPU systems, optimized commu-
+nication software stacks such as NVIDIA NIXL [68, 72] enable direct
+GPU-to-GPU data transfer via RDMA over InfiniBand or RoCE. In
+contrast, heterogeneous data transfer remains relatively under-
+explored. Moreover, NPUs often rely on diverse, vendor-specific
+communication mechanisms [5, 32, 95, 100], further complicating
+interoperability with other devices. The second challenge is handling
+heterogeneous tensor memory layouts. In LLMs, many data struc-
+tures, including weights, activations, and KV cache, are represented
+as tensors [46]. Accelerators across device types and vendors often
+employ device-specific tensor memory layouts to reduce memory
+traffic and optimize computation [16, 22, 30, 82, 98]. Resolving such
+tensor layout discrepancies requires additional data rearrangement,
+complicating data transfer and increasing latency.
+Enabling Heterogeneous LLM Inference: This paper presents
+HAWK (Heterogeneity-AWare Key-Value Transfer), a mechanism
+that enables high-performance LLM inference across heterogeneous
+devices. HAWK establishes a direct data transfer path between GPU
+and NPU memory by connecting both to a common RDMA stack. To
+handle tensor layout discrepancies, HAWK applies a transfer-aware
+transformation to the GPU KV cache to produce a tensor layout that
+matches the target NPU layout while facilitating efficient RDMA
+transfer. On the NPU side, HAWK allocates RDMA buffers to match
+the tensor layout expected by the target NPU, with separate buffers
+distributed across its DRAM channels. This organization allows
+the transferred tensor to be consumed directly for decode without
+post-transfer conversion.
+In our evaluation, HAWK achieves up to 27.69× faster heteroge-
+neous KV cache transfers than naive host-staged transfers, with a
+latency difference of only 0.65% relative to a GPU-to-GPU RDMA
+2Unless otherwise specified, all experiments use Llama 3.1 70B [24]; the rationale for
+this choice is discussed in Section 5.1.1. GPU and NPU measurements each use four
+devices with a tensor parallelism degree of 4 in vLLM [46].
+3We also evaluate GPUs based on other architectures in Section 5.4.3.
+4Throughout this paper, we use the Tenstorrent p150a board as the representative
+NPU platform due to the technical considerations described in Section 5.1.1. However,
+HAWK can be applicable to a broader class of NPU architectures.
+path. Compared with a GPU-only system, our heterogeneous sys-
+tem with HAWK achieves up to 1.26× higher power efficiency
+and 1.72× higher cost efficiency, with a performance difference
+of at most 7.88% under the same SLO constraints. To the best of
+our knowledge, this work is the first to design and evaluate a high-
+performance data transfer mechanism across heterogeneous devices
+on a real system. While this work focuses on KV cache transfer,
+HAWK can also support other tensor objects, such as weights and
+activations, required by other forms of disaggregated LLM serving.
+Overall, this paper makes the following contributions.
+• We characterize the phase-dependent execution behavior of GPUs
+and NPUs for LLM inference. GPUs achieve high compute uti-
+lization during prefill but are substantially underutilized dur-
+ing decode. In contrast, NPUs exhibit higher compute utiliza-
+tion while achieving decode performance comparable to GPUs,
+providing a more efficient design point consistent with their
+dataflow-oriented architectures.
+• We propose a heterogeneous GPU–NPU serving system that
+assigns prefill to GPUs and decode to NPUs to achieve high per-
+formance and efficiency. We identify cross-device data transfer
+as a critical bottleneck in this design, motivating the need for a
+high-performance heterogeneous transfer mechanism.
+• We present HAWK, a heterogeneity-aware KV cache transfer
+mechanism. HAWK leverages an RDMA-based transfer path
+that bypasses host intervention and handles cross-device tensor-
+layout mismatches through transfer-aware tensor transformation
+and tensor-layout-aware RDMA buffer allocation.
+2
+Background
+2.1
+LLM Inference
+Figure 1 illustrates the inference process of a conventional decoder-
+only Transformer, which consists of two phases: prefill and decode.
+Both phases follow the same sequence of a token embedding layer,
+multiple decoder layers, and a language modeling (LM) head, but
+differ in the number of tokens processed. During the prefill phase,
+all input tokens are first converted into embedding vectors by the
+token embedding layer (❶). The resulting embeddings are then
+processed by multiple decoder layers, each consisting of layer nor-
+malization, multi-head attention, residual connections, and a feed-
+forward network (FFN) (❷), to capture inter-token relationships,
+incorporate contextual information, and refine token representa-
+tions. The output of the decoder layers is then passed through the
+LM head to produce token scores, from which the next token is
+selected (❸). The selected token is subsequently fed back into the
+token embedding layer as input, initiating the autoregressive de-
+code phase (❹), which continues until an end-of-sequence (EOS)
+token is generated or the maximum generation length is reached.
+In particular, multi-head attention within each decoder layer
+computes Query, Key, and Value (QKV) activations from the input,
+which serve as the core intermediate representations for attention
+computation and inter-token interaction [103]. The Key and Value
+activations generated for each token remain unchanged during
+subsequent decoding steps and can therefore be reused. To exploit
+this property, LLM inference stores these activations in memory
+as a key-value (KV) cache and retrieves them in later decoding
+2
+
+
+Figure 1: An overview of the LLM inference process.
+Operation
+Operands
+Output
+QKV projection
+[B, L, H], [H, 3H]
+[B, L, 3H]
+Attention
+[B, L, H], [B, H, 𝐿𝑡]
+[B, L, 𝐿𝑡]
+[B, L, 𝐿𝑡], [B, 𝐿𝑡, H]
+[B, L, H]
+Output projection
+[B, L, H], [H, H]
+[B, L, H]
+FFN projections
+[B, L, H], [H, F]
+[B, L, F]
+[B, L, F], [F, H]
+[B, L, H]
+Table 2: Shape of the operands and output tensors for each
+operation in a decoding layer, assuming single-head atten-
+tion for simplicity. Here, 𝐵, 𝐿, 𝐿𝑡, 𝐻, and 𝐹represent the batch
+size, input token length, total token length, model hidden
+dimension, and FFN hidden dimension, respectively. The
+operand shapes depend strongly on 𝐿, determining whether
+the resulting computation is more GEMM-like or GEMV-like.
+steps, avoiding redundant computation. The KV cache grows in-
+crementally as new tokens are generated, with the Key and Value
+activations of each new token appended to the existing cache.
+2.2
+Characteristics of Prefill and Decode
+The dominant computations in the decoder layer, including QKV
+projections, attention computation, output projection, and FFN
+projections, depend on the input shape [3, 76], as shown Table 2.
+During prefill, all input tokens are processed in parallel (𝐿equals
+the initial input length), producing a matrix of embedding vectors;
+consequently, these computations are dominated by GEMM. During
+decode, in contrast, the model processes one newly generated token
+at a time (𝐿equals 1), producing a vector; accordingly, the dominant
+computations are mapped to GEMV, which exhibits lower arith-
+metic intensity and reduced data reuse relative to GEMM. Moreover,
+decode requires fetching KV caches from previously processed to-
+kens, which introduces more memory traffic than prefill.
+3
+Motivation
+3.1
+Phase-Dependent GPU Efficiency
+GPUs are a primary platform for LLM inference due to their high
+performance and mature software ecosystem [46, 48, 74, 109]. How-
+ever, GPU computational efficiency varies across inference phases
+Prefill
+Decode
+Prefill
+Decode
+0
+25
+50
+75
+100
+Utilization (%)
+Tensor Core Utilization
+DRAM Utilization
+Batch=1
+Batch=32
+(a)
+Time (sec) 
+0
+50
+100
+150
+200
+250
+300
+Average Power (W)
+ Prefill 
+ Decode 
+(b)
+Figure 2: (a) GPU tensor core and DRAM utilization of the
+QKV projection kernel and (b) GPU board-level power con-
+sumption during prefill and decode, using requests with 512
+input tokens and 128 output tokens. GPUs achieve high com-
+putational efficiency during prefill but lower efficiency dur-
+ing decode, while power consumption does not closely track
+computational efficiency across phases.
+Operations
+GPU Utilization (%)
+Tensor Core
+DRAM
+QKV projection
+35.19
+62.48
+Attention
+22.22
+36.65
+Output projection
+33.30
+59.85
+FFN projections
+38.77
+72.40
+Table 3: GPU tensor core and DRAM utilization of kernels in
+a decoder layer during decode. All kernels exhibit low tensor
+core utilization due to the limited parallelism during decode.
+due to the distinct characteristics of prefill and decode. We profile
+GPU kernels in a decoder layer during prefill and decode on A100
+GPUs using Nsight Compute [70]. Figure 2a shows tensor core and
+DRAM utilization for the QKV projection kernel as a representative
+example. During prefill, the kernel achieves high tensor core uti-
+lization (∼92.92%) with relatively low DRAM utilization (∼19.26%)
+because the computation is dominated by GEMM operations that
+maps efficiently onto GPU tensor cores. During decode, in contrast,
+the kernel exhibits lower tensor core utilization (∼35.90%) and
+higher DRAM utilization (∼64.09%), reflecting GEMV-dominated
+computation and additional memory accesses for KV cache retrieval.
+Table 3 shows that other kernels in a decoder layer also exhibit low
+computational efficiency during decode for similar reasons.
+Although request batching can make GEMV execution more
+GEMM-like by increasing 𝐵in Table 2, these benefits emerge only
+at sufficiently large batch sizes [76], as the performance gains from
+small-batch execution are limited, as shown in Figure 2a. In practice,
+however, such large batch sizes are often infeasible due to memory
+capacity constraints: the KV cache size in elements, 2 × 𝐿× 𝑁𝑙×
+𝑁ℎ× 𝑁ℎ𝑑× 𝐵, grows linearly with batch size, where 𝑁𝑙, 𝑁ℎ, and
+𝑁ℎ𝑑denote the number of decoder layers, the number of KV heads,
+and the head dimension, respectively.
+Furthermore, GPU power consumption remains relatively stable
+across the two phases, as shown in Figure 2b. Because tensor cores
+represent a significant component of GPU power consumption
+when active [39], the lower tensor core utilization during decode
+might be expected to reduce power consumption. However, the
+power consumption does not show a corresponding decrease when
+transitioning from prefill to decode. Consequently, decode on GPUs
+3
+
+
+Operations
+Compute Utilization
+(% of peak throughput)
+Power Efficiency
+(TFLOPS/kW)
+GPU
+A100
+NPU
+p150a
+GPU
+A100
+NPU
+p150a
+QKV projection
+11.93
+79.06
+226.82
+167.59
+Attention
+1.67
+8.34
+22.64
+28.34
+Output projection
+11.20
+74.33
+213.00
+157.55
+FFN projections
+13.44
+81.46
+255.47
+258.99
+Table 4: Comparison of compute utilization and power effi-
+ciency across kernels in a decoder layer during decode on
+GPUs and NPUs, using requests with 512 input tokens, 128
+output tokens, and a batch size of 32. NPUs achieve higher
+compute utilization across all the kernels through phase-
+aware core allocation and higher power efficiency for at-
+tention and FFN projections, which account for a substan-
+tial fraction of LLM decoding time [106]. Power efficiency is
+based on device ASIC power; measurement details are pro-
+vided in Section 5.4.
+exhibits not only lower computational efficiency but also lower
+power efficiency than prefill.
+3.2
+Potential of NPUs for Efficient Decode
+NPUs are specialized accelerators designed for AI workloads. While
+their detailed designs vary, most broadly adopt dataflow-oriented
+architectures that explicitly manage computation and data move-
+ment to maximize data reuse and reduce the impact of off-chip
+memory accesses [4, 18, 37, 41, 51, 90]. These characteristics can be
+particularly beneficial for GEMV-like computation during decode.
+Table 4 compares the compute utilization and power efficiency
+of GPUs (A100) and NPUs (p150a) for representative kernels in a
+decoder layer during decode. Compute utilization is calculated by
+dividing the achieved throughput (TFLOPS) by the peak through-
+put of the compute cores used by each kernel and multiplying by
+100. During decode, the evaluated NPUs use fewer compute cores
+than during prefill (e.g., 8 versus 64 for FFN operations [97]) and
+select cores closer to DRAM to better accommodate the limited
+parallelism and memory-intensive nature of GEMV-like computa-
+tion. By concentrating computation on fewer cores, they maintain
+high utilization of the assigned cores, exceeding GPU utilization
+across all evaluated kernels. While using fewer cores may limit
+kernel throughput, it can also improve power efficiency by reduc-
+ing the number of active compute cores. In our evaluation, the
+NPU achieves higher power efficiency for attention and FFN ker-
+nels, which account for a substantial fraction of LLM decoding
+time [106]. Although we evaluate one NPU platform, other NPU
+architectures may achieve similar efficiency gains through differ-
+ent mechanisms. When these efficiency gains are achieved while
+maintaining comparable performance, as shown in Table 1, NPUs
+can be considered an attractive option for efficient decode serving.
+3.3
+LLM Disaggregation with GPUs and NPUs
+Figure 3 illustrates a phase-disaggregated LLM serving system that
+separates the prefill and decode phases on different computing re-
+sources [12, 16, 27–29, 34, 35, 50, 78, 81, 83, 85, 87, 105, 108, 110]. An
+LLM replica is loaded onto each computing resource, typically on
+Prefill Instance
+Request
+Router
+Requests
+Decode Instance
+LLM
+XPU
+XPU
+XPU
+XPU
+LLM
+XPU
+XPU
+XPU
+XPU
+1
+2
+KV cache + first token
+NIC
+NIC
+Node 0
+Node 1
+Host CPU
+Host CPU
+3
+5
+5
+4
+4
+Figure 3: An overview of a prefill-decode phase-disaggregated
+LLM serving system.
+separate server nodes, and the request router forwards incoming re-
+quests to the prefill instance (①). The prefill instance generates the
+first token and KV cache for the input tokens (②), which are then
+transferred to the decode instance for subsequent token generation
+(③). By isolating the two phases, this system reduces inter-phase
+interference, thereby stabilizing tail latency and improving request
+goodput [19, 81, 110]. It also enables flexible scaling of prefill and
+decode instances and phase-specific resource allocation, making it
+attractive for production LLM serving [78, 81]. As a result, many
+LLM serving software stacks actively support phase disaggrega-
+tion [11, 46, 54, 68, 74, 109], which has also been widely adopted in
+real-world LLM serving platforms [19, 54, 81, 102].
+Leveraging this approach, we explore a heterogeneous LLM
+serving system that maps prefill to GPUs and decode to NPUs
+according to their computational characteristics. GPUs provide
+high performance and efficiency during prefill, while NPUs offer
+comparable decode performance with higher efficiency, enabling
+the system to achieve both high performance and efficiency.
+3.4
+Challenges: Handling Heterogeneity
+Despite the potential benefits of a heterogeneous GPU–NPU sys-
+tem, several challenges hinder its practical deployment. The first
+challenge is cross-device data transfer, particularly for KV caches.
+In a GPU-only system, GPUs support RDMA-based transfers [69]
+through optimized communication software [72, 81], allowing the
+network interface card (NIC) to directly access GPU memory, as
+shown in Figure 3 (④). However, in a heterogeneous system, GPUs
+and NPUs rely on distinct software stacks and communication
+mechanisms [5, 32, 95, 100], which may not directly interoperate.
+A straightforward solution is to use the host as a staging point,
+which avoids the need for direct interoperability (⑤). However, this
+approach incurs substantial latency from additional copies between
+the host and each device, as well as host intervention. We observed
+that, even between GPUs, host-staged transfer incurs 1.83× to 5.25×
+the latency of direct transfer as the transfer size increases from
+10 MB to 1.2 GB, adding substantial overhead to LLM serving.
+The second challenge is handling differences in KV cache tensor
+layouts across devices. A tensor layout defines the ordering and
+shape of tensor dimensions, as well as how tensor elements are
+mapped to the virtual address space and distributed across physical
+memory channels. Different accelerators employ device-specific
+tensor layouts to optimize data movement and computation, and
+4
+
+
+(a) GPU KV cache tensor layout.
+(b) NPU KV cache tensor layout.
+Figure 4: Comparison of tensor layouts across different de-
+vices. The arrows represent tensor elements in contiguous
+virtual addresses. Each device uses its own ordering of tensor
+dimensions and virtual-address mapping of tensor elements.
+these differences can be particularly pronounced between GPUs
+and NPUs [22, 30, 82, 98] (e.g., row- or column-major layouts on
+GPUs versus tiled layouts on NPUs), as illustrated in Figure 4. Con-
+sequently, GPU-to-NPU tensor transfers require additional layout
+transformation to match the target NPU layout, introducing extra la-
+tency. One way to avoid this overhead is to force one device to adopt
+the tensor layout of the other. However, because each tensor layout
+is optimized for its device, enforcing a unified layout can reduce
+memory access efficiency and requires modifications to existing
+compute kernels, potentially degrading their performance [49, 80].
+4
+Heterogeneity-Aware KV Cache Transfer
+Our goal is to enable an efficient GPU–NPU heterogeneous LLM
+inference system. To this end, we present HAWK, a heterogeneity-
+aware KV cache transfer mechanism that enables direct, high-
+performance tensor transfer between GPUs and NPUs.
+Figure 5 illustrates an overview of a heterogeneous system with
+HAWK. HAWK builds on the Linux RDMA stack and establishes
+a common RDMA path for GPU and NPU memory by integrating
+device-specific RDMA memory support (❶), enabling the NIC on
+each node to directly access device memory without host interven-
+tion. Once the GPU prefill instance generates the KV cache, HAWK
+transforms the GPU KV tensors into transfer-friendly aligned ten-
+sors (❷). The transformation partially aligns tensor elements with
+the target NPU layout while maximizing the size of each RDMA
+transfer. HAWK then transfers the transformed tensors from a con-
+ventional GPU RDMA buffer into multiple layout-aware RDMA
+RDMA Stack
+Prefill Instance
+Decode Instance
+Node 0
+RDMA Stack
+GPU
+GPU
+GPU
+NPU
+NPU
+NPU
+NPU
+Tensor-aware RDMA Buffers
+NPU RDMA Support
+NIC
+NIC
+GPU RDMA Buffer
+Node 1
+GPU
+GPU RDMA Support
+GPU
+tensor
+Trans.
+tensor
+T T T T
+NPU
+tensor
+1
+1
+3
+2
+4
+Figure 5: An overview of a GPU-NPU phase-disaggregated
+LLM inference system with HAWK.
+GPU Driver
+NPU
+GPU
+GPU Peer Memory Client
+NPU Driver
+NPU Peer Memory Client
+RDMA Kernel Subsystem (e.g., ib_core)
+RDMA NIC
+RDMA NIC Driver
+Application
+RDMA User Space Stack & Framework (e.g., libibverbs)
+User Space
+Kernel Space
+Hardware
+1
+2
+3
+Figure 6: RDMA stack providing a common transfer path be-
+tween GPU and NPU device memory through device-specific
+peer memory support. Dotted-outline blocks indicate com-
+ponents extended as part of HAWK.
+Callbacks Description
+npu_acquire Check whether the address range requested by the
+RDMA subsystem belongs to NPU device memory
+npu_get_pages Retrieve the NPU memory pages for the address
+range requested by the RDMA subsystem
+npu_dma_map Map the retrieved NPU memory pages to DMA
+addresses accessible to the NIC
+npu_dma_unmap Release DMA mappings for the NPU memory pages
+npu_put_pages Release the NPU memory pages retrieved by
+npu_get_pages
+Table 5: Major Callbacks in the NPU peer memory client for
+exposing NPU memory mappings to the RDMA subsystem.
+buffers on the NPU, which are organized according to the target
+tensor layout (❸). This organization allows the partially aligned
+tensors to naturally conform to the target NPU layout during trans-
+fer, enabling the received tensors to be consumed directly during
+decode without additional layout transformation (❹).
+4.1
+Building a Direct Data Path Across Devices
+The essential step toward efficient data transfer is to establish a
+high-performance transfer path between computing devices. To this
+end, HAWK connects GPU and NPU device memory through a com-
+mon Linux RDMA stack spanning kernel space (e.g., ib_core [42])
+and user space (e.g., libibverbs [31]), as shown in Figure 6. On the
+GPU side, HAWK leverages the GPU peer memory client [64, 69]
+(①), whereas on the NPU side, it extends the NPU driver with a
+corresponding peer memory client (②). Table 5 summarizes the
+implementation of the NPU-side RDMA stack. These clients ex-
+pose device memory to the RDMA subsystem by providing the
+memory-mapping information required for memory registration,
+enabling the NIC to directly access the registered memory. Building
+on this kernel-level support and a common RDMA stack, various
+transfer engines [55, 81, 111] abstract low-level RDMA primitives
+and orchestrate runtime data movement (③). Together, these com-
+ponents establish a high-performance, flexible data transfer path
+across heterogeneous devices.
+4.2
+Tensor-Layout-Aware Buffer Allocation
+RDMA buffers are memory regions used to store data for RDMA
+operations. In conventional RDMA use cases, allocating a single
+5
+
+
+DRAM0
+DRAM1
+DRAM2
+DRAM3
+DRAM4
+DRAM5
+Contiguous
+RDMA buffer
+NPU tensor ≡
+{(ptr1, size1), (ptr2, size2)···} 
+RDMA buffer ≡
+(base_ptr, size)
+Core
+& SRAM
+Core
+& SRAM
+Core
+& SRAM
+Core
+& SRAM
+Core
+& SRAM
+Core
+& SRAM
+a
+b
+Fragmented
+c
+d
+Figure 7: Physical memory layouts of an NPU tensor and an
+equally sized contiguous buffer. An NPU tensor is distributed
+across multiple DRAM channels, whereas a contiguous buffer
+follows a different channel layout.
+APIs Description
+map_buffer_dma Create DMA mappings for a tensor-like
+device buffer
+get_device_num_bank Get the number of DRAM banks
+(channels) in an NPU device
+get_buffer_address_bank Get the buffer base address allocated in a
+specific DRAM bank (channel)
+get_buffer_size_bank Get the buffer size allocated in a specific
+DRAM bank (channel)
+unmap_buffer_dma Release DMA mappings for a tensor-like
+device buffer
+Table 6: Major C++ APIs for supporting tensor-layout-aware
+RDMA buffer allocation.
+large virtually contiguous buffer is practical because it simplifies
+buffer metadata management and RDMA request construction com-
+pared with using multiple scattered buffers. However, this design
+can be less efficient for NPUs, especially when transferring tensors.
+For GPUs, tensors are distributed across multiple DRAM channels
+at a fixed granularity (e.g., 256 B) to increase memory-level par-
+allelism [53, 77] while remaining mapped to virtually contiguous
+address ranges, making a single RDMA buffer well suited to the
+GPU memory organization. NPUs also distribute tensors across mul-
+tiple DRAM channels, but explicitly control which tensor chunks
+are placed in each partition rather than relying on a fixed-size
+mapping, improving memory locality and reducing traffic between
+off-chip memory and on-chip SRAM. Therefore, an NPU tensor has
+a distinct memory layout and address mapping compared with a
+conventional virtually contiguous buffer.
+Figure 7 illustrates the physical memory layouts of an NPU ten-
+sor and an equally sized contiguous buffer. While the tensor is
+distributed across multiple DRAM channels, its address is repre-
+sented by a set of pointer-size pairs, each referring to a chunk placed
+in a different DRAM channel ( a○), as expressed in Eq (1).
+npu_tensor* T ≡{(𝑝𝑡𝑟𝑐ℎ0,𝑠𝑖𝑧𝑒𝑐ℎ0), (𝑝𝑡𝑟𝑐ℎ1,𝑠𝑖𝑧𝑒𝑐ℎ1), . . .}.
+(1)
+In contrast, a virtually contiguous buffer is represented by a single
+pointer-size pair, as expressed in Eq (2), and follows a linear address
+layout that is not naturally aligned with the NPU tensor layout ( b○).
+buffer* B ≡(𝑝𝑡𝑟,𝑠𝑖𝑧𝑒).
+(2)
+These discrepancies in address mapping and memory organization
+between GPUs and NPUs introduce two major issues. The first issue
+is that, even if a GPU tensor is transformed to match the target NPU
+tensor layout in dimensions and element ordering, transferring it
+through a conventional RDMA buffer may still require additional
+post-transfer adjustment before it can be used as an NPU tensor
+object ( c○). The second issue is that using a conventional virtually
+contiguous RDMA buffer on an NPU can cause severe memory
+fragmentation. Because the buffer layout does not follow the NPU
+tensor layout, memory usage can become imbalanced across DRAM
+channels, leaving some channels exhausted while capacity remains
+available in others. This imbalance can prevent subsequent tensor
+allocations ( d○). Even if new tensors are allocated only from parti-
+tions with sufficient remaining capacity, such selective allocation
+can disrupt the intended data placement and reduce data-movement
+efficiency, ultimately degrading performance.
+To address this issue, HAWK allocates NPU RDMA buffers ac-
+cording to the target NPU tensor layout, using one virtually con-
+tiguous buffer per DRAM channel with corresponding software
+support, as shown in Table 6. This layout-aware allocation allows
+transferred data to be consumed directly from the RDMA buffers
+or converted into the target tensor with only limited intra-channel
+data movement, avoiding costly data rearrangement across multiple
+DRAM channels. Although using multiple virtually non-contiguous
+buffers can increase buffer-management overhead and the num-
+ber of RDMA requests required to transfer a tensor, the number
+of buffers is bounded by the number of DRAM channels in the
+NPU. This count is typically around ten or fewer, and each per-
+channel buffer remains contiguous. As a result, the additional buffer-
+management and RDMA-request overhead remains modest relative
+to a conventional single-buffer design.
+4.3
+Transfer-Aware Tensor Transformation
+GPU tensors must be transformed to match the target NPU tensor
+layout for correct execution. HAWK decomposes this transforma-
+tion into two steps to improve transfer efficiency by leveraging
+tensor-layout-aware RDMA buffers on the NPU side. In the first
+step, HAWK partially aligns the GPU tensor with the target NPU
+layout by reordering the tensor dimensions and elements while
+arranging portions destined for the same per-channel NPU buffer
+contiguously (❶), as expressed in Eq (3). Here, −1 denotes an in-
+ferred dimension, and tile_chunk is the NPU tile size in elements.
+gpu_tensor* G : shape(G) = [𝑁𝑙, 𝐿, 𝑁ℎ, 𝑁ℎ𝑑],
+gpu_tensor* G’ ≡LayoutTransform(G),
+shape(G’) = [Nnpu_channel, −1, tile_chunk].
+(3)
+This arrangement increases the size of individual RDMA transfers
+and reduces the total number of RDMA requests. HAWK performs
+this transformation on the GPU prefill instance before transfer be-
+cause prefill places less pressure on device memory bandwidth than
+decode, leaving sufficient bandwidth headroom for the additional
+memory operations introduced by the transformation. The partially
+transformed tensor is then placed in a contiguous GPU RDMA
+buffer (❷). In the second step, HAWK pairs each contiguous portion
+6
+
+
+GPU Prefill Instance
+NPU Decode Instance
+Contiguous
+Contiguous
+DRAM0
+DRAM1
+DRAM2
+DRAM3
+0
+1
+2
+3
+4
+5
+6
+7
+8
+9 10 11 12 13 14 15
+16 17 18 19 20 21 22 23
+24 25 26 27 28 29 30 31
+0
+1
+8
+9
+2
+3 10 11
+16 17 24 25 18 19 26 27
+4
+5 12 13 6
+7 14 15
+20 21 28 29 22 23 30 31
+0
+1
+8
+9
+2
+3
+10 11
+16 17
+24 25
+18 19
+26 27
+4
+5
+12 13
+6
+7
+14 15
+20 21
+28 29
+22 23
+30 31
+0
+1
+2
+3
+4
+5
+6
+7
+8
+9 10 11 12 13 14 15
+16 17 18 19 20 21 22 23
+24 25 26 27 28 29 30 31
+0
+1
+8
+9
+2
+3
+10 11
+16 17
+24 25
+18 19
+26 27
+4
+5
+12 13
+6
+7
+14 15
+20 21
+28 29
+22 23
+30 31
+1
+A contiguous
+RDMA Buffer
+2
+3
+4
+Figure 8: HAWK first partially aligns GPU tensors with the
+target NPU layout while forming large contiguous chunks for
+each per-channel NPU RDMA buffer. The remaining layout
+alignment is completed during transfer.
+of the partially transformed GPU tensor with the corresponding
+per-channel NPU RDMA buffer (❸), completing the remaining lay-
+out alignment during transfer and producing the exact target NPU
+tensor layout without additional post-transfer transformation (❹),
+as expressed in Eq (4). Here, T𝑖denotes the NPU RDMA buffer for
+channel 𝑖, Δ is the byte stride between channel regions in G’, and
+sizetransfer is the number of bytes transferred to each buffer.
+gpu_tensor* G’
+place
+−−−→gpu_buffer* G𝐵,
+npu_buffer T𝑖≡(𝑝𝑡𝑟𝑐ℎ𝑖,𝑠𝑖𝑧𝑒𝑐ℎ𝑖),
+ ptr(G𝐵) + 𝑖· Δ,𝑠𝑖𝑧𝑒transfer
+ RDMA
+−−−−−→T𝑖.
+(4)
+One alternative is to map each small portion of the GPU tensor to
+the corresponding NPU buffer according to the target tensor layout,
+completing the layout transformation during transfer. However,
+this approach significantly increases the number of RDMA requests
+and reduces the size of each transfer to only a few hundred bytes, in-
+creasing protocol and request-processing overhead and ultimately
+degrading transfer efficiency. In contrast, HAWK reduces trans-
+formation overhead by exploiting available memory-bandwidth
+headroom during prefill and decomposing the transformation into
+two steps, while improving transfer efficiency by aggregating data
+into fewer, larger RDMA transfers.
+4.4
+Putting It All Together
+Algorithm 1 summarizes the end-to-end flow of KV cache trans-
+fer between GPU prefill and NPU decode instances, omitting the
+first-token transfer (a single integer) for simplicity. First, the decode
+instance requests the KV cache associated with a request ID from
+the prefill instance (line D1). The prefill instance then retrieves the
+corresponding KV cache, applies the transfer-aware transforma-
+tion, reserves the required space in the GPU RDMA buffer, copy the
+tensor to the reserved region, and sends the associated metadata,
+including the total size and buffer offset, to the decode instance
+(lines P1–P7). Using this metadata, the decode instance constructs
+RDMA requests by pairing regions of the GPU RDMA buffer with
+the corresponding per-channel NPU RDMA buffers (lines D2–D5).
+These requests are submitted as a batch to avoid sequential RDMA
+request submission. After the transfer completes, the decode in-
+stance reconstructs the NPU KV cache tensor from the received
+Algorithm 1 End-to-End KV Cache Transfer with HAWK
+Decode Instance: Request KV Cache
+D1: sendKVRequest(prefillInstance, requestId)
+Prefill Instance: Receive request and prepare for transfer
+P1: requestId ←recvKVRequest(decodeInstance)
+P2: gpuKVTensor ←getKVTensor(requestId)
+P3: sendKVTensor ←transformTensor(gpuKVTensor)
+P4: sendBuffer ←getRegisteredBuffer(size(sendKVTensor))
+P5: copyTensorToBuffer(sendBuffer, sendKVTensor)
+P6: sendBufferMetadata ←getBufferMetadata(sendBuffer)
+P7: sendMetadata(decodeInstance, sendBufferMetadata)
+Decode Instance: Initiate Transfer & reconstruct KV cache
+D2: sendBufferMetadata ←recvMetadata(prefillInstance)
+D3: recvBufferList ←getRegisteredBuffers(sendBufferMetadata)
+D4: xferReqs ←makeXferReqs(recvBufferList, sendBufferMetadata)
+D5: postBatchTransfer(xferReqs)
+D6: waitForTransferCompletion(xferReqs)
+D7: npuKVTensor ←reconstructKVTensor(recvBufferList)
+Prefill & Decode Instance: Wait for completion & clean up
+D8: notifyTransferCompletion(prefillInstance)
+D9: releaseBuffers(recvBufferList)
+P8: waitUntilNotified(decodeInstance)
+P9: releaseBuffer(sendBuffer)
+RDMA buffers (lines D6–D7). Finally, both instances release the
+reserved regions in their RDMA buffers (lines D8–D9 and P8–P9).
+4.5
+Discussion
+4.5.1
+Extensibility Across NPU Architectures. Diverse NPUs employ
+device-specific tensor layouts to optimize memory placement, data
+movement, and compute efficiency, and these layouts often differ
+from GPU tensor layouts [22, 30, 82, 98]. Such layout differences
+can arise even when the same framework-level tensor is placed
+on different devices. For example, TensorFlow tensors placed on
+Google TPUs [1, 36, 37] use layouts that differ from those used on
+GPUs [22, 23], including differences in tiling, padding, and element
+ordering. These differences highlight the need for heterogeneity-
+aware data transfer across devices. In this context, HAWK provides
+a generalizable design for such transfers. Our prototype imple-
+mentation is configured for an optimized tiled tensor layout [98],
+many other NPUs similarly employ tiled or blocked tensor lay-
+outs [22, 30], allowing HAWK’s core mechanisms to be adapted to
+these architectures. Even when tensor-layout details differ, HAWK
+can be adapted through device-specific changes to tensor-aware
+RDMA buffer allocation to accommodate the target NPU layout.
+4.5.2
+Adaptability to Other Forms of Disaggregation. Most data
+objects in LLM inference, including model weights, KV caches, and
+intermediate activations, are represented as tensors. Since HAWK
+fundamentally targets efficient tensor transfer across heterogeneous
+devices, it can be adapted to other heterogeneous disaggregation
+schemes that require transferring tensor objects between devices.
+For example, in operator-level disaggregation [26, 112], attention
+7
+
+
+computation can be performed on GPUs while subsequent opera-
+tors are executed on NPUs. In such a configuration, intermediate
+activation tensors must be transferred between the two devices.
+Compared with KV caches, intermediate activations are typically
+smaller, making fixed transformation and layout-adjustment over-
+heads more significant relative to the transfer time. Moreover, their
+transfer lies between dependent operators, limiting opportunities
+for latency hiding through overlap. In this context, HAWK can
+provide substantial benefits for such tensor transfers.
+4.5.3
+Reverse Transfer. While HAWK targets data transfer from
+GPUs to NPUs, the same approach can be extended to NPU-to-GPU
+transfers, which can be useful when an NPU offers higher prefill
+efficiency than a GPU. In such cases, the transfer-aware transfor-
+mation can be performed on the NPU, partially aligning the tensor
+with the target GPU layout while arranging portions destined for
+contiguous regions of the GPU buffer contiguously within each per-
+channel NPU buffer. Each contiguous portion in the per-channel
+NPU RDMA buffers can then be mapped to the corresponding re-
+gion of a virtually contiguous GPU RDMA buffer, completing the
+remaining layout alignment during transfer. This preserves the ben-
+efit of fewer, larger RDMA transfers while allowing the transferred
+tensor to be used directly for GPU decoding without additional
+post-transfer layout transformations.
+5
+Evaluation
+5.1
+Methodology
+5.1.1
+Hardware Configuration. The system consists of a single pre-
+fill instance and a single decode instance: the prefill instance runs on
+NVIDIA A100 PCIe GPUs [62], interconnected within each node via
+NVLink Gen 3 and PCIe Gen 4, while the decode instance runs on
+Tenstorrent p150a boards [92], interconnected via Ethernet-based
+links. We use Tenstorrent NPUs because, to the best of our knowl-
+edge, they are the only NPU platform that provides an open-source
+software stack permitting the low-level modifications required by
+HAWK. The prefill and decode instances run on separate nodes
+connected via 200 Gbps HDR InfiniBand, with each node equipped
+with a ConnectX-6 NIC [63].
+5.1.2
+Software Configuration. We use vLLM v0.10.0 [46] as the
+serving framework to demonstrate that our system and HAWK
+can operate within a widely used LLM serving environment. To
+support NPU execution, we integrate the Tenstorrent LLM stack
+with vLLM through a plugin. For GPU-side RDMA support, we
+use nvidia-peermem [67, 73]. On the NPU side, we extend the
+Tenstorrent software stack (user-mode driver v0.68.0 [94, 97] and
+kernel-mode driver v2.5.0 [93]) to implement the RDMA-related
+functionality required by HAWK, including a peer memory client
+and tensor-layout-aware RDMA buffer allocation. Building on this
+support, we implement a user-space transfer mechanism on top
+of Mooncake Transfer Engine v0.3.6 [45, 81], a high-performance
+data transfer engine for disaggregated LLM serving. Our mecha-
+nism integrates transfer-aware tensor transformation with RDMA
+buffer pairing. For the model, we use Llama 3.1 70B [24], whose
+scale requires multiple accelerators and is therefore suitable for
+evaluating phase-disaggregated serving. We distribute the model
+across four devices per instance using tensor parallelism (TP). In
+Component Configuration
+Prefill hardware 4× NVIDIA A100 PCIe 40 GB GPUs
+GPU decode hardware 4× NVIDIA A100 PCIe 80 GB GPUs
+NPU decode hardware 4× Tenstorrent p150a NPUs
+Inter-node network 200 Gbps HDR InfiniBand,
+ConnectX-6 NIC per node
+Serving setup vLLM, one instance per phase,
+TP=4 per instance
+Model Llama 3.1 70B (148 GB model weights)
+Workloads
+Dataset
+Input Length
+Output Length
+Mean
+P90
+Mean
+P90
+Chatbot
+ShareGPT [9]
+783
+899
+140
+148
+Summarization LongBench [13]
+2186
+2860
+86
+115
+Table 7: System and online serving workload configurations.
+practice, the current Tenstorrent LLM stack tightly couples each
+supported model to a specific device type and device count, which
+limits our evaluation to this model [96].
+5.1.3
+Comparison Configurations. We compare our system against
+three baseline configurations.
+1. GPU-GPU + Host Staging (GG-Host) uses GPUs for both
+prefill and decode and transfers the KV cache through host staging.
+2. GPU-NPU + Host-Staging (GN-Host) uses GPUs for prefill and
+NPUs for decode and transfers the KV cache through host staging,
+followed by tensor-layout adjustment on the NPU side.
+3. GPU-GPU + Direct RDMA (GG-Direct) uses GPUs for both
+prefill and decode and transfers the KV cache directly between
+GPU memories via RDMA using the Mooncake Transfer Engine.
+We verify that its RDMA transfer performance is comparable to
+that of other GPU RDMA transfer engines, such as NIXL [72].
+4. GPU-NPU + HAWK (GN-HAWK) uses GPUs for prefill and
+NPUs for decode and transfers the KV cache using HAWK.
+One additional configuration uses GPUs for prefill and NPUs for
+decode, transferring the KV cache directly between device memo-
+ries via RDMA while using a conventional single contiguous RDMA
+buffer on the NPU side. This setup incurs post-transfer adjustment
+overhead because the buffer does not conform to the NPU tensor
+layout. We implement a prototype of this configuration, but it fails
+with an out-of-memory error during serving due to NPU memory
+fragmentation: the buffer creates imbalanced memory usage across
+DRAM channels, leaving insufficient capacity for subsequent ten-
+sor allocations. This failure further highlights the importance of
+HAWK’s tensor-layout-aware RDMA buffer allocation. We there-
+fore exclude this configuration from the quantitative comparison.
+5.1.4
+Workloads. We evaluate our system using two types of work-
+loads. First, we use a synthetic workload to evaluate KV cache
+transfer overhead. Second, we evaluate end-to-end LLM serving
+performance using workloads derived from prior work on phase-
+disaggregated LLM serving [110], excluding the smallest workload
+due to its limited KV cache transfer volume. Each serving workload
+is derived from a different dataset [9, 13] and exhibits different
+input/output token lengths and request sizes, resulting in different
+KV cache transfer characteristics. For each workload, we vary the
+average request arrival rate and assume a Poisson arrival process.
+8
+
+
+10
+20
+40
+80
+160
+320
+640
+1280
+Transfer Size (MB)
+0.00
+0.25
+0.50
+0.75
+1.00
+1.25
+Normalized Latency
+GG-Host
+GN-Host
+GG-Direct
+GN-HAWK
+8.91
+9.07
+8.31
+5.84
+4.64
+4.42
+4.41
+3.79
+Figure 9: End-to-end KV cache transfer latency across con-
+figurations, normalized to GG-Host. HAWK achieves latency
+comparable to GG-Direct, with a difference of less than 1%,
+by enabling direct transfers across heterogeneous devices
+while handling tensor-layout mismatches.
+Tables 7 summarizes the evaluation setup described above. We
+plan to release our implementation as open source.
+5.2
+End-to-End KV Cache Transfer Latency
+Figure 9 compares end-to-end KV cache transfer latency across
+different transfer sizes. Latency is measured from when the decode
+instance requests the KV cache to when the received KV cache is
+stored in its KV cache pool. GN-Host latency decreases from 8.91×
+to 3.79× that of GG-Host as the transfer size increases from 10 MB to
+1280 MB. Although the latency gap narrows with increasing transfer
+size as heterogeneity-related overheads are amortized over longer
+raw data-transfer times, GN-Host still exhibits substantially higher
+latency. This result demonstrates the importance of heterogeneity-
+aware transfer support for efficient cross-device data transfer.
+Compared with host-staged transfers, direct transfers exhibit sub-
+stantially lower latency: GG-Direct latency decreases from 66.30%
+to 14.77% of GG-Host latency, while GN-HAWK latency decreases
+from 77.25% to 14.69% of GN-Host latency as the transfer size
+increases from 10 MB to 1280 MB. Although GN-HAWK incurs
+some overhead for small tensor transfers due to residual tensor-
+transformation costs that remain after transfer optimization, the
+latency gap becomes negligible as the transfer size increases. In
+practical serving workloads, KV cache transfers are typically larger
+than 10 MB, which corresponds to only 64 input tokens in our
+setup. Therefore, HAWK effectively mitigates heterogeneous trans-
+fer overhead at realistic transfer sizes.
+5.3
+Online Serving Performance
+For online serving, we evaluate four metrics: (1) time to first token
+(TTFT), (2) time per output token (TPOT), (3) service-level objective
+(SLO) attainment, and (4) output throughput. These metrics can be
+categorized into two groups based on their sensitivity to KV cache
+transfer. Transfer-sensitive metrics include TTFT, SLO attainment,
+and decode throughput, whereas TPOT is largely insensitive to KV
+cache transfer and instead depends primarily on the underlying
+decode execution characteristics. We set the TTFT/TPOT SLOs
+to 2000/200 ms for Chatbot and 15000/200 ms for Summarization,
+following MLPerf Inference [58] and prior work [110].
+5.3.1
+TTFT. Figure 10 shows P90 TTFT across configurations to-
+gether with the corresponding SLO thresholds. GG-Host incurs
+higher TTFT than GG-Direct and GN-HAWK due to longer KV
+cache transfer latency, reaching the SLO limits at 0.40 and 0.38
+GG-Host
+GN-Host
+GG-Direct
+GN-HAWK
+0.2
+0.4
+0.6
+0.8
+1.0
+Request Rate (req/s)
+0
+1000
+2000
+3000
+4000
+5000
+6000
+P90 TTFT (ms)
+(a) Chatbot.
+0.2 0.3 0.4 0.5 0.6 0.7 0.8
+Request Rate (req/s)
+0
+5000
+10000
+15000
+20000
+25000
+30000
+P90 TTFT (ms)
+(b) Summarization.
+Figure 10: P90 TTFT under varying request rates. At 90% SLO
+attainment, GN-HAWK sustains request rates within 2.90%
+and 5.90% of GG-Direct for the two workloads, respectively.
+GG-Host
+GN-Host
+GG-Direct
+GN-HAWK
+0.2
+0.4
+0.6
+0.8
+1.0
+Request Rate (req/s)
+0
+50
+100
+150
+200
+P90 TPOT (ms)
+(a) Chatbot.
+0.2 0.3 0.4 0.5 0.6 0.7 0.8
+Request Rate (req/s)
+0
+50
+100
+150
+200
+250
+P90 TPOT (ms)
+(b) Summarization.
+Figure 11: P90 TPOT under varying request rates. GN-HAWK
+exhibits a small TPOT gap with GG-Direct due to differences
+in decode performance. However, GN-HAWK meets the SLO
+for Chatbot, and the gap narrows at higher request rates for
+Summarization.
+requests/s for Chatbot and Summarization, respectively. Additional
+heterogeneous transfer overhead further increases TTFT for GN-
+Host, making it difficult to meet the SLO even at low request rates.
+In contrast, GN-HAWK closely tracks GG-Direct, with request-rate
+differences of only 2.90% and 5.90% at 90% SLO attainment for
+the two workloads, respectively, demonstrating HAWK’s effective-
+ness in mitigating heterogeneous transfer overhead. The TTFT gap
+observed at relatively high request rates for Summarization is at-
+tributable to request queuing rather than transfer overhead, as the
+slight slowdown in NPU decode execution caused by integrating
+the NPU software stack with vLLM increases backpressure and,
+consequently, request queuing latency at the prefill node. We expect
+this gap to be reduced, or eliminated, with further optimization of
+the NPU software stack or with other NPU platforms.
+5.3.2
+TPOT. Figure 11 shows P90 TPOT across configurations to-
+gether with the corresponding SLO thresholds. For Chatbot, the
+TPOT of both GG-Direct and GN-HAWK remains below the SLO
+threshold. For Summarization, GN-HAWK reaches the TPOT SLO
+threshold at a lower request rate (i.e., 0.60 requests/s) than GG-
+Direct due to its slightly lower decode performance. However, the
+TPOT gap narrows substantially at higher request rate (i.e., 0.80
+requests/s). At higher request rates, requests are more likely to
+be processed in larger batches, and the NPU in our evaluation
+achieves higher decode efficiency at larger batch sizes, bringing
+its performance closer to that of the GPU. The results show that
+NPUs can achieve competitive serving performance, although small
+performance gaps remain. These gaps may be further reduced by
+optimizing system configurations, such as batch size, or by using
+9
+
+
+GG-Host
+GN-Host
+GG-Direct
+GN-HAWK
+0.2
+0.4
+0.6
+0.8
+1.0
+Request Rate (req/s)
+0
+20
+40
+60
+80
+100
+SLO Attainment (%)
+(a) Chatbot.
+0.2 0.3 0.4 0.5 0.6 0.7 0.8
+Request Rate (req/s)
+0
+20
+40
+60
+80
+100
+SLO Attainment (%)
+(b) Summarization.
+Figure 12: SLO attainment under varying request rates. GN-
+HAWK closely follows GG-Direct for Chatbot. Despite show-
+ing slightly lower attainment for Summarization, the dif-
+ference in request rate at 90% SLO attainment is only 7.69%
+relative to GG-Direct.attainment.
+GG-Host
+GG-Direct
+GN-HAWK
+0
+20
+40
+60
+80
+100
+Output Throughput 
+(tokens/s)
+(a) Chatbot.
+0
+10
+20
+30
+40
+50
+60
+Output Throughput 
+(tokens/s)
+(b) Summarization.
+Figure 13: Output throughput at 90% SLO attainment across
+configurations. GN-Host is omitted because it fails to achieve
+90% SLO attainment even at the lowest evaluated request rate.
+GN-HAWK shows a decode throughput gap of only up to
+7.88% compared to GG-Direct.
+other NPU platforms. For the host-staged configurations, GG-Host
+and GN-Host exhibit higher TPOT for the two workloads, which
+we attribute to host intervention in the evaluated vLLM implemen-
+tation interfering with decode execution.
+5.3.3
+SLO Attainment. Figure 12 shows SLO attainment across con-
+figurations, reflecting the combined impact of TTFT and TPOT. For
+Chatbot, GG-Host falls below 90% SLO attainment at 0.40 requests/s,
+primarily due to the TTFT violations. GN-Host performs even
+worse, failing to achieve 90% SLO attainment even at low request
+rates because of severe TTFT violations. In contrast, GG-Direct
+and GN-HAWK maintain 90% SLO attainment up to 0.65 requests/s,
+benefiting from their lower transfer overhead and TTFT. In partic-
+ular, GN-HAWK closely tracks GG-Direct by effectively mitigating
+heterogeneous transfer overhead. For Summarization, GG-Host and
+GN-Host similarly exhibit poor SLO attainment, whereas GG-Direct
+and GN-HAWK sustain substantially higher attainment. GN-HAWK
+reaches the 90% SLO threshold at 0.60 requests/s, slightly earlier
+than GG-Direct at 0.65 requests/s. This difference is primarily attrib-
+utable to TPOT violations caused by the slightly lower NPU decode
+performance. Nevertheless, the request-rate difference at 90% SLO
+attainment is only 7.69%, indicating that GN-HAWK achieves per-
+formance comparable to GG-Direct.
+5.3.4
+Output Throughput. Figure 13 shows the output through-
+put of each configuration at the point where it reaches 90% SLO
+attainment. We exclude GN-Host because it fails to achieve 90%
+SLO attainment even at the lowest evaluated request rate. GG-Host
+shows lower decode throughput for both workloads than GG-Direct
+Performance
+Workloads
+Chatbot
+Summarization
+Serving power efficiency GG-Direct
+67.09
+41.01
+(output tokens/s/kW)
+GN-HAWK
+84.48
+47.18
+Serving cost efficiency
+GG-Direct
+1.19
+0.72
+(output tokens/s/$1,000) GN-HAWK
+2.05
+1.16
+Table 8: Serving power and cost efficiency comparison be-
+tween GG-Direct and GN-HAWK at 90% SLO attainment. GN-
+HAWK achieves up to 1.26× higher power efficiency and
+1.72× higher cost efficiency.
+and GN-HAWK due to its transfer overhead. GN-HAWK achieves
+only 0.48% and 7.88% lower decode throughput than GG-Direct
+for Chatbot and Summarization, respectively. The remaining small
+throughput gap mainly stems from differences in decode device
+performance, while HAWK limits additional overhead from hetero-
+geneous integration. These results show that GPU-NPU heteroge-
+neous integration with proper data transfer support can achieve
+performance comparable to that of a GPU-only homogeneous sys-
+tem under serving SLO constraints.
+5.4
+Serving Efficiency
+The main benefit of GPU-NPU heterogeneous integration with
+HAWK lies in power and cost efficiency. We compare these efficien-
+cies at 90% SLO attainment using output token throughput, focusing
+on GG-Direct and GN-HAWK as the best-performing homogeneous
+and heterogeneous configurations, respectively.
+5.4.1
+Power Efficiency. We calculate power efficiency by dividing
+output token throughput by the aggregate ASIC power of all prefill
+and decode devices, averaged over the same measurement interval.
+Specifically, we use device ASIC power, including compute cores
+and on-chip SRAM, because the available Tenstorrent monitor-
+ing interface reports only NPU core power [99]. To estimate GPU
+ASIC power, we first collect board-level power measurements using
+NVIDIA DCGM [71]. We then collect binary traces of GPU kernels
+executed during prefill and decoding using NVBit [104] and feed
+them into a detailed GPU power simulator to estimate the fraction
+of total power attributable to the GPU ASIC for each phase [39].
+Finally, we apply these phase-specific fractions to the correspond-
+ing board-level power measurements. Regarding excluded power
+components, both configurations use the same interconnect hard-
+ware and exhibit similar transfer times, suggesting that differences
+in interconnect energy consumption may be limited. We also con-
+sider memory power. Although HBM2e in the evaluated GPU offers
+higher bandwidth per watt than GDDR6 in the evaluated NPU, esti-
+mates accounting for their respective memory bandwidths indicate
+higher memory power consumption for the GPU [56].
+As shown in Table 8, GN-HAWK achieves 1.26× and 1.15× higher
+power efficiency than GG-Direct for Chatbot and Summarization,
+respectively. These gains come from combining GPU prefill with
+NPU decode to improve efficiency while maintaining comparable
+serving performance. HAWK makes this combination effective by
+reducing transfer overhead between the heterogeneous devices. Al-
+though the magnitude of the gains may vary across NPU platforms,
+the results demonstrate the potential of GPU-NPU heterogeneous
+serving to improve power efficiency.
+10
+
+
+Performance
+Workloads
+Chatbot
+Summarization
+Serving throughput
+GGH-Direct
+95.96
+54.28
+(output tokens/s)
+GN-HAWK
+89.69
+50.75
+Serving power efficiency GGH-Direct
+81.53
+45.31
+(output tokens/s/kW)
+GN-HAWK
+83.84
+46.65
+Serving cost efficiency
+GGH-Direct
+0.75
+0.42
+(output tokens/s/$1,000) GN-HAWK
+2.05
+1.16
+Table 9: Serving throughput, power efficiency, and cost ef-
+ficiency comparison between GGH-Direct (GG-Direct with
+H100 GPUs for decoding) and GN-HAWK at 90% SLO attain-
+ment. GN-HAWK achieves 1.03× higher power efficiency and
+up to 2.76× higher cost efficiency than GGH-Direct, while
+maintaining a throughput difference within 6.53%.
+5.4.2
+Cost Efficiency. Since device prices vary with market condi-
+tions, we report cost efficiency as a reference rather than a definitive
+comparison across configurations. Cost efficiency is calculated by
+dividing output token throughput by the aggregate cost of all pre-
+fill and decode devices. We use the official vendor price for the
+NPU [92] and publicly listed market prices for the GPUs [20, 89].
+As shown in Table 8, GN-HAWK achieves 1.72× and 1.61× higher
+cost efficiency than GG-Direct for Chatbot and Summarization,
+respectively. These results suggest that GPU-NPU heterogeneous
+systems can be an economically attractive option for LLM serving
+with proper system support.
+5.4.3
+Comparison with Another GPU Architecture. To examine
+whether the efficiency benefits of our proposed system hold with a
+different GPU architecture, we replace the decode-side A100 GPUs
+in GG-Direct with NVIDIA H100 GPUs [65], refer to this configu-
+ration as GGH-Direct, and compare it with GN-HAWK. As shown
+in Table 9, GN-HAWK achieves only 6.53% and 6.50% lower output
+token throughput than GGH-Direct at 90% SLO attainment for Chat-
+bot and Summarization, respectively. In terms of power efficiency,
+GN-HAWK achieves 1.03× higher efficiency for both workloads.
+These gains are smaller than in the A100 comparison because the
+H100 GPUs consume less power during decoding in our evaluation.
+For cost efficiency, GN-HAWK achieves 2.73× and 2.76× higher
+efficiency for Chatbot and Summarization, respectively, reflecting
+the higher H100 prices used in our evaluation [21]. These results
+further demonstrate the potential of GPU-NPU heterogeneous serv-
+ing to improve efficiency, with the gains depending on the specific
+GPU and NPU platforms used.
+6
+Related Work
+6.1
+Phase-Disaggregation
+Prior work has proposed diverse optimizations for prefill-decode
+disaggregated serving systems, including phase-aware resource pro-
+visioning and placement [29, 78, 110], heterogeneous GPU deploy-
+ment [16, 34], cluster-level scheduling and dynamic prefill-decode
+ratio adaptation [35, 81, 83, 105, 108], and KV cache management
+and transfer optimization [27, 28, 81]. These efforts primarily opti-
+mize disaggregated serving within GPU-based systems. We extend
+this scope to GPU-NPU phase disaggregation and demonstrate its
+potential for LLM serving.
+6.2
+Other Forms of Heterogeneous Integration
+Prior work has explored LLM inference systems that combine
+GPUs with CPUs [25, 33, 38, 52], NPUs [15, 59, 107], or PIM/PNM
+accelerators [43, 44, 47, 76], as well as integrated NPU-PIM sys-
+tems [17, 26, 84]. These studies exploit hardware heterogeneity
+through workload partitioning, offloading, scheduling, and disag-
+gregation to improve inference performance and efficiency. Against
+this backdrop, we investigate the practical challenges of coordinat-
+ing GPUs and NPUs across multiple servers and develop system-
+level solutions to address them.
+7
+Conclusion
+We propose a GPU–NPU phase-disaggregated LLM inference sys-
+tem that leverages GPUs for prefill and NPUs for decode to achieve
+both high performance and efficiency. Realizing such a system,
+however, requires an efficient data-transfer path that addresses
+heterogeneity between GPUs and NPUs. To this end, we present
+HAWK, which enables direct data transfer over a common RDMA
+stack while addressing tensor-layout discrepancies through tensor-
+layout-aware RDMA buffer allocation and transfer-aware tensor
+transformation. Our evaluation shows that HAWK enables the het-
+erogeneous system to maintain performance within 7.88% of a
+GPU-only system under the same SLO constraints, while achieving
+up to 1.26× higher power efficiency and 1.72× higher cost efficiency.
+Acknowledgments
+ChatGPT and Codex were used to assist with text editing, grammar
+correction, LaTeX formatting, and developing scripts to visualize
+experimental data. Claude was used to assist with portions of the
+integration of the Tenstorrent software stack into vLLM. Generative
+AI was not used to develop the main idea or the code implementing
+the mechanisms proposed in HAWK.
+References
+[1] Martín Abadi, Paul Barham, Jianmin Chen, Zhifeng Chen, Andy Davis, Jef-
+frey Dean, Matthieu Devin, Sanjay Ghemawat, Geoffrey Irving, Michael Is-
+ard, Manjunath Kudlur, Josh Levenberg, Rajat Monga, Sherry Moore, Derek G.
+Murray, Benoit Steiner, Paul Tucker, Vijay Vasudevan, Pete Warden, Mar-
+tin Wicke, Yuan Yu, and Xiaoqiang Zheng. 2016. TensorFlow: a system for
+large-scale machine learning. In Proceedings of the 12th USENIX Conference
+on Operating Systems Design and Implementation (OSDI). 265–283.
+https:
+//www.usenix.org/system/files/conference/osdi16/osdi16-abadi.pdf
+[2] Amey Agrawal, Nitin Kedia, Ashish Panwar, Jayashree Mohan, Nipun Kwatra,
+Bhargav Gulavani, Alexey Tumanov, and Ramachandran Ramjee. 2024. Taming
+Throughput-Latency Tradeoff in LLM Inference with Sarathi-Serve. In 18th
+USENIX symposium on operating systems design and implementation (OSDI).
+117–134. https://www.usenix.org/system/files/osdi24-agrawal.pdf
+[3] Amey Agrawal, Ashish Panwar, Jayashree Mohan, Nipun Kwatra, Bhargav S
+Gulavani, and Ramachandran Ramjee. 2023. SARATHI: Efficient LLM Inference
+by Piggybacking Decodes with Chunked Prefills. arXiv preprint arXiv:2308.16369
+(2023). https://arxiv.org/abs/2308.16369
+[4] Amazon Web Services. 2026. Trainium/Inferentia2 Architecture Guide for NKI.
+[Online]. Available: https://awsdocs-neuron.readthedocs-hosted.com/en/latest
+/nki/guides/architecture/trainium_inferentia2_arch.html.
+[5] Amazon Web Services. 2026. What is Neuron Collective Communication?
+[Online]. Available: https://awsdocs-neuron.readthedocs-hosted.com/en/latest
+/neuron-runtime/about/collectives.html.
+[6] AMD. 2022. AMD matrix cores. [Online]. Available: https://rocm.blogs.amd.c
+om/software-tools-optimization/matrix-cores/README.html.
+[7] AMD. 2025. AMD CDNA3 ARCHITECTURE. [Online]. Available: https://
+www.amd.com/content/dam/amd/en/documents/instinct-tech-docs/white-
+papers/amd-cdna-3-white-paper.pdf.
+[8] AMD. 2026. Use ROCm for AI inference. [Online]. Available: https://rocm.docs.
+amd.com/en/latest/how-to/rocm-for-ai/inference/index.html.
+11
+
+
+[9] anon8231489123. 2023. ShareGPT Vicuna Unfiltered. [Online]. Available: https:
+//huggingface.co/datasets/anon8231489123/ShareGPT_Vicuna_unfiltered.
+[10] Anthropic. 2025. System Card: Claude Opus 4 & Claude Sonnet 4. [Online].
+Available: https://www-cdn.anthropic.com/6be99a52cb68eb70eb9572b4cafad1
+3df32ed995.pdf.
+[11] AWS. 2026. Disaggregated Inference. [Online]. Available: https://awsdocs-
+neuron.readthedocs-hosted.com/en/latest/libraries/nxd-inference/developer_
+guides/disaggregated-inference.html.
+[12] Fan Bai, Pai Peng, Zhengzhi Tang, Zhe Wang, Gong Chen, Xiang Lu, Yinuo
+Li, Huan Lin, Weizhe Lin, Yaoyuan Wang, et al. 2026. EPD-Serve: A Flexible
+Multimodal EPD Disaggregation Inference Serving System On Ascend. arXiv
+preprint arXiv:2601.11590 (2026). https://arxiv.org/abs/2601.11590
+[13] Yushi Bai, Xin Lv, Jiajie Zhang, Hongchang Lyu, Jiankai Tang, Zhidian Huang,
+Zhengxiao Du, Xiao Liu, Aohan Zeng, Lei Hou, et al. 2024. LongBench: A
+Bilingual, Multitask Benchmark for Long Context Understanding. In Proceedings
+of the 62nd Annual Meeting of the Association for Computational Linguistics
+(Volume 1: Long Papers) (ACL). 3119–3137. https://aclanthology.org/2024.acl-
+long.172/
+[14] Gwangeun Byeon, Seongwook Kim, Hyungjin Kim, Sukhyun Han, Jinkwon Kim,
+Prashant Nair, Taewook Kang, and Seokin Hong. 2025. Avalanche: Optimizing
+Cache Utilization via Matrix Reordering for Sparse Matrix Multiplication Accel-
+erator. In Proceedings of the 52nd Annual International Symposium on Computer
+Architecture (ISCA). 1746–1759. doi:10.1145/3695053.3730990
+[15] Le Chen, Dahu Feng, Erhu Feng, Yingrui Wang, Rong Zhao, Yubin Xia, Pinjie
+Xu, and Haibo Chen. 2025. Characterizing Mobile SoC for Accelerating Hetero-
+geneous LLM Inference. In Proceedings of the ACM SIGOPS 31st Symposium on
+Operating Systems Principles (SOSP). 359–374. doi:10.1145/3731569.3764808
+[16] Xing Chen, Rong Shi, Lu Zhao, Lingbin Wang, Xiao Jin, Yueqiang Chen, and
+Hongfeng Sun. 2025. Disaggregated Prefill and Decoding Inference System
+for Large Language Model Serving on Multi-Vendor GPUs. arXiv preprint
+arXiv:2509.17542 (2025). https://arxiv.org/abs/2509.17542
+[17] Yuzong Chen, Chao Fang, Xilai Dai, Yuheng Wu, Thierry Tambe, Marian Ver-
+helst, and Mohamed S Abdelfattah. 2025. P3-LLM: An Integrated NPU-PIM
+Accelerator for LLM Inference Using Hybrid Numerical Formats. arXiv preprint
+arXiv:2511.06838 (2025). https://arxiv.org/abs/2511.06838
+[18] Yu-Hsin Chen, Tushar Krishna, Joel S. Emer, and Vivienne Sze. 2016. Eyeriss:
+A Spatial Architecture for Energy-Efficient Dataflow for Convolutional Neu-
+ral Networks. In Proceedings of the 43rd Annual International Symposium on
+Computer Architecture (ISCA). 367–379. doi:10.1109/ISCA.2016.40
+[19] Chen, Michelle and Flansburg, Kevin and Krasnov, Vlad. 2026. Building the
+foundation for running extra-large language models. The Cloudflare Blog,
+[Online]. Available: https://blog.cloudflare.com/high-performance-llms/.
+[20] Compute Exchange. 2026. USED A100 80GB. [Online]. Available: https://www.
+tcex.com/hardware-market/used-gpus/used-a100-80gb.
+[21] Compute Exchange. 2026. Used H100 PCIe. [Online]. Available: https://www.tc
+ex.com/hardware-market/used-gpus/used-h100-pcie.
+[22] Google. 2025. OpenXLA Tiled layout. [Online]. Available: https://openxla.org/
+xla/tiled_layout.
+[23] Google. 2026. Shapes and layout. [Online]. Available: https://openxla.org/xla/
+shapes.
+[24] Aaron Grattafiori, Abhimanyu Dubey, Abhinav Jauhri, Abhinav Pandey, Ab-
+hishek Kadian, Ahmad Al-Dahle, Aiesha Letman, Akhil Mathur, Alan Schel-
+ten, Alex Vaughan, et al. 2024. The Llama 3 Herd of Models. arXiv preprint
+arXiv:2407.21783 (2024). https://arxiv.org/abs/2407.21783
+[25] Jiaao He and Jidong Zhai. 2024. FastDecode: High-Throughput GPU-Efficient
+LLM Serving using Heterogeneous Pipelines. arXiv preprint arXiv:2403.11421
+(2024). https://arxiv.org/abs/2403.11421
+[26] Guseul Heo, Sangyeop Lee, Jaehong Cho, Hyunmin Choi, Sanghyeon Lee,
+Hyungkyu Ham, Gwangsun Kim, Divya Mahajan, and Jongse Park. 2024. Ne-
+uPIMs: NPU-PIM Heterogeneous Acceleration for Batched LLM Inferencing. In
+Proceedings of the 29th ACM International Conference on Architectural Support for
+Programming Languages and Operating Systems, Volume 3 (ASPLOS). 722–737.
+doi:10.1145/3620666.3651380
+[27] Ke Hong, Lufang Chen, Zhong Wang, Xiuhong Li, Qiuli Mao, Jianping Ma, Chao
+Xiong, Guanyu Wu, Buhe Han, Guohao Dai, et al. 2025. semi-PD: Towards
+Efficient LLM Serving via Phase-Wise Disaggregated Computation and Unified
+Storage. arXiv preprint arXiv:2504.19867 (2025). https://arxiv.org/abs/2504.19867
+[28] Cunchen Hu, Heyang Huang, Junhao Hu, Jiang Xu, Xusheng Chen, Tao Xie,
+Chenxi Wang, Sa Wang, Yungang Bao, Ninghui Sun, et al. 2024. MemServe:
+Context Caching for Disaggregated LLM Serving with Elastic Memory Pool.
+arXiv preprint arXiv:2406.17565 (2024). https://arxiv.org/abs/2406.17565
+[29] Cunchen Hu, Heyang Huang, Liangliang Xu, Xusheng Chen, Jiang Xu, Shuang
+Chen, Hao Feng, Chenxi Wang, Sa Wang, Yungang Bao, et al. 2024. Inference
+without Interference: Disaggregate LLM Inference for Mixed Downstream Work-
+loads. arXiv preprint arXiv:2401.11181 (2024). https://arxiv.org/abs/2401.11181
+[30] Huawei Cloud. 2026. Operator Basics. [Online]. Available: https://support.huaw
+eicloud.com/intl/en-us/odevg-te-atlas300app3000/atlasodc_10_c30_0010.html.
+[31] IBM. 2025. Libibverbs Library. [Online]. Available: https://www.ibm.com/docs
+/en/aix/7.3.0?topic=subroutines-libibverbs-library.
+[32] Intel. 2025. Intel Gaudi 3 AI Accelerator. [Online]. Available: https://www.
+intel.com/content/www/us/en/content-details/817486/intel-gaudi-3-ai-
+accelerator-white-paper.html.
+[33] Xuanlin Jiang, Yang Zhou, Shiyi Cao, Ion Stoica, and Minlan Yu. 2025. NEO:
+Saving GPU Memory Crisis with CPU Offloading for Online LLM Inference. In
+Proceedings of Machine Learning and Systems (MLSys), Vol. 7. https://proceeding
+s.mlsys.org/paper_files/paper/2025/file/66a026c0d17040889b50f0dfa650e5e0-
+Paper-Conference.pdf
+[34] Youhe Jiang, Ran Yan, and Binhang Yuan. 2025. HexGen-2: Disaggregated
+Generative Inference of LLMs in Heterogeneous Environment. arXiv preprint
+arXiv:2502.07903 (2025). https://arxiv.org/abs/2502.07903
+[35] Yibo Jin, Tao Wang, Huimin Lin, Mingyang Song, Peiyang Li, Yipeng Ma,
+Yicheng Shan, Zhengfan Yuan, Cailong Li, Yajing Sun, et al. 2024.
+P/D-
+Serve: Serving Disaggregated Large Language Model at Scale. arXiv preprint
+arXiv:2408.08147 (2024). https://arxiv.org/abs/2408.08147
+[36] Norm Jouppi, George Kurian, Sheng Li, Peter Ma, Rahul Nagarajan, Lifeng Nai,
+Nishant Patil, Suvinay Subramanian, Andy Swing, Brian Towles, Clifford Young,
+Xiang Zhou, Zongwei Zhou, and David A Patterson. 2023. TPU v4: An Optically
+Reconfigurable Supercomputer for Machine Learning with Hardware Support
+for Embeddings. In Proceedings of the 50th Annual International Symposium on
+Computer Architecture (ISCA). Article 82, 14 pages. doi:10.1145/3579371.3589350
+[37] Norman P. Jouppi, Cliff Young, Nishant Patil, David Patterson, Gaurav Agrawal,
+Raminder Bajwa, Sarah Bates, Suresh Bhatia, Nan Boden, Al Borchers, Rick
+Boyle, Pierre-luc Cantin, Clifford Chao, Chris Clark, Jeremy Coriell, Mike Daley,
+Matt Dau, Jeffrey Dean, Ben Gelb, Tara Vazir Ghaemmaghami, Rajendra Gotti-
+pati, William Gulland, Robert Hagmann, C. Richard Ho, Doug Hogberg, John Hu,
+Robert Hundt, Dan Hurt, Julian Ibarz, Aaron Jaffey, Alek Jaworski, Alexander Ka-
+plan, Harshit Khaitan, Daniel Killebrew, Andy Koch, Naveen Kumar, Steve Lacy,
+James Laudon, James Law, Diemthu Le, Chris Leary, Zhuyuan Liu, Kyle Lucke,
+Alan Lundin, Gordon MacKean, Adriana Maggiore, Maire Mahony, Kieran Miller,
+Rahul Nagarajan, Ravi Narayanaswami, Ray Ni, Kathy Nix, Thomas Norrie,
+Mark Omernick, Narayana Penukonda, Andy Phelps, Jonathan Ross, Matt Ross,
+Amir Salek, Emad Samadiani, Chris Severn, Gregory Sizikov, Matthew Snelham,
+Jed Souter, Dan Steinberg, Andy Swing, Mercedes Tan, Gregory Thorson, Bo
+Tian, Horia Toma, Erick Tuttle, Vijay Vasudevan, Richard Walter, Walter Wang,
+Eric Wilcox, and Doe Hyun Yoon. 2017. In-Datacenter Performance Analysis
+of a Tensor Processing Unit. In Proceedings of the 44th Annual International
+Symposium on Computer Architecture (ISCA). 1–12. doi:10.1145/3079856.3080246
+[38] Keisuke Kamahori, Tian Tang, Yile Gu, Kan Zhu, and Baris Kasikci. 2025. Fiddler:
+CPU-GPU Orchestration for Fast Inference of Mixture-of-Experts Models. In
+International Conference on Learning Representations (ICLR), Vol. 2025. 56099–
+56115. https://proceedings.iclr.cc/paper_files/paper/2025/file/8cd1ce03ea58b3
+d7dfd809e4d42f08ea-Paper-Conference.pdf
+[39] Vijay Kandiah, Scott Peverelle, Mahmoud Khairy, Junrui Pan, Amogh Manjunath,
+Timothy G. Rogers, Tor M. Aamodt, and Nikos Hardavellas. 2021. AccelWattch:
+A Power Modeling Framework for Modern GPUs. In MICRO-54: 54th Annual
+IEEE/ACM International Symposium on Microarchitecture (MICRO). 738–753.
+doi:10.1145/3466752.3480063
+[40] Jared Kaplan, Sam McCandlish, Tom Henighan, Tom B Brown, Benjamin Chess,
+Rewon Child, Scott Gray, Alec Radford, Jeffrey Wu, and Dario Amodei. 2020.
+Scaling Laws for Neural Language Models. arXiv preprint arXiv:2001.08361
+(2020). https://arxiv.org/abs/2001.08361
+[41] Roman Kaplan. 2024. Intel Gaudi 3 AI Accelerator: Architected for Gen AI
+Training and Inference. In 2024 IEEE Hot Chips 36 Symposium (HCS). 1–16.
+doi:10.1109/HCS61935.2024.10665178
+[42] The kernel development community. [n. d.]. InfiniBand and Remote DMA
+(RDMA) Interfaces. [Online]. Available: https://docs.kernel.org/driver-api/infin
+iband.html.
+[43] Dowon Kim, MinJae Lee, Janghyeon Kim, HyuckSung Kwon, Hyeonggyu Jeong,
+Sang-Soo Park, Minyong Yoon, Si-Dong Roh, Yongsuk Kwon, Jinin So, and
+Jungwook Choi. 2025. Scalable Processing-Near-Memory for 1M-Token LLM In-
+ference: CXL-Enabled KV-Cache Management Beyond GPU Limits. In 2025 34th
+International Conference on Parallel Architectures and Compilation Techniques
+(PACT). 1–13. doi:10.1109/PACT65351.2025.00013
+[44] KyungSoo Kim, Omin Kwon, Yeonhong Park, and Jae W. Lee. 2025. AiDE:
+Attention-FFN Disaggregated Execution for Cost-Effective LLM Decoding on
+CXL-PNM. IEEE Computer Architecture Letters (CAL) 24, 2 (2025), 285–288.
+doi:10.1109/LCA.2025.3597323
+[45] kvcache.ai. 2026. Mooncake. [Online]. Available: https://github.com/kvcache-
+ai/Mooncake.git.
+[46] Woosuk Kwon, Zhuohan Li, Siyuan Zhuang, Ying Sheng, Lianmin Zheng,
+Cody Hao Yu, Joseph Gonzalez, Hao Zhang, and Ion Stoica. 2023. Efficient
+Memory Management for Large Language Model Serving with PagedAttention.
+In Proceedings of the 29th Symposium on Operating Systems Principles (SOSP).
+611–626. doi:10.1145/3600006.3613165
+12
+
+
+[47] Hyojung Lee, Daehyeon Baek, Jimyoung Son, Jieun Choi, Kihyo Moon, and
+Minsung Jang. 2025. PAISE: PIM-Accelerated Inference Scheduling Engine
+for Transformer-based LLM. In 2025 IEEE International Symposium on High
+Performance Computer Architecture (HPCA). 1707–1719. doi:10.1109/HPCA6190
+0.2025.00126
+[48] Wonbeom Lee, Jungi Lee, Junghwan Seo, and Jaewoong Sim. 2024. InfiniGen:
+Efficient Generative Inference of Large Language Models with Dynamic KV
+Cache Management. In Proceedings of the 18th USENIX Conference on Operating
+Systems Design and Implementation (ODSI). Article 9, 18 pages. https://www.us
+enix.org/system/files/osdi24-lee.pdf
+[49] Bingyao Li. 2026. ConServe: Contiguity-Preserving Memory Management for
+Multi-Turn LLM Serving. In 2026 ACM/IEEE 53rd Annual International Sympo-
+sium on Computer Architecture (ISCA). 936–950. doi:10.1109/ISCA66397.2026.0
+0075
+[50] Yunkai Liang, Zhangyu Chen, Pengfei Zuo, Zhi Zhou, Xu Chen, and Zhou Yu.
+2025. Injecting Adrenaline into LLM Serving: Boosting Resource Utilization
+and Throughput via Attention Disaggregation. arXiv preprint arXiv:2503.20552
+(2025). https://arxiv.org/abs/2503.20552
+[51] Heng Liao, Jiajin Tu, Jing Xia, Hu Liu, Xiping Zhou, Honghui Yuan, and Yuxing
+Hu. 2021. Ascend: a Scalable and Unified Architecture for Ubiquitous Deep
+Neural Network Computing. In 2021 IEEE International Symposium on High-
+Performance Computer Architecture (HPCA). 789–801. doi:10.1109/HPCA51647.
+2021.00071
+[52] Mao Lin, Xi Wang, Guilherme Cox, Dong Li, and Hyeran Jeon. 2026. HybridGen:
+Efficient LLM Generative Inference via CPU-GPU Hybrid Computing. arXiv
+preprint arXiv:2604.18529 (2026). https://arxiv.org/abs/2604.18529
+[53] Yuxi Liu, Xia Zhao, Magnus Jahre, Zhenlin Wang, Xiaolin Wang, Yingwei Luo,
+and Lieven Eeckhout. 2018. Get Out of the Valley: Power-Efficient Address
+Mapping for GPUs. In 2018 ACM/IEEE 45th Annual International Symposium on
+Computer Architecture (ISCA). 166–179. doi:10.1109/ISCA.2018.00024
+[54] llm-d. 2026. llm-d Architecture. [Online]. Available: https://llm-d.ai/docs/archit
+ecture.
+[55] Ziming Mao, Yihan Zhang, Chihan Cui, Zhen Huang, Kaichao You, Zhongjie
+Chen, Zhiying Xu, Zhenyu Gu, Scott Shenker, Costin Raiciu, et al. 2025. UCCL-
+EP: Portable Expert-Parallel Communication. arXiv preprint arXiv:2512.19849
+(2025). https://arxiv.org/abs/2512.19849
+[56] Micron. 2020. The Demand for Ultra-Bandwidth Solutions. [Online]. Available:
+https://assets.micron.com/adobe/assets/urn:aaid:aem:f2b47a6c-361a-46d8-
+b87e-ef42417f1dc7/renditions/original/as/ultra-bandwidth-solutions-tech-
+brief.pdf.
+[57] Microsoft. 2025. Microsoft Fiscal Year 2025 Second Quarter Earnings Conference
+Call. [Online]. Available: https://www.microsoft.com/en-us/investor/events/fy-
+2025/earnings-fy-2025-q2.
+[58] MLCommons. 2024. Llama 2 70B: An MLPerf Inference Benchmark for Large
+Language Models. [Online]. Available: https://mlcommons.org/2024/03/mlperf-
+llama2-70b/.
+[59] Seungjae Moon, Junseo Cha, Hyunjun Park, and Joo-Young Kim. 2025. Hybe:
+GPU-NPUY Hybrid System for Efficient LLM Inference with Million-Token
+Context Window. In Proceedings of the 52nd Annual International Symposium on
+Computer Architecture (ISCA). 808–820. doi:10.1145/3695053.3731051
+[60] Deepak Narayanan, Mohammad Shoeybi, Jared Casper, Patrick LeGres-
+ley, Mostofa Patwary, Vijay Anand Korthikanti, Dmitri Vainbrand, Prethvi
+Kashinkunti, Julie Bernauer, Bryan Catanzaro, Amar Phanishayee, and Matei
+Zaharia. 2021. Efficient Large-Scale Language Model Training on GPU Clusters
+Using Megatron-LM. https://arxiv.org/abs/2104.04473
+[61] NVIDIA. 2019. TENSOR CORE DL PERFORMANCE GUIDE. [Online]. Available:
+https://developer.download.nvidia.com/video/gputechconf/gtc/2019/presentat
+ion/s9926-tensor-core-performance-the-ultimate-guide.pdf.
+[62] NVIDIA. 2020. NVIDIA A100 Tensor Core GPU Architecture. [Online]. Available:
+https://images.nvidia.com/aem-dam/en-zz/Solutions/data-center/nvidia-
+ampere-architecture-whitepaper.pdf.
+[63] NVIDIA. 2020.
+NVIDIA CONNECTX-6 DX Ethernet SmartNIC.
+[Online].
+Available: https://www.nvidia.com/content/dam/en-zz/Solutions/networking/
+ethernet-adapters/connectX-6-dx-datasheet.pdf.
+[64] NVIDIA. 2022. GPUDirect RDMA. [Online]. Available: https://github.com/Mel
+lanox/nv_peer_memory.
+[65] NVIDIA. 2023. NVIDIA H100 Tensor Core GPU Architecture. [Online]. Available:
+https://resources.nvidia.com/en-us-hopper-architecture/nvidia-h100-tensor-
+c.
+[66] NVIDIA. 2026. CUDA Programming Guide. [Online]. Available: https://docs.n
+vidia.com/cuda/cuda-programming-guide/pdf/cuda-programming-guide.pdf.
+[67] NVIDIA. 2026. Developing a Linux Kernel Module using GPUDirect RDMA.
+[Online]. Available: https://docs.nvidia.com/cuda/gpudirect-rdma/.
+[68] NVIDIA. 2026. Dynamo. [Online]. Available: https://github.com/ai-dynamo/d
+ynamo.
+[69] NVIDIA. 2026. GPUDirect RDMA and GPUDirect Storage. [Online]. Available:
+https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/latest/gpu-
+operator-rdma.html.
+[70] NVIDIA. 2026. Nsight Compute Documentation. [Online]. Available: https:
+//docs.nvidia.com/nsight-compute/index.html.
+[71] NVIDIA. 2026. NVIDIA DCGM. [Online]. Available: https://developer.nvidia.c
+om/dcgm.
+[72] NVIDIA. 2026. NVIDIA Inference Xfer Library (NIXL). [Online]. Available:
+https://github.com/ai-dynamo/nixl?tab=readme-ov-file.
+[73] NVIDIA. 2026. NVIDIA Linux Open GPU Kernel Moudle Source. [Online].
+Available: https://github.com/NVIDIA/open-gpu-kernel-modules.
+[74] NVIDIA. 2026. TensorRT-LLM. [Online]. Available: https://nvidia.github.io/Ten
+sorRT-LLM/.
+[75] OpenAI. 2026. OpenAI raises $122 billion to accelerate the next phase of AI.
+[Online]. Available: https://openai.com/index/accelerating-the-next-phase-ai/.
+[76] Jaehyun Park, Jaewan Choi, Kwanhee Kyung, Michael Jaemin Kim, Yongsuk
+Kwon, Nam Sung Kim, and Jung Ho Ahn. 2024. AttAcc! Unleashing the Power
+of PIM for Batched Transformer-based Generative Model Inference. In Pro-
+ceedings of the 29th ACM International Conference on Architectural Support for
+Programming Languages and Operating Systems (ASPLOS), Volume 2. 103–119.
+doi:10.1145/3620665.3640422
+[77] Junhyeok Park, Sungbin Jang, Osang Kwon, Yongho Lee, and Seokin Hong.
+2025. Leveraging Chiplet-Locality for Efficient Memory Mapping in Multi-Chip
+Module GPUs. In Proceedings of the 58th IEEE/ACM International Symposium on
+Microarchitecture (MICRO). 1040–1057. doi:10.1145/3725843.3756090
+[78] Pratyush Patel, Esha Choukse, Chaojie Zhang, Aashaka Shah, Íñigo Goiri, Saeed
+Maleki, and Ricardo Bianchini. 2025. Splitwise: Efficient Generative LLM In-
+ference Using Phase Splitting. In Proceedings of the 51st Annual International
+Symposium on Computer Architecture (ISCA). 118–132. doi:10.1109/ISCA59077.
+2024.00019
+[79] Reiner Pope, Sholto Douglas, Aakanksha Chowdhery, Jacob Devlin, James Brad-
+bury, Jonathan Heek, Kefan Xiao, Shivani Agrawal, and Jeff Dean. 2023. Ef-
+ficiently Scaling Transformer Inference. Proceedings of machine learning and
+systems (MLSys’23) 5 (2023), 606–624. https://arxiv.org/abs/2211.05102
+[80] Ramya Prabhu, Ajay Nayak, Jayashree Mohan, Ramachandran Ramjee, and
+Ashish Panwar. 2025. vAttention: Dynamic Memory Management for Serving
+LLMs without PagedAttention. In Proceedings of the 30th ACM International
+Conference on Architectural Support for Programming Languages and Operating
+Systems, Volume 1 (ASPLOS). 1133–1150. doi:10.1145/3669940.3707256
+[81] Ruoyu Qin, Zheming Li, Weiran He, Jialei Cui, Feng Ren, Mingxing Zhang,
+Yongwei Wu, Weimin Zheng, and Xinran Xu. 2025. Mooncake: Trading More
+Storage for Less Computation - A KVCache-centric Architecture for Serving
+LLM Chatbot. In 23rd USENIX conference on file and storage technologies (FAST).
+155–170. https://www.usenix.org/system/files/fast25-qin.pdf
+[82] Qualcomm. 2026. Tensors and Memory Layout. [Online]. Available: https://do
+cs.qualcomm.com/doc/80-63442-10/topic/tensors_and_memory_layout.html.
+[83] Chaoyi Ruan, Yinhe Chen, Dongqi Tian, Yandong Shi, Yongji Wu, Jialin Li,
+and Cheng Li. 2025. DynaServe: Unified and Elastic Execution for Dynamic
+Disaggregated LLM Serving. arXiv preprint arXiv:2504.09285 (2025).
+https:
+//arxiv.org/abs/2504.09285
+[84] Minseok Seo, Xuan Truong Nguyen, Seok Joong Hwang, Yongkee Kwon,
+Guhyun Kim, Chanwook Park, Ilkon Kim, Jaehan Park, Jeongbin Kim, Woojae
+Shin, Jongsoon Won, Haerang Choi, Kyuyoung Kim, Daehan Kwon, Chunseok
+Jeong, Sangheon Lee, Yongseok Choi, Wooseok Byun, Seungcheol Baek, Hyuk-
+Jae Lee, and John Kim. 2024. IANUS: Integrated Accelerator based on NPU-PIM
+Unified Memory System. In Proceedings of the 29th ACM International Confer-
+ence on Architectural Support for Programming Languages and Operating Systems
+(ASPLOS), Volume 3. 545–560. doi:10.1145/3620666.3651324
+[85] Xiaoxiang Shi, Colin Cai, Junjia Du, and Zhihao Jia. 2025. Nexus: Proactive
+Intra-GPU Disaggregation of Prefill and Decode in LLM Serving. arXiv preprint
+arXiv:2507.06608 (2025). https://arxiv.org/abs/2507.06608
+[86] Aaditya Singh, Adam Fry, Adam Perelman, Adam Tart, Adi Ganesh, Ahmed
+El-Kishky, Aidan McLaughlin, Aiden Low, AJ Ostrow, Akhila Ananthram, et al.
+2025. OpenAI GPT-5 System Card. arXiv preprint arXiv:2601.03267 (2025).
+https://arxiv.org/abs/2601.03267
+[87] Gursimran Singh, Xinglu Wang, Yifan Hu, Timothy Yu, Linzi Xing, Wei Jiang,
+Zhefeng Wang, Xiaolong Bai, Yi Li, Ying Xiong, et al. 2024. Efficiently Serv-
+ing Large Multimodal Models Using EPD Disaggregation.
+arXiv preprint
+arXiv:2501.05460 (2024). https://arxiv.org/abs/2501.05460
+[88] Stanford Institute for Human-Centered Artificial Intelligence. 2026. Artificial
+Intelligence Index Report 2026. [Online]. Available: https://hai.stanford.edu/ass
+ets/files/ai_index_report_2026.pdf.
+[89] Vishnu Subramanian. 2026. NVIDIA A100 GPU Price in 2026: Cost Per Hour,
+Cloud Pricing & Specs. [Online]. Available: https://jarvislabs.ai/blog/a100-price.
+[90] Vivienne Sze, Yu-Hsin Chen, Tien-Ju Yang, and Joel S Emer. 2017. Efficient
+Processing of Deep Neural Networks: A Tutorial and Survey. Proc. IEEE 105, 12
+(2017), 2295–2329. doi:10.1109/JPROC.2017.2761740
+[91] Gemini Team, Petko Georgiev, Ving Ian Lei, Ryan Burnell, Libin Bai, Anmol
+Gulati, Garrett Tanzer, Damien Vincent, Zhufeng Pan, Shibo Wang, et al. 2024.
+Gemini 1.5: Unlocking multimodal understanding across millions of tokens of
+13
+
+
+context. arXiv preprint arXiv:2403.05530 (2024). https://arxiv.org/abs/2403.05530
+[92] Tenstorrent. 2025. Blackhole. [Online]. Available: https://tenstorrent.com/hard
+ware/blackhole.
+[93] Tenstorrent. 2026. Tenstorrent AI Kernel-Mode Driver. [Online]. Available:
+https://github.com/tenstorrent/tt-kmd.
+[94] Tenstorrent. 2026. Tenstorrent User-Mode Driver. [Online]. Available: https:
+//github.com/tenstorrent/tt-umd.
+[95] Tenstorrent. 2026. TT Architecture and Metalium Guide. [Online]. Available:
+https://github.com/tenstorrent/tt-metal/blob/main/METALIUM_GUIDE.md.
+[96] Tenstorrent. 2026. TT-Metalium / TT-NN Models. [Online]. Available: https:
+//github.com/tenstorrent/tt-metal/blob/main/models/README.md.
+[97] Tenstorrent. 2026. TT-NN operator library, and TT-Metalium low level kernel
+programming model. [Online]. Available: https://github.com/tenstorrent/tt-
+metal.
+[98] Tenstorrent. 2026. TT-NN Tensor. [Online]. Available: https://docs.tenstorrent
+.com/tt-metal/latest/ttnn/ttnn/tensor.html.
+[99] Tenstorrent. 2026. TT-SMI. [Online]. Available: https://github.com/tenstorrent
+/tt-smi.
+[100] The JAX Authors. 2024. Distributed Computing in Pallas for TPUs. [Online].
+Available: https://docs.jax.dev/en/latest/pallas/tpu/distributed.html.
+[101] Moritz Thüning. 2024. Attention in SRAM on Tenstorrent Grayskull. arXiv
+preprint arXiv:2407.13885 (2024). https://arxiv.org/abs/2407.13885
+[102] Together AI. 2026. Cache-aware prefill–decode disaggregation (CPD) for up to
+40% faster long-context LLM serving. [Online]. Available: https://www.togeth
+er.ai/blog/cache-aware-disaggregated-inference.
+[103] Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones,
+Aidan N. Gomez, Łukasz Kaiser, and Illia Polosukhin. 2017. Attention is All You
+Need. In Proceedings of the 31st International Conference on Neural Information
+Processing Systems (NIPS). 6000–6010. https://dl.acm.org/doi/10.5555/3295222.3
+295349
+[104] Oreste Villa, Mark Stephenson, David Nellans, and Stephen W. Keckler. 2019.
+NVBit: A Dynamic Binary Instrumentation Framework for NVIDIA GPUs. In
+Proceedings of the 52nd Annual IEEE/ACM International Symposium on Microar-
+chitecture (MICRO). 372–383. doi:10.1145/3352460.3358307
+[105] Chao Wang, Pengfei Zuo, Zhangyu Chen, Yunkai Liang, Zhou Yu, and Ming-
+Chang Yang. 2025. Prefill-Decode Aggregation or Disaggregation? Unifying
+Both for Goodput-Optimized LLM Serving. arXiv preprint arXiv:2508.01989
+(2025). https://arxiv.org/abs/2508.01989
+[106] Haonan Wang, Xuxin Xiao, Mingyu Yan, Zhuoyuan Zhu, Dengke Han, Duo
+Wang, Wenming Li, Xiaochun Ye, Cunchen Hu, Hongyang Chen, et al. 2025.
+A Systematic Characterization of LLM Inference on GPUs.
+arXiv preprint
+arXiv:2512.01644 (2025). https://arxiv.org/abs/2512.01644
+[107] Xinming Wei, Jiahao Zhang, Haoran Li, Jiayu Chen, Haoning Guan, Rui Qu, Mao-
+liang Li, Xiang Chen, and Guojie Luo. 2025. Agent.xpu: Efficient Scheduling of
+Agentic LLM Workloads on Heterogeneous SoC. arXiv preprint arXiv:2506.24045
+(2025). https://arxiv.org/abs/2506.24045
+[108] Yu Wu, Tongxuan Liu, Yuting Zeng, Siyu Wu, Jun Xiong, Xianzhe Dong, Hailong
+Yang, Ke Zhang, and Jing Li. 2025. Arrow: Adaptive Scheduling Mechanisms
+for Disaggregated LLM Inference Architecture. arXiv preprint arXiv:2505.11916
+(2025). https://arxiv.org/abs/2505.11916
+[109] Lianmin Zheng, Liangsheng Yin, Zhiqiang Xie, Chuyue Sun, Jeff Huang, Cody H
+Yu, Shiyi Cao, Christos Kozyrakis, Ion Stoica, Joseph E Gonzalez, et al. 2024.
+SGLang: Efficient Execution of Structured Language Model Program. Advances
+in Neural Information Processing Systems 37 (2024), 62557–62583. https://arxiv.
+org/abs/2312.07104
+[110] Yinmin Zhong, Shengyu Liu, Junda Chen, Jianbo Hu, Yibo Zhu, Xuanzhe Liu,
+Xin Jin, and Hao Zhang. 2024. DistServe: Disaggregating Prefill and Decoding for
+Goodput-optimized Large Language Model Serving. In 18th USENIX Symposium
+on Operating Systems Design and Implementation (OSDI 24). 193–210. https:
+//www.usenix.org/system/files/osdi24-zhong-yinmin.pdf
+[111] Yang Zhou, Zhongjie Chen, Ziming Mao, ChonLam Lao, Shuo Yang,
+Pravein Govindan Kannan, Xizhi Zhang, Jiaqi Gao, Yilong Zhao, Yongji Wu,
+Kaichao You, Fengyuan Ren, Zhiying Xu, Costin Raiciu, and Ion Stoica. 2026. An
+Extensible Software Transport Layer for GPU Networking. In 20th USENIX Sym-
+posium on Operating Systems Design and Implementation (OSDI 26). 1143–1166.
+https://www.usenix.org/conference/osdi26/presentation/zhou-yang
+[112] Ruidong Zhu, Ziheng Jiang, Chao Jin, Peng Wu, Cesar A. Stuardo, Dongyang
+Wang, Xinlei Zhang, Huaping Zhou, Haoran Wei, Yang Cheng, Jianzhe Xiao,
+Xinyi Zhang, Lingjun Liu, Haibin Lin, Li-Wen Chang, Jianxi Ye, Xiao Yu, Xuanzhe
+Liu, Xin Jin, and Xin Liu. 2025. MegaScale-Infer: Efficient Mixture-of-Experts
+Model Serving with Disaggregated Expert Parallelism. In Proceedings of the
+ACM SIGCOMM 2025 Conference. 592–608. doi:10.1145/3718958.3750506
+14

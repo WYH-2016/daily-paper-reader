@@ -51,14 +51,14 @@
       <span class="dpr-home-dashboard-kicker">2026-10-14 ~ 2026-10-23</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 0 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 17 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
-    <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>0</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>0</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>2 次</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>6</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>11</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-10-23 02:22:06 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-10-23 06:42:41 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -69,7 +69,9 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今日无新推荐，系统未产出可展示论文。</p>
+<p>聚焦CXL与GPU内存优化，精读2篇9分硬核论文</p>
+<p>CXL内存池架构（CMM-MP）和GPU驱动层内存去重（gKSM）是当前LLM推理内存效率突破的关键方向</p>
+<p>普通读者可优先速读《CXLResume》和《HAWK》，快速掌握CXL状态保持与异构缓存迁移的实用思路</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -78,12 +80,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">精读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">0 篇</strong>
+    <strong class="dpr-home-dashboard-count">6 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p class="dpr-home-dashboard-empty">今日暂无推荐。</p>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="CMM-MP: A Novel Memory Pooling Architecture using Purpose-built Memory Device with CXL and Ethernet">CMM-MP: A Novel Memory Pooling Architecture using Purpose-built Memory Device with CXL and Ethernet</span></li><li><span class="dpr-home-dashboard-paper-title" title="gKSM: GPU Memory Deduplication at Driver Layer for Serverless LLM Inference">gKSM: GPU Memory Deduplication at Driver Layer for Serverless LLM Inference</span></li><li><span class="dpr-home-dashboard-paper-title" title="HyCo: Hybrid Drafting for Cost-Efficient Mobile-Cloud Speculative Decoding">HyCo: Hybrid Drafting for Cost-Efficient Mobile-Cloud Speculative Decoding</span></li></ul>
   </div>
-
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">iommu <strong>6</strong></span></div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -91,12 +93,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">速读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">0 篇</strong>
+    <strong class="dpr-home-dashboard-count">11 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p class="dpr-home-dashboard-empty">今日暂无推荐。</p>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="CXLResume: Retained-State Checkpoint and Restore for In-Memory Services">CXLResume: Retained-State Checkpoint and Restore for In-Memory Services</span></li><li><span class="dpr-home-dashboard-paper-title" title="HAWK: Heterogeneity-Aware KV Cache Transfer for Efficient GPU-NPU Phase-Disaggregated LLM Inference">HAWK: Heterogeneity-Aware KV Cache Transfer for Efficient GPU-NPU Phase-Disaggregated LLM Inference</span></li><li><span class="dpr-home-dashboard-paper-title" title="uGDS: A User-Space Development Kit for High-Performance GPU Direct Storage">uGDS: A User-Space Development Kit for High-Performance GPU Direct Storage</span></li></ul>
   </div>
-
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">iommu <strong>11</strong></span></div>
 </section>
 </div>
 
