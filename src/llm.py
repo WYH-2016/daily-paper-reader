@@ -14,7 +14,8 @@ import requests
 """
 
 # 单次实验级别的全局 token 统计（需由调用方在实验开始前手动 reset）
-DEFAULT_MAX_OUTPUT_TOKENS = 393216
+# DashScope qwen 系列最大支持 32768 tokens；DeepSeek 支持更长但需通过环境变量设置
+DEFAULT_MAX_OUTPUT_TOKENS = 32768
 
 
 def resolve_max_output_tokens(default: int = DEFAULT_MAX_OUTPUT_TOKENS) -> int:
@@ -532,7 +533,7 @@ class LLMClient:
         if response_format is not None:
             payload['response_format'] = response_format
 
-        # 对输出 token 上限做保护；DeepSeek V4 支持更长输出，默认按 384K 预留。
+        # 对输出 token 上限做保护；默认 32768 兼容 DashScope，DeepSeek 可通过环境变量扩展。
         try:
             max_output_tokens = resolve_max_output_tokens()
             if isinstance(payload.get('max_tokens'), int) and payload['max_tokens'] > max_output_tokens:
