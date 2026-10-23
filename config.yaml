@@ -135,7 +135,7 @@ subscriptions:
             updated_at: '2026-10-23T06:31:10.220867+00:00'
       updated_at: '2026-10-23T06:17:39.135Z'
     - tag: vc
-      description: QEMU/虚拟化/容器/云计算方向
+      description: 请帮我查找 QEMU 虚拟化技术、KVM、硬件支持虚拟化、容器技术（Docker/Kubernetes）、云计算资源调度与隔离相关的论文。
       enabled: true
       paper_sources:
         - arxiv
@@ -164,7 +164,7 @@ subscriptions:
           enabled: true
           source: manual
           note: ''
-      updated_at: '2026-10-23T07:41:48.335Z'
+      updated_at: '2026-10-23T07:43:04.302Z'
 source_backends:
   arxiv:
     papers_table: arxiv_papers
