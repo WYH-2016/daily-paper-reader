@@ -1,0 +1,620 @@
+Title: MemLLM: End-to-end In-Storage Acceleration of On-device Retrieval-Augmented Generation using Precomputed KV Caches
+
+URL Source: https://arxiv.org/pdf/2610.22579v1
+
+Published Time: Mon, 19 Oct 2026 00:15:05 GMT
+
+Number of Pages: 15
+
+Markdown Content:
+# MemLLM: End-to-end In-Storage Acceleration of On-device Retrieval-Augmented Generation using Precomputed KV Caches 
+
+Seungkwan Kang, Hyungseok Ko, Heemin Kim, Myoungsoo Jung 
+
+Computer Architecture and Memory Systems Laboratory , KAIST Daejeon, Republic of Korea 
+
+Abstract —Retrieval-augmented generation (RAG) on edge de-vices enables personalized large language model (LLM) inference while preserving privacy. However, RAG’s inherent length asym-metry makes the prefill phase the dominant bottleneck. While precomputing the KV caches offline alleviates the prefill cost on server systems, the multi-gigabyte caches over the narrow interconnect create a severe I/O wall for on-device systems. To mitigate this, we propose M EM LLM, an end-to-end in-storage processing (ISP) architecture that executes the complete attention pipeline based on precomputed KV caches within the SSD. MEM LLM utilizes per-channel accelerators to fully utilize the aggregated NAND channel bandwidth and accelerates all KV cache-related computations on the storage-side to minimize PCIe transfers. To efficiently handle the sparse updates required by RAG, M EM LLM introduces a fused recomputation-query kernel paired with a hardware-based filter logic to halve the NAND read volume and eliminate write-back penalties. Furthermore, M EM -LLM’s global SRAM-based stateful reduction engine enables a completely DRAM-less dataflow, thereby removing the internal memory bottlenecks and bounding the PCIe egress to an O(1) 
+
+footprint. A full-stack software stack allows asynchronous, zero-copy transfers from the ISP to the host and provides transparent execution within modern ML frameworks. Evaluated across eight real-world RAG datasets and six on-device LLM models, MEM LLM achieves an average end-to-end speedup of 4.06 × over the GPU baseline. 
+
+Index Terms —In-storage processing, retrieval-augmented gen-eration, large language model inference, KV cache, near-data processing, on-device machine learning 
+
+I. I NTRODUCTION 
+
+Large language models (LLMs) are rapidly migrating from cloud servers to edge on-device systems, driven by the demand for privacy-preserving inference over sensitive data, such as personal medical records [1]–[5], financial documents [6]– [10], and corporate knowledge bases [11]–[13], without depen-dence on centralized servers [14]–[17]. Retrieval-augmented generation (RAG [18]) is central to this vision. By grounding LLM responses in an external knowledge base, RAG elim-inates the need for costly fine-tuning and enables real-time, personalized answers on-device. However, RAG workloads exhibit a fundamental length asymmetry; the retrieved contexts typically span thousands of tokens, while the generated answers remain extremely short, often by a factor of 100–1000 ×. This asymmetry shifts the 
+
+This work was supported by Samsung Research Funding & Incubation Center for Future Technology under Project Number SRFC-IT2302-05. 
+
+inference bottleneck from the decode phase, which dominates standard LLM serving, to the prefill phase, where the LLM must process the massive retrieved context to build its KV cache. On resource-constrained edge devices, this prefill-dominated latency profile creates a severe performance barrier for practical on-device RAG deployment, especially for the long-context, short-answer regime. A promising software-level mitigation is to precompute the KV caches for documents in the knowledge base offline and load them from storage at inference time, replacing the compute-intensive prefill with a storage read [19]–[22]. On server systems equipped with high-bandwidth storage arrays, this trade of computation for I/O yields substantial speedups. However, on edge devices, the massive data movement across the narrow PCIe interconnect severely throttles performance. To make matters worse, the limited memory capacity of edge SoCs cannot accommodate these multi-gigabyte precomputed KV caches alongside the model weights, forcing the KV caches to be completely offloaded to persistent storage [23]– [28]. Streaming these precomputed caches from the SSD to the GPU over the limited PCIe bus takes longer than the compute time it was meant to replace, creating an I/O wall that negates the benefits of precomputation entirely. Existing in-storage processing (ISP) architectures offer a partial remedy. Prior works have offloaded decode-phase at-tention to storage devices to eliminate repeated KV cache transfers [23]–[25], or moved model-weight computation into flash to free GPU memory [29]. Yet, these approaches fail to address the defining challenge of precomputed-KV-based RAG: selective recomputation . Because independently pre-computed KV caches break cross-attention between retrieved documents, a small but critical subset of tokens ( ∼15%) must be recomputed using the full model weights to restore generation quality [20], [30]. This recomputation presents a highly heterogeneous workload consisting of compute-intensive, dense matrix multiplications (GEMMs), element-wise softmax operations and matrix-vector multiplications (GEMVs). This exceeds the capabilities of not only exist-ing decode-only ISPs, but conventional accelerator paradigms overall. Rigid 2D systolic arrays suffer catastrophic underuti-lization (zero-padding bubbles) when faced with 1D decode vectors or irregular sparse masks, while standard Single In-struction Multiple Data (SIMD) architectures lack the inter-arXiv:2610.22579v1 [cs.AR] 15 Oct 2026 PE data forwarding required for efficient GEMM execution. Unable to absorb the workload internally, current systems are forced into a disjoint execution flow: the entire KV cache must be first read from the storage and hauled to the GPU for recomputation, and read yet again for query attention; streaming multi-gigabyte data across the PCIe bus twice. To mitigate the issue, we present MemLLM , an in-storage processing architecture that eliminates this I/O wall by per-forming the precomputed-KV attention pipeline entirely within the SSD, without ever transferring the full KV cache to the host. M EM LLM targets on-device RAG with precomputed document KV caches and selective recomputation under long-context, short-answer workloads; we delineate this scope and its boundaries in Section VII. M EM LLM’s design is governed by three I/O minimization principles. 
+
+Reduce NAND I/O. MEM LLM fuses selective recomputation and query attention into a single NAND-read pass via a unified kernel that constructs a combined query matrix ( Qf used ) from the recomputation targets and the user query. A hardware-based stream filter logic compacts the valid tokens from the irregular recomputation mask into a dense stream, allowing the compute units to process only the necessary tokens without wasting cycles on masking and zero-padding. This fusion halves the NAND read volume and completely eliminates the write-back penalty, as recomputed KV entries are consumed in situ within the same streaming pass. 
+
+Utilize aggregated NAND bandwidth. Rather than funneling all NAND data through a centralized accelerator bottlenecked by the SSD’s internal bus, M EM LLM distributes lightweight Elastic-SIMD accelerators to each NAND channel endpoint. Each Elastic-SIMD dynamically reconfigures its datapath be-tween broadside mode (parallel GEMV for decode) and cas-caded mode (systolic-like forwarding for GEMM during pre-fill), maintaining high PE utilization across the heterogeneous RAG workload. This per-channel architecture delivers the full aggregate NAND bandwidth directly to computation without any internal bus contention. 
+
+Eliminate internal DRAM I/O. A central coordinator logic merges per-channel partial attention outputs using a stateful online softmax reduction engine, hosted entirely in the con-troller’s global SRAM. Rather than repeatedly reading and writing partial sums to the controller’s DRAM, M EM LLM leverages RAG’s length asymmetry to avoid the internal band-width bottleneck entirely. Because Qf used and the final output 
+
+Of inal are small enough to reside completely on-chip, the SSD’s DRAM is entirely removed from the attention critical path. To this end, the total PCIe traffic for the entire attention computation is bounded to a single O(1) transfer that is completely independent of context length. We implemented M EM LLM’s Elastic-SIMD architecture in RTL and prototyped it on a 16nm FPGA [31]. We evaluated the cycles required for each GPU kernel using the prototype and an NVIDIA Jetson Orin NX board [32] and integrated it with a cycle-accurate SSD simulator [33]. Evaluation across eight real-world datasets and six LLM models shows that MEM LLM achieves an average end-to-end speedup of 4.06 ×.The main contributions of this paper are as follows: QKV   
+
+> xx
+> QK TA
+> Multi-Head
+> Self-attention FFN Res & Sum
+> xx
+> Row-wise Softmax
+> x
+> WQ
+> WK
+> WV
+> Res & Sum KT
+> QRow-wise Softmax Online Softmax
+> QKT
+> (m, l)
+
+Fig. 1: LLM inference.  
+
+> (a) Decoder-only transformer. (b) Online softmax.
+
+• Analysis of the on-device RAG I/O wall. We provide the first systematic characterization of how precomputed KV caches and their selective recomputation create a disjoint execution bottleneck that conventional accelerator paradigms cannot resolve, establishing the need for an end-to-end ISP for precomputed-KV RAG. 
+
+• Fused kernel with hybrid mask handling. We propose a single-pass fused kernel that eliminates redundant NAND reads and write-backs by co-processing selective recomputa-tion and query attention against the same KV stream, with a hardware-based filter logic that compacts irregular sparse masks into dense compute. 
+
+• Per-channel Elastic-SIMD. We design a distributed, dynami-cally reconfigurable SIMD fabric that sustains high utilization across GEMV, thin-GEMM, and element-wise softmax work-loads without the area overhead and underutilization of rigid 2D systolic arrays. 
+
+• NAND-stationary tiling and DRAM-less data flow. We co-design the hardware micro-architecture with a NAND-stationary tiling algorithm and a global SRAM-based stateful reduction engine that completely bypasses the SSD’s DRAM, ensuring that internal storage bandwidth is strictly dedicated to NAND reads rather than intermediate memory traffic. II. B ACKGROUND 
+
+A. Large Language Model (LLM) Inference 
+
+Decoder-only transformers and KV cache. Modern large language models typically employ the decoder-only trans-former architecture [34], transforming input token embeddings into context-enriched representations via self-attention and feed-forward network (FFN) layers (Figure 1a). The core of this architecture is the scaled dot-product attention , which projects inputs into query ( Q), key ( K), and value ( V ) matrices to compute A = softmax (QK T /√dk)V . This captures the contextual relationships by weighting each token’s value pro-portionally to its relevance to the query. Multi-Head Attention (MHA [35]) further keeps separate K/V matrices per Q
+
+head and inflating memory bandwidth. Recent models adopt Grouped-Query Attention (GQA [36]), sharing one K/V pair per head group to compress the KV cache. LLM inference operates in two phases. The prefill phase 
+
+processes the entire input prompt in parallel via dense matrix-matrix multiplications (GEMM). The subsequent decode phase 
+
+is autoregressive, inferring and appending one token per it-eration. Due to this autoregressive nature, recomputing the full attention for all previously generated tokens incurs a Knowledge base 
+
+K contexts 
+
+Retrieval User query Augment LLM Augmented query 
+
+Length asymmetry 
+
+Answer Fig. 2: Retrieval-Augmented Generation (RAG). redundant O(n2) computational cost, where n is the length of the token sequence. To mitigate this, frameworks utilize the KV cache [34]. By storing the K and V vectors of all preceding tokens in memory, the decode phase is reduced to a linear 
+
+O(N ) matrix-vector multiplication (GEMV). However, this introduces a severe memory bottleneck; for long sequences, the KV cache footprint grows linearly, quickly exhausting the GPU’s on-chip VRAM and necessitating storage-level offloading on resource-constrained edge devices. 
+
+Online Softmax. When QK T is too large to materialize in on-chip SRAM, accelerators compute attention in tiles using the 
+
+online softmax technique [37], [38] (Figure 1b), maintaining two per-row running statistics: the maximum value ( m) and the sum of exponentials ( ℓ). Partial tile outputs are then merged by rescaling with the exponential difference between local and global maxima, enabling long attentions within a fixed SRAM budget without accuracy loss. 
+
+B. Retrieval-Augmented Generation (RAG) 
+
+Retrieval-augmented generation mitigates the hallucination and knowledge-cutoff limitations of LLMs by grounding in-ference in external, semi-static knowledge bases. As illustrated in Figure 2, when a user query arrives, a retriever performs a similarity search over a pre-indexed vector database to extract the top-k most relevant passages. These contexts are concatenated with the query to form an augmented prompt for the LLM. In this work, we assume that the retrieved chunks are finalized before attention begins [39], [40]. Further evaluation under retrieval methods that relax this assumption [41]–[44] are in Section VI-D. Unlike standard conversational LLM serving where the decode phase is often the primary bottle-neck, RAG workloads exhibit a drastic length asymmetry : the retrieved contexts typically span thousands of tokens, while the generated answers remain relatively short. Consequently, the prefill phase over these massive contexts dominates the end-to-end RAG inference latency (Section III). 
+
+C. Precomputed KV Caches for RAG 
+
+Because RAG knowledge bases are mostly static , the compute-intensive prefill cost for the documents can be amor-tized. The system can tokenize each document offline, run a prefill pass to generate its KV cache, and store it in persistent storage [19], [20]. At inference time, instead of recomputing the context from raw tokens, the LLM simply loads the precomputed KV cache . While precomputing KV caches independently per document saves prefill compute, it breaks the cross-attention between different retrieved doc-uments. To restore inference accuracy, recent frameworks Storage Pre KV$     
+
+> Selective recomputation
+> New KV$
+> Read
+> Pre KV$ GPU New KV$
+> Write Read & Substitute
+> Pre KV$
+> Context Qry Query Pre fi ll
+> Write
+> HKVD tokens
+> Phase 1 Phase 2
+
+Fig. 3: HKVD recomputation. (e.g., CacheBlend [20]) employ selective recomputation . By evaluating the cross-attention deviations at the first decoder layer, the system flags a small subset ( ∼15%) of tokens, termed as High KV Deviation (HKVD) tokens, that require full attention recomputation using the model weights, while the remaining are consumed directly from the storage. However, executing this selective recomputation introduces a highly inefficient, disjoint execution flow, as illustrated in Figure 3. First, the host GPU must load the entire precomputed KV cache from storage to start the recomputation (Phase 1). Because only a small portion of the tokens require updates, the Q matrix is a ”thin” dense matrix composed strictly of the embeddings for these targeted tokens. However, because these target tokens are scattered unpredictably across the absolute sequence positions, computing their attention scores requires an irregular, jagged attention mask to maintain positional correctness. Subsequently, for the query prefill, the host must re-read the entire precomputed KV cache to compute the at-tention against the newly appended user query (Phase 2). This structural separation of the KV caches and compute forces the system to stream the multi-gigabyte KV cache across the PCIe bus twice, creating a massive I/O bottleneck that severely limits the efficiency of on-device RAG deployments. III. C HALLENGE AND MOTIVATION 
+
+Although on-device RAG promises privacy-preserving, low-latency inference over personalized knowledge bases, its long contexts create severe performance challenges on resource-constrained edge devices. In this section, we systematically analyze these challenges and derive the architectural require-ments for an on-device RAG accelerator. 
+
+A. The I/O Wall of Precomputed KV Caches 
+
+Datasets and models. To ground our analysis in realistic RAG workloads, we collect publicly available question-answering datasets from four domains where RAG is actively deployed: finance (FinQA [9], TAT-QA [10]), biomedical (CovidQA [4]), legal (CuAD [11], PrivacyQA [12]), and general knowledge (TriviaQA [13], HotpotQA [45]). Table I summarizes their key characteristics. Total size denotes each dataset’s entire pre-computed KV cache size under SmolLM2-360M, the medium-sized model in our evaluation. Most datasets are under 1 TB and can be readily stored on a commodity SSD. In contrast, HotpotQA and TriviaQA-wiki, whose corpora are built from the entire Wikipedia, and TriviaQA-web, built from broad web-search documents, are large-scale general-web datasets on the order of several to tens of TB and thus exceed wik web cov hpt fin cad tat prv 0246
+
+> Speedup
+
+Dataset  
+
+> smol-135m opt-350m opt-1.3b smol-360m smol-1.7b opt-125m
+> Non-GQA Models GQA Models
+> Full-compute Pre-compute 050 100
+> Latency Breakdown
+> Prefill  Data I/O Retrieval+Decode
+
+Fig. 4: Precomputed KV caches on server systems. 
+
+(a) Normalized speedup. (b) Breakdown. 
+
+edge storage capacity. However, these are not intended for edge deployment; we use them to analyze the generality and scalability of our approach across corpus scales. For these datasets, the evaluation was conducted based on access-pattern traces rather than directly storing the full KV cache. Across all domains, we observe a pronounced length asym-metry: the contexts typically span thousands of tokens, while the answers range from a few tokens to at most a few hundred tokens. This asymmetry reflects the primary use case of RAG: extracting specific factual information from long documents. For example, TriviaQA retrieves long documents on gen-eral knowledge as context, but produces short factual an-swers, resulting in a context-to-answer ratio of approximately 1000:1. Legal contract analysis (CuAD) and biomedical QA (CovidQA) also exhibit ratios of approximately 90:1 and 440:1, respectively. This asymmetry determines the latency profile of RAG inference: the long contexts inflate prefill time, while the short answers limit the number of decode iterations. For LLM models, we evaluated OPT [46] (350M to 6.7B) and SmolLM2 [47] (135M to 1.7B), spanning a range of pa-rameter counts representative of on-device deployment. These model families include both grouped-query attention (GQA) and non-GQA variants, enabling us to analyze the impact of KV cache sizes on I/O overhead. The key characteristics of the models are summarized in Table II. All models were evaluated in FP16 precision on an NVIDIA Jetson Orin [32] system, representative of on-device edge environments. Hardware and software details are summarized in Table III. 
+
+Server and on-device system comparison. Precomputing the documents’ KV caches replaces the compute-intensive context prefill with a storage read, trading computation for I/O. On servers with high-bandwidth storage and interconnects, this yields an average end-to-end speedup of 2.1 × over the full-compute baseline across eight RAG datasets (Figure 4a): the prefill fraction drops from 74.8% to 16.9%, with the storage read accounting for only 27.4% of total latency (Figure 4b). On the Jetson Orin (Figure 5), the average end-to-end speedup                                                          
+
+> Label Dataset # of Context Answer Ctx/Ans Total Contexts Length (tokens) Size
+> tat TAT-QA 2.76k 364 5.49 66.4 38GB fin FinQA 2.79k 688 4.18 165 73GB hpt HotpotQA 113k 1.11k 2.35 472 4.7TB web TriviaQA-web 529k 2.10k 4.37 479 41.4TB wik TriviaQA-wiki 111k 4.33k 4.34 997 17.9TB prv PrivacyQA 1.75k 4.34k 187 23.2 290GB cov CovidQA 642 6.12k 13.9 440 150GB cad CuAD 510 13.7k 151 90.7 267GB
+
+TABLE I: RAG datasets. wik web cov hpt fin cad tat prv 0246
+
+> Speedup
+
+Dataset  
+
+> smol-135m opt-350m opt-1.3b smol-360m smol-1.7b opt-125m
+> Non-GQA Models GQA Models
+> Full-compute Pre-compute 050 100
+> Latency Breakdown
+> Prefill  Data I/O Retrieval+Decode
+
+Fig. 5: Precomputed KV caches on on-device systems. 
+
+(a) Normalized speedup. (b) Breakdown. 
+
+instead drops below 0.58 ×: unlike the server interconnect, which delivers precomputed KV caches faster than the GPU can compute them, the edge device’s limited PCIe bandwidth cannot, so an I/O wall negates the savings of precomputation. Figure 5b confirms this: the prefill compute fraction falls from 59.8% to 3.53% as expected, but the storage I/O fraction balloons to 80.2% of total latency, the new dominant bottle-neck. Models with grouped-query attention (GQA) produce smaller KV caches and thus see only marginal on-device speedups, yet I/O still consumes a substantial fraction of their prefill latency, showing that model-level reduction alone cannot fundamentally overcome the I/O wall. 
+
+KV cache offloading. The analysis so far assumed the KV caches fit in GPU memory (we shrank the layer count to fit on-device memory and extrapolated the measured latency to full-model scale), but this rarely holds in practice. Amodel’s footprint is its own weights plus the KV cache, whose size grows with the per-token KV size, the number of retrieved contexts (top-k), and the dataset’s average context length. Table II reports the maximum tokens each model fits in 8GB: even OPT-350M tops out at 40k tokens, too few for top-4 retrieval on CuAD, and at a moderate k=5 most model-dataset pairs exceed the budget. Consequently, for a significant fraction of practical on-device RAG workloads, the precomputed KV caches must reside in storage rather than GPU memory. This storage-resident regime, which we call KV cache offloading , is critical for on-device RAG as it amplifies the I/O wall, and is the focus of the rest of this section. 
+
+B. Analysis of End-to-End On-Device RAG 
+
+Decomposing the end-to-end latency. When KV caches are offloaded to storage, both phases of RAG inference be-come I/O-bound. Decode streams the entire multi-gigabyte KV cache over the bandwidth-limited PCIe at every token step, dominating the baseline at over 64% of total latency (Figure 6, left). Prior in-storage processing (ISP) work offloads decode-phase attention to storage [24], [25], [48], but even an ideal decode-only ISP (accessing KV at full aggregate NAND bandwidth and matching the GPU’s FLOPS) merely shifts the                                         
+
+> Model # of GQA Layers Hidden KV$/token Max tokens Family Params. Dimension (KB) in 8GiB
+> OPT 125M 12 768 32 127k 350M X24 1024 96 40.0k 1.3B 24 2048 192 14.9k SmolLM 135M 1:3 30 576 22.5 180k 360M 1:3 32 960 40 95.6k 1.7B X24 2048 192 12.8k
+
+TABLE II: LLM models. 050 100 Retrieval Prefill Decode 
+
+> End-to-end Breakdown (%)
+> Baseline Decode ISP
+
+Fig. 6: End-to-end breakdown. 10k 20k 30k 40k 50k 050 100  
+
+> Prefill Latency Breakdown (%)
+> # of Context Tokens Compute I/O
+
+Fig. 7: Prefill latency breakdown. 10 1 10 2 10 3   
+
+> 10 2
+> 10 3
+> Perf. (FLOPS)
+> Op. Intensity (FLOPS/B) Systolic SIMD Systolic (Underutilized) GEMM GEMV rr
+
+Fig. 8: Roofline. bottleneck: prefill latency then inflates and negates the E2E speedup (Figure 6, right). The root cause is RAG’s selective recomputation of the precomputed KV caches. Because it requires GEMMs beyond a decode-only ISP, recomputation must run on the host, forcing a PCIe round-trip during prefill: the precomputed KV is hauled to the GPU, recomputed, written back, and re-read for the query prefill. This disjoint execution is fundamentally I/O-bound, with I/O exceeding 96% of prefill time regardless of context length (Figure 7). Accelerating on-device RAG therefore requires an end-to-end ISP that absorbs both prefill (recomputation and query attention) and decode entirely within storage, and, within the ∼3W storage power budget, a flexible microarchitecture that handles RAG’s heterogeneous execution profile without intermediate PCIe egress. 
+
+Roofline analysis. The key challenge for such an end-to-end ISP is that the RAG inference pipeline presents a het-erogeneous mix of operators with widely varying arithmetic intensities, all of which must execute within the power budget. Figure 8 presents a roofline analysis of these major operators mapped onto two conventional accelerator architectures: 2D systolic arrays and 1D SIMD arrays. For standard, dense GEMMs, systolic arrays reach near-peak compute utiliza-tion. However, their fixed two-dimensional dataflow is fun-damentally mismatched with the rest of the RAG pipeline. The most fatal degradation occurs during the decode-phase GEMV: when the sequence dimension drops to 1, the vast majority of processing elements (PEs) in a rigid 2D grid sit idle. Furthermore, processing the thin-GEMMs (due to the smaller sequence dimension of the 15% recomputation targets) required for selective recomputation exacerbates this underutilization, while handling the irregular attention masks introduces additional boundary zero-padding overhead. Under a strict 3W budget, dedicating precious silicon area to a large 2D array that remains heavily underutilized for the majority of the E2E latency is architecturally prohibitive. Conversely, SIMD-only architectures handle 1D GEMV and element-wise vector operations (e.g., softmax) efficiently, as each PE operates independently, but lack the low-cost inter-PE data forwarding necessary for dense GEMMs. Consequently, partial sums must be heavily routed through shared memory, creating an internal memory bandwidth bottleneck that severely limits the compute ceiling for projection operators. Since neither architecture alone covers the full spectrum of RAG operators, this analysis yields two architectural require-ments for an on-device RAG ISP. i) Elasticity : The ISP must switch seamlessly between parallel vector operations (GEMV) and matrix operations (GEMM). ii) Sparsity-awareness : The ISP must gracefully filter and compact irregular attention masks without incurring control or padding overheads. In the following section, we present M EM LLM, an architecture purpose-built to satisfy these requirements. IV. O VERVIEW 
+
+To mitigate the I/O wall of KV caches, we designed M EM -LLM, an in-storage processing architecture that accelerates on-device RAG by performing the full attention computation within the SSD, completely eliminating massive KV cache transfers. Our design is governed by a unified I/O minimization principle applied across three levels of the memory hierarchy: fusing operations to halve NAND read volume, distributing compute to fully exploit aggregate channel bandwidth, and confining partial reductions to on-chip SRAM to bypass the controller’s DRAM. This section presents the overall system (Section IV-A), traces the end-to-end dataflow of a RAG query (Section IV-B), and quantifies the cumulative performance contribution of each design (Section IV-C). 
+
+A. System Overview 
+
+Figure 9 illustrates the M EM LLM system, consisting of a host GPU and a M EM LLM CSSD connected via PCIe. The host GPU retains model weights in its memory and executes projection and FFN layers. M EM LLM persists all KV caches in flash, including the precomputed caches and the newly computed ones, and performs attention over them. Commu-nication with the M EM LLM SSD bypasses the conventional block I/O stack. We adopt an NVMe vendor-specific command to carry tensor metadata and DMA addresses directly to the SSD, establishing a P2P DMA path for zero-copy transfers between the GPU and the ISP (Section V-E). At the center of the M EM LLM SSD, the controller houses the Flash-Coordinator , the central scheduling engine that orchestrates multi-channel synchronization and NAND timing. The controller also contains 1MB of global SRAM partitioned into two buffers. The Q broadcast buffer holds the query matrix received from the host and serves it repeatedly to all channels at on-chip bandwidth ( 1 ). The O reduction buffer accumulates partial attention outputs from all channels via a stateful reduction engine that performs online softmax correction in place ( 2 ). The controller’s DRAM is entirely excluded from the attention data path; it remains dedicated to Flash Translation Layer (FTL) management, avoiding band-width contention and power overheads ( 3 ). Each of the N
+
+flash channels features a near-flash accelerator comprising three core components. First, the Stream Filter filters invalid tokens against the recomputation mask before data enters the compute pipeline. Second, the Elastic-SIMD cluster dynam-ically reconfigures between GEMV and GEMM execution modes using elastic datapath routing. Finally, a 72KB local scratchpad enables double-buffering of KV pages for latency-hiding via die-level pipelining. Data flows from NAND pages PCIe EP 
+
+> Channel N
+> Elastic
+> SIMD
+> Stream Filter
+> System Bus
+> Flash-
+> Coord.
+> GPU
+> MemLLM
+> PCIe
+> S. pad
+> Channel 0
+
+# ...          
+
+> Model weights
+> Precomp. KV $
+> DRAM
+> NAND
+> O-buf
+> Reduc.
+> Q-buf 1
+> 2
+> 4
+> 3
+> P2P DMA
+> Precomputed KV caches
+> Query
+> (tokens) Contexts
+> (tokens) Recomputed KV$
+> layer1
+> HKVD mask
+> OProj. FFN
+> Stream Filter Attention
+> KV Proj.
+> Compare & top-k
+> Full compute (layer0)
+> layer1
+> KV $ layerN
+> QProj.
+> Masked KV$
+> Next Layer
+> Mem LLM
+> GPU  Host
+> 15%
+> HKVD Precomp. Query
+> +Query KV$
+> +Query KV$ Baseline Fused ESIMD GR dc
+> 0.0 0.5 1.0
+> Normalized  Latency
+
+Fig. 9: MemLLM overview. Fig. 10: Dataflow of fused attention kernel. Fig. 11: Waterfall. directly into this per-channel accelerator without traversing any shared internal SSD bus, ensuring that the aggregate channel bandwidth is fully dedicated to computation ( 4 ). 
+
+B. End-to-End Dataflow 
+
+The selective-recomputation-based prefill comprises three steps: i) identifying the HKVD tokens, ii) recomputing the KV cache of these HKVD tokens, and iii) performing prefill for the user query using both the precomputed and recomputed KV caches. To execute these steps simultaneously without re-reading the KV caches, M EM LLM introduces a fused attention kernel . Figure 10 illustrates the end-to-end flow of this fused kernel. At the start of inference, the host uses the query and the retrieved-context tokens to fully compute the first decoder layer (layer 0), thereby obtaining the KV vectors of layer 1. It then reads the precomputed KV cache of the contexts from storage. Because only the layer-1 KV cache is read at this stage, less than 5% of the total KV cache is transferred. The host compares the newly computed KV cache against the precomputed KV cache, computes the token-wise deviation and selects roughly 15% of the tokens with the largest deviation as HKVD tokens. The mask of these HKVD tokens is transmitted to M EM LLM to initialize the Stream Filter. Here, the recomputation ratio (5–18% [20]) is a static, user-determined hyperparameter that controls the trade-off between generation quality and compute cost. In the same pass that handles the HKVD recomputation targets, M EM LLM’s fused kernel also performs the attention for the new user query; through the iterative computation of subsequent layers, the KV caches of both the HKVD tokens and the query are obtained in a single pass. To this end, the host recomputes the KV cache of the HKVD tokens selected in the previous layer and transmits it, together with the query’s KV cache, to M EM LLM. MEM LLM then combines this host-supplied data with the precomputed KV cache read from flash utilizing the Stream Filter logic into masked KV cache. It then performs the attention computation and returns the result to the host; the internal datapath that carries out this computation, comprising channel-parallel tiling, per-channel compute, and DRAM-less on-chip reduction, is detailed in Section V. At this point, the KV caches received from the host are stored out-of-place in flash and later used for the decode computation. Note that the original precomputed KV cache is preserved unmodified, since it is needed when processing other queries in the future. Based on the attention result computed by M EM LLM, the host performs the projection and FFN computations to produce the KV cache of the next layer; this process repeats for as many layers as the model has, computing the KV caches of the HKVD tokens and the query tokens across all layers in a single iteration. Crucially, the bulk precomputed KV cache never leaves the SSD; only the compact Qf used , the host-recomputed KV subset, and the returned Of inal cross the PCIe bus. The egress thus stays at an O(1) footprint regardless of context length, whereas storage-offloading baselines must repeatedly stream the full O(N ) KV cache. 
+
+C. Performance Improvement Analysis 
+
+Figure 11 quantifies the cumulative contribution of each microarchitectural design through a waterfall analysis of the end-to-end RAG latency. The Baseline bar represents the on-device RAG system with precomputed KV caches under storage offloading, as characterized in Section III-B. Starting from the baseline, we apply each design incrementally. Note that the host-side HKVD identification that constructs the jagged attention mask is a fixed cost embedded in the end-to-end latency of every bar, including the Baseline . By fusing recomputation and query attention into a single NAND-read pass ( Fused Kernel ), M EM LLM eliminates the redundant KV re-read, halving the prefill read volume for a 38% latency reduction. Distributing Elastic-SIMD accelerators to each channel endpoint further eliminates the internal bus bottleneck, delivering the full aggregate NAND bandwidth directly to the compute units ( Elastic-SIMD ). Concurrently, the Stream Filter suppresses the 15% of invalid tokens before they con-sume compute cycles. Coupled with the elastic datapath that maintains high PE utilization across both GEMV and GEMM workloads, this distributed architecture provides an additional 39% latency reduction. The Flash-Coordinator’s DRAM-less reduction engine merges per-channel partial outputs within global SRAM ( Global Rdc ), operating at on-chip band-width without FTL contention. PCIe traffic is thus bounded to Qf used and Of inal (∼512KB) regardless of context length, contributing a further 63% latency reduction and reaching 86% of the aggregate-NAND-read minimum. Collectively, these three design principles reduce the end-to-end RAG latency by 7.1 × compared to the baseline. V. D ESIGN AND IMPLEMENTATION 
+
+Building upon the I/O minimization principles established in Section IV, this section details the microarchitectural imple-mentation of M EM LLM. We first present the fused kernel and HKVD  Precomp.  Query  
+
+> Channel N Channel 0
+
+...  Precomp.   
+
+> KV caches Out-of-Place
+> KV caches
+> Stream Filter
+> S. pad HKVD
+> mask
+> Elastic-SIMD GEMM/
+> GEMV
+> Prefill
+> Decode
+> Qfused
+> Channel N
+> Flash
+> Coord.
+> S. pad Qbuf Jagged Attention
+> tile
+> Channel-Parallel Tiling
+> Max local
+> Sum local
+> Opartial
+> Reduc.
+> Engine Obuf
+
+Fig. 12: MemLLM internal dataflow. 
+
+(a) Channel-parallel tiling. (b) Per-channel compute. 
+
+its internal dataflow, followed by the Elastic-SIMD microar-chitecture, the NAND-aware tiling algorithm, the DRAM-less dataflow, and finally the full-stack software integration. 
+
+A. Fused Kernel and Internal Dataflow 
+
+MEM LLM executes both the GEMM-based fused attention kernel of prefill and the GEMV-based decode kernel on its per-channel Elastic-SIMD, keeping the bulk KV cache resident in flash and off the PCIe bus throughout inference. Figure 12 details the internal dataflow of each kernel. 
+
+Fused kernel. For the fused kernel, the host supplies the query vectors of the HKVD recomputation targets and the new query tokens, which are stacked into a single dense query matrix 
+
+Qf used and transmitted together with a bitvector we call the 
+
+jagged attention mask . The kernel scores Qf used against the concatenated K vectors, i.e., the precomputed context K, the recomputed HKVD K, and the new query K, gated by this mask. The jagged attention mask captures the hybrid causal structure of Qf used : the upper rows correspond to a discontin-uous subset of original sequence positions (the HKVD targets), so their causal boundaries do not form a standard lower-triangular matrix but shift abruptly with each token’s absolute position, producing a irregular, jagged staircase; the lower rows, representing the new query, take a standard dense mask over the entire context. The Elastic-SIMD applies this mask during the in-situ softmax to guarantee causal correctness. 
+
+Channel-parallel tiling. Since the KV cache resides per channel in flash, M EM LLM parallelizes this score compu-tation along the K dimension: as Figure 12a shows, each channel evaluates the jagged-masked scores for the KV slice it stores, an interleaved mix of precomputed-context and HKVD contexts. Because every channel must see the full query, the Flash-Coordinator deposits Qf used into the Q broadcast buffer (Qbuf ) and broadcasts it to all channels; a tile then pairs one KV page with a Qf used tile. The decode kernel reuses the identical tiling with Qf used collapsed to a single query row (GEMV). Overall, M EM LLM is a faithful hardware realization of CacheBlend[20], not an approximation: its tile-by-tile fused kernel and online-softmax reduction merely reorder otherwise-identical computations, so the output matches a software CacheBlend execution up to floating-point rounding, with negligible downstream accuracy impact (Section VI-B). 
+
+Per-channel compute. Within a channel (Figure 12b), two scratchpad regions feed the datapath: one buffers the original precomputed KV streamed directly from flash, while the other Cascade Mode      
+
+> Broadside Mode
+> PE PE
+> PE PE PE
+> PE
+> PE PE
+> PE PE PE
+> PE MAC Unit
+> Vector
+> ALU
+> Exp
+> SFU
+> Reg
+> File
+> Elastic-SIMD PE
+> Mode
+> Router
+
+Fig. 13: Elastic SIMD. 
+
+(a) Dual mode. (b) Router. (c) Internal PE. 
+
+holds the out-of-place KV, namely the newly written entries: the recomputed HKVD KV, the new query’s KV, and the KV of tokens produced during decode. Guided by the 1D 
+
+HKVD mask , the Stream Filter merges the two into a single dense masked-KV tile, substituting the recomputed entries at the HKVD positions and dropping the masked-out ones, and forwards it to the Elastic-SIMD. Each channel emits a partial output Opartial with its local softmax statistics (Max local ,Sum local ), which the Flash-Coordinator’s reduction engine accumulates in the O reduction buffer ( Obuf ) via log-sum-exp correction before the final Of inal is returned to the host. 
+
+Write latency hiding. The recomputed HKVD, query, and decode KV that the host ships back are persisted to flash, yet stay off the critical path.Appended out of place rather than updated in place, they leave the original precomputed KV untouched and reusable across requests with a different HKVD subset, and incur no read-modify-write. During the fused pass the attention runs in situ in the Elastic-SIMD registers, freeing the NAND write path, so the controller streams the appends in the background, overlapped with the host GPU’s next-layer projection and FFN, and the flash’s modest write bandwidth absorbs them (Section VI-B). Decode appends only one token’s KV per step, which is negligible. 
+
+B. Elastic-SIMD Microarchitecture 
+
+To execute the heterogeneous RAG pipeline within a strict 
+
+∼3W storage power envelope, we designed Elastic-SIMD , a highly reconfigurable compute fabric situated at each NAND channel endpoint. Figure 13 details its internal organization. Unlike rigid 2D systolic arrays, the Elastic-SIMD is a 1D array of Processing Elements (PEs) – e.g., 128 to match the attention head dimension – over a reconfigurable routing network.A per-PE router (Figure 13b) toggles two dataflows on a single mode signal: broadside mode runs all PEs in parallel across the sequence to stream 1D KV vectors (GEMV) for decode, whereas cascaded mode forwards data row-to-row to reuse operands for the fused kernel’s thin-GEMMs (prefill), giving systolic-like efficiency without the rigid 2D area overhead. To avoid spilling intermediate matrices to shared memory for the non-linear operations, each Elastic-SIMD PE couples its multiply-accumulate (MAC) units with an in-situ vector ALU (Figure 13c): row-wise reduce-max/-sum comparators and an LUT-based exponential unit let the Elastic-SIMD run the entire online-softmax correction within its registers, without stalling the MAC pipeline. C. NAND-Aware Tiling Algorithm 
+
+The fused kernel must be tiled onto the hardware while re-specting the physical constraints of NAND flash. Algorithm 1 outlines M EM LLM’s NAND-stationary tiling strategy. 
+
+Page-aligned K/V tiles. To maximize aggregate bandwidth, the KV cache is interleaved across channels at a page gran-ularity. Since NAND reads whole pages (e.g., 16KB) and, at FP16 precision with head dimension d = 128 , a 16KB page accommodates exactly 32 tokens worth of both K and V vectors, M EM LLM fixes the K/V tile size Tk to 32 tokens. This ensures that every NAND read perfectly aligns with the page boundary without wasting interface bandwidth. 
+
+K-stationary, Q-streaming loop order. As shown in Line 3– 4, the loop is structured with KV pages in the outermost loop. Each KV page is fetched from NAND exactly once into the local scratchpad, remaining stationary while Q tiles are streamed through it. Since Qf used is globally broadcasted from the controller’s SRAM to all channels simultaneously, the high-bandwidth SRAM interconnect easily hides the broadcast latency behind the slower NAND reads. 
+
+Die-level pipelining. A NAND page read consists of a sensing phase ( tR, 5-20 μs) and a transfer phase ( tOut , a few μs). By striping consecutive token groups across multiple dies in a round-robin fashion, M EM LLM establishes a three-stage pipeline. While die i performs tR, die i−1 executes tOut , and the Elastic-SIMD processes the page from die i−2. Utilizing double-buffered local scratchpads, this die-level pipelining completely hides the dominant tR latency. At the coarser inter-layer granularity, M EM LLM further overlaps the NAND reads for layer l+1 with the host-side projection and FFN computation of layer l, hiding the remaining inter-layer latency across the multi-layer pipeline. 
+
+D. DRAM-less Elastic-SIMD Dataflow 
+
+The Elastic-SIMD runs each tile through three register-resident phases (Algorithm 1, Line 7–13) designed to eliminate intermediate SRAM traffic. Initially, it operates in an output-stationary mode (Phase 1): it computes Atile = Qtile × KTpage 
+
+directly into accumulator registers. Without spilling Atile to the scratchpad, the hardware transitions to the in-situ partial-softmax phase (Phase 2). The coupled vector ALU reduces each row to its local maximum, applies the exponential, and 
+
+Algorithm 1: NAND-Stationary Tiling & Fusing                                                                 
+
+> 1Input: Qf used in Global SRAM, KV pages in NAND
+> 2Output: Of inal to Host GPU
+> 3foreach NAND Channel cin parallel do
+> 4foreach KV page Pkv (Kpage , V page )in cdo
+> 5Load Pkv into Local Scratchpad Sc
+> 6foreach Qtile ∈Qf used broadcasted from Global SRAM do
+> 7// Phase 1: Output-Stationary
+> 8Atile ←Qtile ×KTpage // Accumulate in Regs
+> 9// Phase 2: In-situ Partial Softmax
+> 10 Ptile , m loc , ℓ loc ←Vector ALU (Atile )
+> 11 // Phase 3: Input-Stationary
+> 12 Opart ←Ptile ×Vpage // Repurpose Regs
+> 13 Send (Opart , m loc , ℓ loc )to Flash-Coordinator
+> 14 // Phase 4: Global Reduction (Flash-Coordinator)
+> 15 Of inal ←Online Softmax Reduction (Opart , m loc , ℓ loc )
+> 16 return Of inal
+
+reduces again for the sum, turning Atile into the partial probability matrix Ptile plus the local max/sum scalars of online attention [37], [38]. Next, the architecture undergoes a dynamic input-stationary transition (Phase 3). The Ptile is repurposed as a fixed input operand within the registers. The accumulator registers are then reassigned to the output space of Opartial . As the Vpage vectors stream from the scratchpad, they are multiplied against the stationary Ptile . Whereas a con-ventional design would write Atile to the scratchpad and read it back, this in-register datapath produces Opartial with zero intermediate SRAM writes. Finally, the Flash-Coordinator (Phase 4) merges the partial outputs via stateful log-sum-exp reduction entirely within its 1MB global SRAM; since 
+
+Qf used and Of inal both fit on-chip, the controller’s DRAM is bypassed and left undisturbed for FTL operations. 
+
+E. MemLLM Software Stack 
+
+MEM LLM is realized through a full-stack system de-sign, which bridges the gap between tensor-level ML frame-works and block-level storage interfaces. Because conventional POSIX I/O stack operates on logical block addresses and strips the semantics required for tensor offloading, M EM LLM bypasses the virtual file system (VFS) and block layer through the NVMe passthrough interface ( NVME_IOCTL_IO_CMD )with a vendor-specific command, CMD_FUSED_ATTN . Note that, since the irregular recomputation mask can exceed several kilobytes for long contexts, it cannot fit within a standard 64-byte submission queue entry (SQE). The SQE instead carries a lightweight handle to the KV-cache layout together with the physical DMA addresses and lengths of the mask bitvector and Qf used , letting the controller fetch every operand by zero-copy peer-to-peer DMA with no OS context switch. To avoid bounce-buffer copies through host DRAM, M EM LLM uses the Linux dma-buf framework: the kernel driver maps the GPU VRAM holding Qf used into the NVMe driver’s DMA mappings, the controller reads it directly into global SRAM over a P2P PCIe transaction, and Of inal returns along the same path. Finally, M EM LLM exposes these capabilities transparently to application developers via a PyTorch C++ ex-tension ( torch.ops.memllm ) that extracts the raw tensor pointers and submits the NVMe commands through Linux 
+
+io_uring asynchronous I/O. Because io_uring is non-blocking, it lets the host GPU overlap its projection and FFN compute with the storage-side attention, and on the completion interrupt (CQE), it resolves the pending future and returns the completed tensor directly into the PyTorch computation graph. VI. E VALUATION 
+
+A. Methodology 
+
+Prototyping and simulation. We prototyped the Elastic-SIMD microarchitecture based on Chisel [49] using the Chip-yard [50] framework. For comparison, the reference acceler-ator designs were prototyped using Hwacha [51] for SIMD arrays and Gemmini [52] for systolic arrays. All designs were implemented on a 16nm FPGA [31] to extract cycle counts, area, and power metrics, ensuring that the distributed Elastic-SIMD clusters and the Global Accumulator operate well within the 3W power envelope of an edge SSD controller. To estimate the area overhead of M EM LLM, we used CACTI [53] and Synopsys Design Compiler at the 45nm process node. In MEM LLM’s per-device flash coordinator, the buffer occupies more than 99% of the area, accounting for 1.6mm 2. The per-channel accelerator consists of i) the Elastic-SIMD, ii) the Stream Filter, and iii) the scratchpad, occupying 0.11mm 2,0.023mm 2, and 0.06mm 2, respectively. Elastic-SIMD is ap-proximately 4.2 × larger than AiF’s PE (0.026mm 2), as it supports high-bandwidth GEMM and attention operations in addition to GEMV. Although MEM LLM includes a flash coordinator and a larger PE, its total area is smaller (0.68 ×)due to its per-channel design compared to per-chip (AiF). To evaluate end-to-end performance, we developed a com-prehensive trace-driven, cycle-level simulator that integrates both host and storage models. To accurately model host GPU execution time, we natively profiled the LLM inference on an NVIDIA Jetson Orin NX using PyTorch, recording the exact latency of each CUDA kernel. Operations offloaded to the ISP were simulated using the cycle-accurate performance models derived from our hardware prototypes. Data transfer latencies between the GPU and the SSD were incorporated by empiri-cally measuring the PCIe interface delays on the host system. Finally, we integrated SimpleSSD [33] to faithfully model the internal storage dynamics, including NAND flash read latencies ( tR, tOut ), die-level pipelining overlap, and channel bandwidth constraints.The Jetson Orin NX ships in 8GB and 16GB modules, and we evaluate on the 16GB module. Because the Orin, like recent edge SoCs and smartphones, adopts a unified memory architecture in which the OS and applications jointly share the physical capacity [57], dedicating the full 16GB to inference is unrealistic; we therefore conservatively assume that roughly 8GB is available to the RAG workload. We further analyze the sensitivity to this budget by sweeping the available host memory in Section VI-D. 
+
+Models and datasets. We evaluated the same model and dataset configurations described in Section III. LLM models include OPT [46] and SmolLM2 [47] in FP16 precision, cover-ing both GQA and non-GQA variants (Table II). RAG work-loads are drawn from eight datasets spanning four domains (Table I). Selective recomputation follows the algorithms from CacheBlend [20] with a default recomputation ratio of 15%, and top-k=5 retrieval unless stated. 
+
+Compared systems. We compared M EM LLM against four baselines and evaluated four ablation configurations. Table IV Elasc SIMD Core 
+
+Reference MemLLM 
+
+Fig. 14: Floorplan.                      
+
+> HW/SW Configurations
+> NVIDIA Jetson Orin 16GB [32]
+> Linux kernel v5.15 CUDA [54] v12.6.10
+> Pytorch [55] v2.8.0 CuDNN [56] v9.3
+> SimpleSSD Configurations # ch. 10 # way 4NAND type TLC tR5-20 μs
+> # die 4# plane 1Page size 16KB tP R 500 μs
+
+TABLE III: Evaluation setup. summarizes how each system partitions the RAG pipeline, i.e., where it places the model weights, KV cache, and attention computation, together with its CSSD organization and sup-ported operations. GPU-FullCompute is the baseline. The GPU performs full prefill over raw context tokens without precomputed KV caches. KV caches generated during prefill are offloaded to the SSD; the decode phase reads them back over PCIe each iteration. GPU-PreCompute is the baseline with precomputed KV caches, loaded from the SSD; the GPU then performs selective recomputation. Both GPU baselines adopt FlexGen-style KV offloading [28], staging KV caches in idle host DRAM to avoid redundant SSD round-trips whenever capacity permits, and prefetching them to overlap SSD-to-host transfers with computation. As shown in Section III-A, the I/O overhead of loading precomputed KV caches can negate the computational savings on-device. InstAttention [24] adopts a decode-only ISP that offloads decode-phase attention to the storage device, eliminating decode-time KV transfers over PCIe. However, prefill (including recomputation) remains on the host GPU, triggering a massive PCIe round-trip of the KV cache. AiF [29] is an in-flash processing architecture that places model weight computation in the storage device while performing attention on the host GPU. Because the KV cache resides in GPU memory, it achieves strong performance when contexts fit in memory, but encounters fatal out-of-memory (OOM) errors for long contexts. For MEM LLM, we evaluate the full system and three intermediate ablation configurations to isolate the contribution of each design choice. MemLLM-Base adopts a single, cen-tralized Elastic-SIMD accelerator within the SSD controller that performs end-to-end RAG attention. KV caches are read from NAND through the internal SSD bus. MemLLM-Fused 
+
+adds the fused recomputation-query kernel (Section V-A), halving the NAND read volume by processing recomputation and query attention in a single pass. MemLLM-PerCh further distributes the Elastic-SIMD across per-channel endpoints (Section V-B), eliminating the internal bus bottleneck and exploiting aggregate NAND channel bandwidth. The total compute budget ( ∼3W) is preserved. Finally, MemLLM adds the Flash-Coordinator with the global SRAM accumulator and stateful reduction engine (Section V-D), enabling DRAM-less operation and completely eliminating PCIe egress bottlenecks. 
+
+B. Overall Performance 
+
+Overall speedup. Figure 15 presents the end-to-end RAG inference speedup of all systems, normalized to the 
+
+GPU-FullCompute baseline, across eight datasets. Over-                       
+
+> Arch. Name Model Weight KV$ Attention Compute CSSD Type Supported ops. Baseline GPU SSD GPU --
+> InstAtt [24] GPU CSSD CSSD Per-device Sparse attention
+> AiF [29] CSSD GPU GPU Per-chip GEMV
+> MemLLM (Ours) GPU CSSD CSSD Per-channel GEMV/GEMM Dense/Sparse attn.
+
+TABLE IV: Comparison of compared systems. tat fin hpt web wik prv cov cad 024      
+
+> Overall  E2E Speedup
+> Datasets
+> GPU -FullC ompute GPU -PreC ompute InstAttention AiF MemLLM -Base MemLLM -Fused MemLLM -PerC hMemLLM
+> OOM OOM OOM
+> 0123
+> MemLLM  Avg. Power  (W)
+
+Fig. 15: End-to-end speedup and average power. all, MemLLM achieves an average speedup of 4.06 × over the GPU baseline and 4.18 × over GPU-PreCompute , out-performing all compared systems across every dataset. The datasets were sorted in order of the average context length. 
+
+GPU-PreCompute performs slightly worse than the baseline as the context size increases, exhibiting an average perfor-mance drop of 2.86%. This confirms the I/O wall identified in Section III-A: the massive PCIe transfer overhead of loading the precomputed KV caches outweighs the computational savings of prefill offloading. Both InstAttention and AiF leverage ISP designs to minimize KV cache movement during the decode phase, achieving average speedups of 1.61 × and 1.17 ×, respec-tively. Notably, both systems still require the precomputed KV cache to be transferred to the host for prefill, meaning they remain fundamentally bottlenecked by the PCIe round-trip overhead required for selective recomputation. Beyond this shared prefill bottleneck, they exhibit distinct limitations during the decode phase due to their fundamentally oppo-site offloading strategies. InstAttention offloads the KV cache to the ISP while keeping model weights in the host GPU. While this enables the system to handle long contexts without memory capacity issues, its decode performance is ultimately restricted; as the context grows, streaming the mas-sive KV cache internally within the SSD becomes bottlenecked by the device’s internal system bus and DRAM bandwidth. Conversely, AiF offloads model weights to the ISP while retaining the KV cache in GPU memory. This allows AiF 
+
+to exploit high-bandwidth VRAM reads for the KV cache during each decode iteration. Consequently, as the context length increases, AiF delivers significantly higher speedups compared to InstAttention . However, AiF is strictly bounded by the GPU’s memory capacity, resulting in fatal Out-Of-Memory (OOM) errors for datasets with longer contexts (e.g., prv , cov , cad ). MEM LLM systematically resolves these bottlenecks through its cumulative I/O minimization design. 
+
+MemLLM-Base eliminates the precomputed KV cache PCIe transfers entirely by executing the selective recomputation directly within the ISP. This provides an average speedup of 1.80 × compared to baseline. MemLLM-Fused utilizes the fused kernel to effectively halve the NAND access volume, yielding an additional 1.11 × speedup, on average. 
+
+MemLLM-PerCh exploits the aggregate NAND channel bandwidth thanks to its distributed per-channel accelerators, providing an additional 1.82 × speedup, on average. Finally, 0 1 2 3 4 5 6050 100 050 100 050 100 050 100  
+
+> GPU  Utilization  (%)
+> GPU -Pre MemLLM
+> Time (sec)
+> PC Ie  BW Util.  (%) NAN D BW Util.  (%)
+> 0.48 0.50 Accuracy F1-Score
+> Score
+> GPU MemLLM
+> GPU -Full GPU -Pre ISP-D ecode MemLLM
+> 04812
+> PCIe Traffic  (GB)
+
+Fig. 16: Accuracy. Fig. 17: PCIe traffic. Fig. 18: Timeseries. the full MemLLM incorporates a global reduction logic, preventing intermediate partial outputs (Opartial ) from spilling into the storage’s internal DRAM. This DRAM-less execution provides the final performance leap of 1.12 ×, on average, maximizing the end-to-end speedup. 
+
+Average power. The right y-axis of Figure 15 shows the aver-age power consumption of M EM LLM for each dataset. Based on the operating power measured on the FPGA, M EM LLM consumes 2.12W on average and 2.55W at peak, well within the 3W power budget. As the power differs by up to 1.9 ×
+
+between the compute-intensive fused recomputation kernel and the memory-intensive decode kernel, the average power varies in proportion to the prefill-to-decode time ratios among datasets. Since the large parasitic capacitances and constant leakage of the programmable FPGA fabric are absent from the fixed wiring and dedicated logic of an ASIC, the deployed power is expected to drop well below this measurement [58]. 
+
+Accuracy. As discussed earlier, M EM LLM performs mathe-matically the same computation as CacheBlend, differing only in the order of operations (Section V-A). Figure 16 reports the downstream task (TriviaQA) accuracy and F1-score of the baseline and M EM LLM. The results show that M EM LLM exhibits a difference of less than 0.3% on both metrics, within the margin of error. In terms of F1-score, this is 1.35 × smaller than the 0.002 deviation reported by CacheBlend. 
+
+PCIe traffic reduction. Figure 17 quantifies the total PCIe data transferred during a single RAG inference. Both 
+
+GPU-Full and GPU-Pre suffer massive decode-phase PCIe traffic from continuously offloading and reloading the KV cache, and GPU-Pre aggravates this by additionally loading the entire precomputed KV cache from storage during prefill. Both ISP-Decode architectures (InstAttention and 
+
+AiF ) eliminate the decode-phase KV cache movement, but since they cannot process the sparse recomputation internally, they stream the precomputed KV cache across PCIe twice during prefill: once for selective recomputation and again for query attention. MemLLM virtually eliminates this bottleneck. To generate the initial recomputation mask at the host, it only fetches the first layer’s precomputed KV cache ( <5% of the total volume); thereafter, the only data crossing PCIe are the lightweight query vectors ( qnew ) and final attention outputs ( Of inal ) of each decode step. The final PCIe footprint is near-zero, confirming that M EM LLM decouples the PCIe bandwidth requirement from context length. 
+
+Utilization. Figure 18 shows the GPU and PCIe/NAND bandwidth utilization of GPU-Pre and MemLLM over time. Naive Pipelined    
+
+> 0510 15 20
+> Achieved  NAND Bandwidth  (GB/s)
+> Ideal
+> Base Fused PerC hMemLLM
+> 0.0 0.1 0.2 0.3 0.4
+> Prefill  Latency  (s)
+> NAN DComp
+> Base Fused PerC hMemLLM Base Fused PerC hMemLLM
+> 0.0 0.5 1.0
+> Normalized DRAM  Traffic
+> PC Ie ISP hpt wik
+
+Fig. 19: Ablation analysis. 
+
+(a) Prefill breakdown. (b) DRAM traffic. (c) NAND Pipelining. 
+
+GPU-Pre aggressively prefetches the KV cache from storage and saturates nearly 100% of the PCIe bandwidth. However, even with the PCIe link fully utilized, this bandwidth is insufficient to keep the GPU fed, so the GPU idles waiting for the data movement, its utilization dropping close to 0%. In contrast, MemLLM eliminates the data movement over PCIe and saturates aggregated NAND bandwidth inside the SSD, completing the same task approximately 4 × faster. During the initial fused HKVD recomputation, MemLLM incurs NAND write I/O for the newly computed KV caches. However, during the recomputation phase, MemLLM ’s GPU utilization reaches 100%. This indicates that even the low write bandwidth of NAND is sufficient to keep the GPU from stalling. 
+
+C. Ablation Analysis 
+
+Prefill latency breakdown. Figure 19a decomposes the prefill latency of each M EM LLM configuration into exposed NAND read time and computation time, where the latter includes the data movement overhead of accessing the SSD’s inter-nal DRAM. MemLLM-Base is heavily bottlenecked by the exposed NAND latency. The fused kernel ( MemLLM-Fused )halves the NAND read time by co-processing selective recom-putation and query attention in a single pass, while computa-tion time stays roughly constant. Distributing to the channel endpoints ( MemLLM-PerCh ) exploits the aggregate NAND channel bandwidth and dramatically collapses the exposed NAND time, but reveals a bottleneck shift: as the concurrent per-channel accelerators simultaneously stream their partial outputs ( Opartial ) to the controller, they flood the SSD’s lim-ited internal DRAM, and the resulting read-modify-write con-tention inflates the compute latency; showing that parallelizing the compute fabric alone is insufficient without redesigning the reduction dataflow. The full MemLLM resolves this with its DRAM-less design: accumulating the partial outputs in-situ in the global SRAM reduction logic bypasses the DRAM and restores optimal latency, while die-level pipelining overlaps the remaining NAND reads with computation to hide the NAND latency almost completely (evaluated in detail shortly). 
+
+DRAM transfer analysis. Figure 19b presents the normalized DRAM traffic within the SSD controller, decomposed into PCIe transfer buffering and ISP computation overhead. We compared hpt and wik as representative short- and long-context datasets. In MemLLM-Base , the centralized Elastic-SIMD must read the entire precomputed KV cache from NAND into internal DRAM before processing, generating massive traffic. The fused kernel ( MemLLM-Fused ) reduces 2 4 6 8 10 12 0.0 0.2 0.4 0.6             
+
+> Prefill  Latency  (s)
+> tK (# of tokens)
+> Latency SR AM 012
+> Total  SRAM  (MB)
+> 510 15 20 25 0.0 0.5 1.0
+> Norm.  Latency
+> Recompute Ratio (%)
+> Compute SR AM I/O
+> SIMD+Sy stolic
+> Ela stic MemL LM
+
+Fig. 20: Sensitivity analysis. 
+
+(a) Recompute ratio. (b) Tile size. 
+
+NAND read passes, but intermediate results still thrash the DRAM, keeping the I/O footprint high. Distributing compute to the channels ( MemLLM-PerCh ) offloads KV cache pro-cessing to the endpoints, eliminating central KV staging, but the resulting DRAM traffic diverges drastically with context length. For short contexts ( hpt ), the K matrix needs fewer tiling iterations, producing few partial outputs ( Opartial ) and thus a significant traffic drop. However, for long contexts (wik ), extensive K tiling floods all channels with Opartial 
+
+vectors, and the repeated read-modify-write required to ac-cumulate them explodes the controller’s DRAM traffic, even surpassing Base . The full MemLLM resolves this: the central Flash-Coordinator processes the Opartial vectors in-situ in a global SRAM buffer, and this DRAM-less accumulation eradicates the computation-related traffic, leaving only the minimal baseline PCIe transfer I/O (for Qf used and Of inal ). 
+
+Pipeline efficiency. Figure 19c quantifies die-level pipelin-ing in the distributed Elastic-SIMD accelerators, comparing the achieved aggregate NAND bandwidth between a naive sequential execution and the proposed three-stage pipelined execution using double-buffered local scratchpads. Under the naive approach, the NAND sensing time ( tR) is exposed to the critical path, frequently stalling the compute units and drop-ping the bandwidth to nearly half the theoretical maximum (∼11 GB/s). The pipelined execution overlaps NAND laten-cies with computation of previously fetched KV pages; this double-buffering completely hides the read latencies behind the compute, pushing effective throughput to ∼19 GB/s. 
+
+D. Sensitivity and Scalability Analysis 
+
+Recomputation ratio. Figure 20a evaluates the impact of the recomputation ratio (5%–25%) on compute and SRAM I/O latency across three architectures under a fixed power budget. The decoupled SIMD+Systolic baseline suffers from massive SRAM I/O to exchange intermediate results between disparate compute units, alongside degraded effective FLOPS due to resource division. Elastic drastically reduces this SRAM traffic via register-centric stationary dataflows and in-situ operations. However, applying the recomputed tokens from the host to the precomputed KV cache still incurs SRAM staging overhead. MEM LLM’s full design (Elastic-Filter ) resolves this by utilizing the hardware Stream Filter to fuse recomputed KV entries on-the-fly during NAND loading. This completely eliminates the remaining SRAM bottleneck, ensuring minimal latency and robust effi-20k 40k 60k 80k 0.0 0.5 1.0 
+
+> Normalized Prefill Latency
+
+Context Length (toks) 
+
+Computation I/O Baseline MemLLM 
+
+> Baseline MemLLM
+
+020 40 
+
+> PCIe Traffic (GB)
+
+10 20 30 40 024
+
+> E2E Speedup
+
+Answer Length (toks) 
+
+GPU-Pre InstAtt AiF MemLLM 2 4 6 8 10 12
+
+> Norm. Throughput
+
+# of NAND ch. 
+
+MemLLM InstAtt GPU Fig. 21: Scalability analysis. 
+
+(a) Context length. (b) Answer length. (c) NAND channels. 
+
+ciency across a wide range of recomputation ratios, including the 18% suggested by CacheBlend [20]. 
+
+Tile size. Figure 20b sweeps the KV tile size ( tK ) to eval-uate its impact on prefill latency and total SRAM capacity. Increasing tK lets the Elastic-SIMD process larger compute batches at once, better hiding the exposed NAND read latency and reducing prefill time, but the required SRAM scales linearly with it. The latency improvement saturates beyond 
+
+tK = 12 , where the total SRAM footprint (aggregated across all channels) reaches approximately 2MB. 
+
+Context length. Figure 21a evaluates prefill latency and PCIe traffic as context length increases. As context grows, the number of tokens requiring recomputation rises proportionally, yielding a denser GEMM workload that the baseline runs faster on its high-performance host GPU than M EM LLM’s power-constrained storage accelerators. However, this compute advantage is entirely eclipsed by I/O: as shown on the right y-axis, the baseline’s PCIe traffic scales linearly with context length, whereas M EM LLM confines all KV cache process-ing within storage, maintaining a strict O(1) PCIe footprint regardless of context size. Consequently, while M EM LLM’s compute time scales with the workload, eliminating the I/O wall lets it support the maximum context windows of modern LLMs without being bottlenecked. 
+
+Answer length. Figure 21b evaluates end-to-end speedup as the generated answer length scales, where the de-code phase takes a larger fraction of inference time. Both 
+
+InstAttention and AiF eliminate decode-phase PCIe transfers through their ISP designs, yielding significant speedups over the GPU-Pre baseline; AiF scales especially well here by retaining the KV cache in high-bandwidth VRAM to minimize per-token decode latency. However, MemLLM 
+
+continues to dominate: although it must stream the KV cache from NAND flash during decode, its distributed per-channel Elastic-SIMD accelerators meet the throughput requirement by exploiting aggregate NAND channel bandwidth. Compounded with its prefill-phase savings, MemLLM sustains the highest end-to-end speedup across all evaluated answer lengths. We further evaluate longer-answer scenarios in Figure 23. 
+
+Channel count. Figure 21c evaluates normalized decode throughput as the number of NAND channels increases. The 
+
+GPU baseline stays flat regardless of storage parallelism, as its performance is throttled by the external PCIe bandwidth. 
+
+InstAtt bypasses this PCIe bottleneck during decode but saturates quickly, as its centralized ISP design shifts the bottleneck to the SSD’s internal system bus. In contrast, 020 40 60             
+
+> E2E  Latency  (s)
+> Contex tLength
+> Decode Prefill 16k AiF MemLLM
+> OOM OOM
+> 32k 48k 64k
+> 050100
+> E2E  Breakdown  (%)
+> Retriev al Others Retriev al Methods
+> GPU-Pre
+> HNSW EN NSGraph Linear Rerank M-hop
+> Me mLLM
+> Top-K Graph Iter. 810 12 14 16 0510
+> E2E  Latency  (s)
+> Host DRAM (GB)
+> GPU -Full GPU -Pre MemLLM
+
+Fig. 22: Memory capacity. Fig. 23: Long-answer scenario. Fig. 24: Retrieval methods. 
+
+MemLLM scales near-linearly: by distributing Elastic-SIMD compute units directly to the channel endpoints, it utilizes the aggregate NAND bandwidth without internal contention. 
+
+Host DRAM scalability. Figure 22 reports the end-to-end latency as the host DRAM capacity is increased from 8GB to 16GB. Even at 16GB of host memory, ME M LLM maintains a 1.83 × performance advantage over the baseline. Since 
+
+ME M LLM keeps its host memory usage to a minimum, its latency remains constant. In contrast, the GPU-Full and 
+
+GPU-Pre baselines improve progressively with host memory capacity, as their FlexGen-style offloading keeps a larger fraction of the KV cache GPU-resident and thereby moves less over PCIe per iteration. Under the realistic shared-memory budget established in Section VI-A, the KV cache cannot fully reside in memory for long contexts, so PCIe transfers remain unavoidable for the baselines. 
+
+Long-answer scalability. Figure 23 extends the answer-length analysis (Figure 21b) to a long-answer regime, sweeping the context length with the answer length fixed at 100 tokens. Here the decode phase dominates, so AiF’s high-bandwidth VRAM-resident KV cache lets it degrade more gracefully than MEM LLM as the context grows. This advantage, however, comes with a capacity trade-off: since AiF stages the entire KV cache in GPU memory, the processable context is bounded to below 48k, whereas the crossover point would only arise at still larger contexts. Across the range that both systems can serve, M EM LLM retains its advantage, while supporting the longer contexts that exceed AiF’s memory budget. 
+
+Retrieval methods. To demonstrate that M EM LLM is not confined to a single top-k similarity search, we evaluate three classes of retrieval methods in Figure 24, decomposing the end-to-end latency into retrieval and others: i) top-k similarity search (HNSW, ENNS) [39], [40], ii) graph-based retrieval (linear scan, graph traversal) [41], [42], and iii) iterative retrieval (reranking, multi-hop) [43], [44]. In iterative methods such as reranking and multi-hop, the final chunk is determined only after repeated LLM-based rescoring or multi-stage query-ing. Unlike a single top-k search, these methods introduce additional latency as a separate front-end stage. However, once the final chunk is fixed, the subsequent attention pipeline is identical regardless of the retrieval method, so M EM LLM accelerates this dominant segment. In practice, retrieval ac-counts for at most 30% of the end-to-end latency even in the heaviest graph and multi-hop cases. By accelerating the remaining dominant segment, M EM LLM sustains its gains over the baseline across all retrieval methods. 0246     
+
+> End-to-End Latency  (sec)
+> Compression Methods
+> GPU -Full GPU -Pre MemLLM Base Q-8b Q-4b Snap KVZip 4.0x 2.9x 2x 3.7x 4.4x 050 100
+> E2E  Breakdown  (%)
+> Compression Methods
+> Decode  Prefill Recomp.  HKVD
+> KVZip Snap Q-4b Q-8b Base
+> GPU-Pre Me mL LM
+
+Fig. 25: KV compression methods. 
+
+(a) End-to-end latency. (b) Latency breakdown. 
+
+KV compression methods. Figure 25a evaluates the baseline and M EM LLM under optimizations that directly reduce the KV cache size: quantization to reduce the per-token size (Q-8b , Q-4b ) and entry-count reduction via SnapKV [59] and KVZip [60], representative runtime- and static-based methods, respectively. SnapKV can compress only after the query prefill completes, whereas KVZip compresses the con-texts through preprocessing. By shrinking the KV cache, these methods ease the limited PCIe bandwidth that bottlenecks edge environments; however they likewise cut the NAND reads of M EM LLM, so M EM LLM sustains a comparable 2.0– 4.4 × end-to-end speedup over the baseline across all methods. Crucially, these techniques are orthogonal to and composable with M EM LLM: while they shrink the I/O wall and thus narrow M EM LLM’s margin, they do not remove it, since even compressed caches can exceed on-device memory for long contexts and still cross PCIe. Figure 25b breaks the end-to-end latency into HKVD identification, recomputation, query prefill, and the decode steps. HKVD identification and MEM LLM’s recomputation are both compute-bound, domi-nated respectively by the host GPU’s full-attention pass and the fused kernel’s prefill operations. They are thus barely affected by compression, and their share grows with the compression ratio, reaching 8.8% and 75.5% under Q-4b .Since SnapKV compresses only after prefill, it benefits only the decode phase, whereas KVZip benefits all phases alike; consequently KVZip ’s recomputation share is 26.2%p lower than SnapKV ’s. Even under aggressive compression, M EM -LLM retains an advantage, as the recomputation still reads the precomputed KV that the baseline must stream across PCIe but MEM LLM keeps within storage. VII. D ISCUSSION 
+
+Scope. MEM LLM targets on-device RAG with precomputed document KV caches, selective recomputation, long contexts, and short answers; the regime where the precompute-then-recompute prefill and its KV-cache I/O dominate. Its benefit narrows outside this regime: long answers shift the bottleneck to decode (Figure 23), and a memory-resident KV cache narrows the I/O wall, though M EM LLM still leads (Figure 22). As Section III shows, this memory-constrained, long-context regime is the common case for practical on-device RAG. 
+
+Deployment requirements. MEM LLM assumes a computa-tional storage device that integrates per-channel accelerators with a central coordination logic. Although M EM LLM adopts a custom NVMe command, it i) occupies a vendor-specific op-code reserved by the specification, and ii) requires no host-side kernel modification when issued via the io uring-based NVMe passthrough introduced in Linux 5.19. The GPUDirect RDMA needed for GPU–device P2P DMA is already supported on the Jetson Orin; unified-memory SoCs like modern smartphones, where the GPU and storage share one physical address space, further simplify this path relative to conventional systems. NVIDIA’s GPUDirect Storage does not yet cover such SoCs, but its support is expanding rapidly. Once these conditions are met, our software stack handles the GPU/SSD split execution and exposes it as a single PyTorch operation. As demand for RAG over sensitive personal data spreads from medical and legal PCs toward smartphones, M EM LLM could enable efficient on-device RAG on such devices. VIII. R ELATED WORKS 
+
+Precomputed KV cache. Prompt caching [21], [61]–[63] reuses the KV caches of frequent system prompts or sim-ilar queries to skip redundant prefill. For RAG, combining independently precomputed document caches disrupts cross-attention, so CacheBlend [20] and CacheClip [30] apply selective recomputation, updating only a minimal token subset to restore quality. These software optimizations speed up high-bandwidth servers but hit an I/O wall on resource-constrained edge devices; M EM LLM is the first to mitigate it. 
+
+ISP for LLMs. Recent ISP studies alleviate the PCIe bot-tleneck of offloading-based LLM inference. Decode-phase offloading [24], [25] pushes memory-intensive attention to the SSD to eliminate KV cache transfers during decode; AiF [29] moves weight computation into flash to free GPU VRAM for the KV cache; and RAGX [16] accelerates RAG’s vector-database retrieval within storage. While effective for standard LLMs, these are mismatched for on-device RAG over precomputed KV caches: decode-only ISPs cannot handle the compute-intensive selective recomputation, and weight-offloading designs trigger OOM for long contexts. M EM LLM is the first to support end-to-end RAG compute. IX. C ONCLUSION 
+
+MEM LLM is an end-to-end in-storage processing architec-ture that executes the complete RAG attention pipeline directly within the SSD. By leveraging distributed, per-channel Elastic-SIMD accelerators, M EM LLM fully exploits the aggregate NAND channel bandwidth and shifts all KV cache-related computations to the storage side to minimize PCIe trans-fers. Furthermore, M EM LLM mitigates internal I/O overheads through the co-design of a fused recomputation-query kernel and a DRAM-less global reduction engine. Evaluated across eight real-world RAG datasets and six on-device LLM models, MEM LLM achieves an average end-to-end speedup of 4.06 ×
+
+compared to GPU-based systems. ACKNOWLEDGMENT 
+
+The authors thank anonymous reviewers of ASPLOS’26 and MICRO’26 for their constructive feedback. This work is protected by one or more patents. Myoungsoo Jung is the corresponding author (mj@camelab.org). REFERENCES [1] M. Alkhalaf, P. Yu, M. Yin, and C. Deng, “Applying generative ai with retrieval augmented generation to summarize and extract key clinical information from electronic health records,” Journal of biomedical informatics , vol. 156, p. 104662, 2024. [2] J. Wu, J. Zhu, Y. Qi, J. Chen, M. Xu, F. Menolascina, and V. Grau, “Medical graph rag: Towards safe medical large language model via graph retrieval-augmented generation,” 2024. [Online]. Available: https://arxiv.org/abs/2408.04187 [3] L. M. Amugongo, P. Mascheroni, S. Brooks, S. Doering, and J. Seidel, “Retrieval augmented generation for large language models in health-care: A systematic review,” PLOS Digital Health , vol. 4, no. 6, p. e0000877, 2025. [4] T. M¨ oller, A. Reina, R. Jayakumar, and M. Pietsch, “Covid-qa: A question answering dataset for covid-19,” in Proceedings of the 1st Workshop on NLP for COVID-19 at ACL 2020 , 2020. [5] Q. Jin, B. Dhingra, Z. Liu, W. W. Cohen, and X. Lu, “Pubmedqa: A dataset for biomedical research question answering,” arXiv preprint arXiv:1909.06146 , 2019. [6] C. Choi, J. Kwon, J. Ha, H. Choi, C. Kim, Y. Lee, J.-y. Sohn, and A. Lopez-Lira, “Finder: Financial dataset for question answering and evaluating retrieval-augmented generation,” in Proceedings of the 6th ACM International Conference on AI in Finance , 2025, pp. 638–646. [7] S. Kim, H. Song, H. Seo, and H. Kim, “Optimizing retrieval strate-gies for financial question answering documents in retrieval-augmented generation systems,” arXiv preprint arXiv:2503.15191 , 2025. [8] I. Iaroshev, R. Pillai, L. Vaglietti, and T. Hanne, “Evaluating retrieval-augmented generation models for financial report question and answer-ing,” Applied Sciences , vol. 14, no. 20, p. 9318, 2024. [9] Z. Chen, W. Chen, C. Smiley, S. Shah, I. Borova, D. Langdon, R. Moussa, M. Beane, T.-H. Huang, B. Routledge, and W. Y. Wang, “FinQA: A dataset of numerical reasoning over financial data,” pp. 3697–3711, Nov. 2021. [Online]. Available: https://aclanthology.org/ 2021.emnlp-main.300/ [10] F. Zhu, W. Lei, Y. Huang, C. Wang, S. Zhang, J. Lv, F. Feng, and T.-S. Chua, “Tat-qa: A question answering benchmark on a hybrid of tabular and textual content in finance,” arXiv preprint arXiv:2105.07624 , 2021. [11] D. Hendrycks, C. Burns, A. Chen, and S. Ball, “Cuad: An expert-annotated nlp dataset for legal contract review,” arXiv preprint arXiv:2103.06268 , 2021. [12] A. Ravichander, A. W. Black, S. Wilson, T. Norton, and N. Sadeh, “Question answering for privacy policies: Combining computational and legal perspectives,” arXiv preprint arXiv:1911.00841 , 2019. [13] M. Joshi, E. Choi, D. S. Weld, and L. Zettlemoyer, “Triviaqa: A large scale distantly supervised challenge dataset for reading comprehension,” 
+
+arXiv preprint arXiv:1705.03551 , 2017. [14] Z. J. Wang and D. H. Chau, “Mememo: On-device retrieval augmen-tation for private and personalized text generation,” in Proceedings of the 47th International ACM SIGIR Conference on Research and Development in Information Retrieval , 2024, pp. 2765–2770. [15] R. Qin, Z. Yan, D. Zeng, Z. Jia, D. Liu, J. Liu, A. Abbasi, Z. Zheng, N. Cao, K. Ni, J. Xiong, and Y. Shi, “Robust implementation of retrieval-augmented generation on edge-based computing-in-memory architectures,” in Proceedings of the 43rd IEEE/ACM International Conference on Computer-Aided Design , ser. ICCAD ’24. New York, NY, USA: Association for Computing Machinery, 2025. [Online]. Available: https://doi.org/10.1145/3676536.3676674 [16] R. Mahapatra, H. Santhanam, C. Priebe, H. Xu, and H. Esmaeilzadeh, “In-storage acceleration of retrieval augmented generation as a service,” in Proceedings of the 52nd Annual International Symposium on Com-puter Architecture , 2025, pp. 450–466. [17] G. Loo, C. Liu, Q. Yin, X. Chen, J. Chen, J. Zhang, and Y. Tian, “Mo-bilerag: Enhancing mobile agent with retrieval-augmented generation,” 
+
+arXiv preprint arXiv:2509.03891 , 2025. [18] P. Lewis, E. Perez, A. Piktus, F. Petroni, V. Karpukhin, N. Goyal, H. K¨ uttler, M. Lewis, W.-t. Yih, T. Rockt¨ aschel, S. Riedel, and D. Kiela, “Retrieval-augmented generation for knowledge-intensive nlp tasks,” vol. 33, pp. 9459–9474, 2020. [Online]. Available: https://proceedings.neurips.cc/paper files/paper/ 2020/file/6b493230205f780e1bc26945df7481e5-Paper.pdf [19] Y. Liu, Y. Cheng, J. Yao, Y. An, X. Chen, S. Feng, Y. Huang, S. Shen, R. Zhang, K. Du, and J. Jiang, “Lmcache: An efficient kv cache layer for enterprise-scale llm inference,” 2025. [Online]. Available: https://arxiv.org/abs/2510.09665 [20] J. Yao, H. Li, Y. Liu, S. Ray, Y. Cheng, Q. Zhang, K. Du, S. Lu, and J. Jiang, “Cacheblend: Fast large language model serving for rag with cached knowledge fusion,” in Proceedings of the twentieth European conference on computer systems , 2025, pp. 94–109. [21] I. Gim, G. Chen, S.-s. Lee, N. Sarda, A. Khandelwal, and L. Zhong, “Prompt cache: Modular attention reuse for low-latency inference,” 
+
+Proceedings of Machine Learning and Systems , vol. 6, pp. 325–338, 2024. [22] R. Qin, Z. Li, W. He, J. Cui, H. Tang, F. Ren, T. Ma, S. Cai, Y. Zhang, M. Zhang, Y. Wu, W. Zheng, and X. Xu, “Mooncake: A kvcache-centric disaggregated architecture for llm serving,” ACM Trans. Storage , Nov. 2025, just Accepted. [Online]. Available: https://doi.org/10.1145/3773772 [23] X. Pan, E. Li, Q. Li, S. Liang, Y. Shan, K. Zhou, Y. Luo, X. Wang, and J. Zhang, “Instinfer: In-storage attention offloading for cost-effective long-context llm inference,” arXiv preprint arXiv:2409.04992 , 2024. [24] ——, “Instattention: in-storage attention offloading for cost-effective long-context llm inference,” in 2025 IEEE International Symposium on High Performance Computer Architecture (HPCA) . IEEE, 2025, pp. 1510–1525. [25] H. Jang, J. Song, C. Shin, S. U. Noh, J. Jung, J. Park, and J. Lee, “A cost-effective near-storage processing solution for offline inference of long-context llms,” ser. ASPLOS ’26. New York, NY, USA: Association for Computing Machinery, 2026, pp. 5–24. [Online]. Available: https://doi.org/10.1145/3779212.3790119 [26] Z. Ren, K. Doekemeijer, T. De Matteis, C. Pinto, R. Stoica, and A. Trivedi, “An i/o characterizing study of offloading llm models and kv caches to nvme ssd,” in Proceedings of the 5th Workshop on Challenges and Opportunities of Efficient and Performant Storage Systems , 2025, pp. 23–33. [27] C. Holmes, M. Tanaka, M. Wyatt, A. A. Awan, J. Rasley, S. Rajbhandari, R. Y. Aminabadi, H. Qin, A. Bakhtiari, L. Kurilenko, and Y. He, “Deepspeed-fastgen: High-throughput text generation for llms via mii and deepspeed-inference,” 2024. [Online]. Available: https://arxiv.org/abs/2401.08671 [28] Y. Sheng, L. Zheng, B. Yuan, Z. Li, M. Ryabinin, B. Chen, P. Liang, C. Re, I. Stoica, and C. Zhang, “FlexGen: High-throughput generative inference of large language models with a single GPU,” in Proceedings of the 40th International Conference on Machine Learning , ser. Proceedings of Machine Learning Research, A. Krause, E. Brunskill, K. Cho, B. Engelhardt, S. Sabato, and J. Scarlett, Eds., vol. 202. PMLR, 23–29 Jul 2023, pp. 31 094–31 116. [Online]. Available: https://proceedings.mlr.press/v202/sheng23a.html [29] J. Lee, H. Kim, S. Oh, M. Chun, M. Kim, and J. Kim, “Aif: Accelerating on-device llm inference using in-flash processing,” in Proceedings of the 52nd Annual International Symposium on Computer Architecture , 2025, pp. 529–543. [30] B. Yang, Q. Leng, J. Zeng, and Z. Wu, “Cacheclip: Accelerating rag with effective kv cache reuse,” arXiv preprint arXiv:2510.10129 , 2025. [31] A. Xilinx, “Amd alveo u200 u250: Adaptable accelerator cards for data center workloads,” https://www.amd.com/content/dam/amd/en/ documents/products/accelerators/alveo/alveo-product-brief.pdf, 2023. [32] NVIDIA, “Nvidia jetson orin nx series,” https://developer.download. nvidia.com/assets/embedded/secure/jetson/orin nx/docs/Jetson Orin NX DS-10712-001 v0.5.pdf, 2022. [33] M. Jung, J. Zhang, A. Abulila, M. Kwon, N. Shahidi, J. Shalf, N. S. Kim, and M. Kandemir, “Simplessd: Modeling solid state drives for holistic system simulation,” IEEE Computer Architecture Letters , vol. 17, no. 1, pp. 37–41, 2017. [34] A. Vaswani, N. Shazeer, N. Parmar, J. Uszkoreit, L. Jones, A. N. Gomez, Ł. Kaiser, and I. Polosukhin, “Attention is all you need,” Advances in neural information processing systems , vol. 30, 2017. [35] J.-B. Cordonnier, A. Loukas, and M. Jaggi, “Multi-head attention: Collaborate instead of concatenate,” arXiv preprint arXiv:2006.16362 ,2020. [36] J. Ainslie, J. Lee-Thorp, M. de Jong, Y. Zemlyanskiy, F. Lebron, and S. Sanghai, “GQA: Training generalized multi-query transformer models from multi-head checkpoints,” in Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing ,H. Bouamor, J. Pino, and K. Bali, Eds. Singapore: Association for Computational Linguistics, Dec. 2023, pp. 4895–4901. [Online]. Available: https://aclanthology.org/2023.emnlp-main.298/ [37] T. Dao, D. Fu, S. Ermon, A. Rudra, and C. R´ e, “Flashattention: Fast and memory-efficient exact attention with io-awareness,” Advances in neural information processing systems , vol. 35, pp. 16 344–16 359, 2022. [38] T. Dao, “Flashattention-2: Faster attention with better parallelism and work partitioning,” arXiv preprint arXiv:2307.08691 , 2023. [39] Y. A. Malkov and D. A. Yashunin, “Efficient and robust approxi-mate nearest neighbor search using hierarchical navigable small world graphs,” IEEE Transactions on Pattern Analysis and Machine Intelli-gence , vol. 42, no. 4, pp. 824–836, 2020. [40] M. Douze, A. Guzhva, C. Deng, J. Johnson, G. Szilvasy, P.-E. Mazar´ e, M. Lomeli, L. Hosseini, and H. J´ egou, “The faiss library,” arXiv preprint arXiv:2401.08281 , 2024. [41] D. Edge, H. Trinh, N. Cheng, J. Bradley, A. Chao, A. Mody, S. Truitt, D. Metropolitansky, R. O. Ness, and J. Larson, “From local to global: A graph rag approach to query-focused summarization,” arXiv preprint arXiv:2404.16130 , 2024. [42] L. Zhuang, S. Chen, Y. Xiao, H. Zhou, Y. Zhang, H. Chen, Q. Zhang, and X. Huang, “Linearrag: Linear graph retrieval augmented generation on large-scale corpora,” arXiv preprint arXiv:2510.10114 , 2025. [43] R. Nogueira, Z. Jiang, R. Pradeep, and J. Lin, “Document ranking with a pretrained sequence-to-sequence model,” in Findings of the association for computational linguistics: EMNLP 2020 , 2020, pp. 708–718. [44] H. Trivedi, N. Balasubramanian, T. Khot, and A. Sabharwal, “Interleav-ing retrieval with chain-of-thought reasoning for knowledge-intensive multi-step questions,” in Proceedings of the 61st annual meeting of the association for computational linguistics (volume 1: long papers) , 2023, pp. 10 014–10 037. [45] Z. Yang, P. Qi, S. Zhang, Y. Bengio, W. W. Cohen, R. Salakhutdinov, and C. D. Manning, “Hotpotqa: A dataset for diverse, explainable multi-hop question answering,” arXiv preprint arXiv:1809.09600 , 2018. [46] S. Zhang, S. Roller, N. Goyal, M. Artetxe, M. Chen, S. Chen, C. Dewan, M. Diab, X. Li, X. V. Lin, T. Mihaylov, M. Ott, S. Shleifer, K. Shuster, D. Simig, P. S. Koura, A. Sridhar, T. Wang, and L. Zettlemoyer, “Opt: Open pre-trained transformer language models,” 2022. [Online]. Available: https://arxiv.org/abs/2205.01068 [47] L. B. Allal, A. Lozhkov, E. Bakouch, G. M. Bl´ azquez, G. Penedo, L. Tunstall, A. Marafioti, H. Kydl´ ıˇ cek, A. P. Lajar´ ın, V. Srivastav, J. Lochner, C. Fahlgren, X.-S. Nguyen, C. Fourrier, B. Burtenshaw, H. Larcher, H. Zhao, C. Zakka, M. Morlon, C. Raffel, L. von Werra, and T. Wolf, “Smollm2: When smol goes big – data-centric training of a small language model,” 2025. [Online]. Available: https://arxiv.org/abs/2502.02737 [48] H. Kim, S. Han, and J.-J. Kim, “Llm-on-the-palm: Mobile llm inference with pim-enhanced nand flash memory,” in 2025 IEEE/ACM Interna-tional Conference On Computer Aided Design (ICCAD) , 2025, pp. 1–9. [49] J. Bachrach, H. Vo, B. Richards, Y. Lee, A. Waterman, R. Aviˇ zienis, J. Wawrzynek, and K. Asanovi´ c, “Chisel: Constructing hardware in a scala embedded language,” in Proceedings of the 53rd Annual Design Automation Conference (DAC) , 2016, pp. 1–10. [50] A. Amid, D. Biancolin, A. Gonzalez, D. Grubb, S. Karandikar, H. Liew, A. Magyar, H. Mao, A. Ou, N. Pemberton, P. Rigge, C. Schmidt, J. Wright, J. Zhao, Y. S. Shao, K. Asanovi´ c, and B. Nikoli´ c, “Chipyard: Integrated design, simulation, and implementation framework for custom socs,” IEEE Micro , vol. 40, no. 4, pp. 10–21, 2020. [51] Y. Lee, C. Schmidt, A. Ou, A. Waterman, and K. Asanovic, “The hwacha vector-fetch architecture manual, version 3.8. 1,” EECS Department, University of California, Berkeley, Tech. Rep. UCB/EECS-2015-262 ,2015. [52] H. Genc, S. Kim, A. Amid, A. Haj-Ali, V. Iyer, P. Prakash, J. Zhao, D. Grubb, H. Liew, H. Mao, A. Ou, C. Schmidt, S. Steffl, J. Wright, I. Stoica, J. Ragan-Kelley, K. Asanovic, B. Nikolic, and Y. S. Shao, “Gemmini: Enabling systematic deep-learning architecture evaluation via full-stack integration,” in Proceedings of the 58th Annual Design Automation Conference (DAC) , 2021. [53] N. Muralimanohar, R. Balasubramonian, and N. P. Jouppi, “Cacti 6.0: A tool to model large caches,” HP laboratories , vol. 27, p. 28, 2009. [54] NVIDIA Corporation, “Cuda toolkit documentation,” https://developer. nvidia.com/cuda-toolkit, 2025, accessed: 2025-08-20. [55] A. Paszke, S. Gross, F. Massa, A. Lerer, J. Bradbury, G. Chanan, T. Killeen, Z. Lin, N. Gimelshein, L. Antiga, A. Desmaison, A. Kopf, E. Yang, Z. DeVito, M. Raison, A. Tejani, S. Chilamkurthy, B. Steiner, L. Fang, J. Bai, and S. Chintala, “Pytorch: An imperative style, high-performance deep learning library,” vol. 32, 2019. [Online]. Available: https://proceedings.neurips.cc/paper files/ paper/2019/file/bdbca288fee7f92f2bfa9f7012727740-Paper.pdf [56] S. Chetlur, C. Woolley, P. Vandermersch, J. Cohen, J. Tran, B. Catanzaro, and E. Shelhamer, “cudnn: Efficient primitives for deep learning,” 2014. [Online]. Available: https://arxiv.org/abs/1410.0759 [57] K. Alizadeh, S. I. Mirzadeh, D. Belenko, S. Khatamifard, M. Cho, C. C. Del Mundo, M. Rastegari, and M. Farajtabar, “Llm in a flash: Efficient large language model inference with limited memory,” in Proceedings of the 62nd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , 2024, pp. 12 562–12 584. [58] I. Kuon and J. Rose, “Measuring the gap between FPGAs and ASICs,” 
+
+IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems , vol. 26, no. 2, pp. 203–215, 2007. [59] Y. Li, Y. Huang, B. Yang, B. Venkitesh, A. Locatelli, H. Ye, T. Cai, P. Lewis, and D. Chen, “Snapkv: Llm knows what you are looking for before generation,” Advances in Neural Information Processing Systems ,vol. 37, pp. 22 947–22 970, 2024. [60] J.-H. Kim, J. Kim, S. Kwon, J. W. Lee, S. Yun, and H. O. Song, “Kvzip: Query-agnostic kv cache compression with context reconstruction,” Ad-vances in Neural Information Processing Systems , vol. 38, pp. 167 563– 167 591, 2026. [61] L. G. Schroeder, A. Desai, A. Cuadron, K. Chu, S. Liu, M. Zhao, S. Krusche, A. Kemper, M. Zaharia, and J. E. Gonzalez, “vcache: Verified semantic prompt caching,” arXiv preprint arXiv:2502.03771 ,2025. [62] H. Zhu, B. Zhu, and J. Jiao, “Efficient prompt caching via embedding similarity,” 2024. [Online]. Available: https://arxiv.org/abs/2402.01173 [63] N. Sharma, D. K. Krishnappa, D. Irwin, M. Zink, and P. Shenoy, “Greencache: augmenting off-the-grid cellular towers with multimedia caches,” in Proceedings of the 4th ACM multimedia systems conference ,2013, pp. 271–280.

@@ -1,0 +1,310 @@
+Title: Engineering Low-Latency, High-Throughput Quantum Decoders on NVIDIA GPUs
+
+URL Source: https://arxiv.org/pdf/2610.28867v1
+
+Published Time: Thu, 22 Oct 2026 00:13:27 GMT
+
+Number of Pages: 8
+
+Markdown Content:
+# Engineering Low-Latency, High-Throughput Quantum Decoders on NVIDIA GPUs 
+
+Stefano Markidis, Luca Pennati, Ivy Peng 
+
+KTH Royal Institute of Technology 
+
+Abstract —We design and optimize a quantum error cor-rection (QEC) decoder for NVIDIA GPUs, combining Relay belief propagation, a state-of-the-art message-passing algorithm, with order-zero ordered statistics post-processing. Our imple-mentation uses CUDA Graphs to control GPU execution, stops updates for converged samples, and collects unresolved samples in queues for post-processing. We optimize sparse traversal through coalesced message accesses, prefetching, and register reuse, and accelerate binary post-processing with warp-level collectives. In addition, mixed FP16–FP32 arithmetic and INT8 quantization reduce message storage and traffic while retaining accuracy using accumulators at higher precision. We evaluate surface, hypergraph product, and bivariate bicycle code workloads on NVIDIA A100 and GH200 data-center GPUs and a commodity RTX 5080. On the bivariate bicycle code at error probability 0.003, INT8 halves amortized decoding time relative to indepen-dently tuned FP32 with a negligible logical error rate increase on RTX 5080. With independent syndrome batches submitted back-to-back to concurrent decoder instances, RTX 5080 delivers 91% of GH200’s highest measured throughput with an 8.9 × shorter median submission-to-correction latency. The combination of performance optimization, mixed precision, INT8 quantization, and concurrent decoder instances opens a path toward QEC decoder clusters built from commodity GPUs. 
+
+Index Terms —NVIDIA GPUs, quantum error correction 
+
+I. I NTRODUCTION 
+
+Fault-tolerant quantum computing requires classical de-coders that process measurement data at least as fast as it is generated [1]. Quantum error correction (QEC) encodes one or more logical qubits in a code block of physical qubits. Re-peated parity measurements, called stabilizer checks , produce a 
+
+syndrome : a binary vector recording deviations from expected correct outcomes. The decoder infers a correction from this vector. As the number of logical qubits (each encoded across multiple physical qubits) grows, each measurement round gen-erates more syndrome data, increasing the required aggregate decoding throughput. Independent decoding requests provide parallel work that the classical system can exploit to sustain this higher data rate. From an HPC perspective, the QEC computational work-load is akin to sparse graph processing. QEC graphs have nodes with different numbers of neighbors. Each edge update requires few arithmetic operations, and iteration counts depend on the measured syndrome. Reconfigurable FPGAs and cus-tom ASICs can tailor their logic and memory organization to these operations [2]. GPUs combine high memory bandwidth with thread parallelism across graph updates and independent syndrome samples, allowing memory accesses to overlap. In addition, CUDA provides the programming model, libraries, QEC cycles measure measure 
+
+> syndrome extraction
+
+... 
+
+> syndrome batches
+
+GPU decoder 
+
+> multiple CUDA streams
+> stream 1
+> syndrome batch
+> BP OSD
+> correction
+
+... 
+
+> corrections / Pauli-frame updates
+> QEC controller
+> stream 2
+> syndrome batch
+> BP OSD
+> correction
+> stream S
+> syndrome batch
+> BP OSD
+> correction
+
+Fig. 1. GPU decoding workflow in a QEC system. 
+
+and profiling tools for specializing kernels and controlling concurrent execution. In this work, we evaluate the latency, throughput, and logical accuracy of optimized GPU decoding to assess whether GPUs can serve as credible, programmable devices for QEC workloads. QEC decoding exposes GPU parallelism within each syn-drome sample and across independent decoding requests. Each sample requires repeated sparse graph traversal, followed by a binary linear solver if the iterative decoder reaches its iteration limit without converging. GPU threads distribute graph updates and cooperate on local reductions and binary operations. Samples share the same graph connectivity but maintain independent messages and convergence state, allow-ing many samples to be processed together. Fig. 1 shows how this computation fits into the overall workflow: independent syndrome batches execute in separate CUDA streams and return corrections to the controller. The controller updates a 
+
+Pauli frame , a classical record of accumulated bit and phase corrections. Our work develops this mapping for Relay be-lief propagation (Relay-BP) with order-zero ordered statistics post-processing (OSD-0), combining parallelism within each decoder instance with concurrency across batches. We design and optimize a Relay-BP/OSD-0 decoder for NVIDIA GPUs, targeting high throughput and short correction latency while quantifying the effects of numerical precision on arXiv:2610.28867v1 [cs.DC] 20 Oct 2026 accuracy. The main contributions are:  
+
+> •
+
+A GPU decoder with convergence control on the GPU, sample retirement, compacted fallback queues, and or-dered multi-warp binary elimination.  
+
+> •
+
+Specialized sparse kernels using mixed FP16-FP32 arith-metic, FP16 arithmetic, and INT8 quantization, with an analysis of their effects on memory footprint, conver-gence, and complete-decoder performance.  
+
+> •
+
+An evaluation across three circuit-level code families and three NVIDIA GPU architectures, combining kernel pro-filing and latency-throughput measurements to identify precision, batch size, and stream configurations suited to different response-time requirements. II. A Q UANTUM ERROR CORRECTION WORKFLOW ON 
+
+NVIDIA GPU S
+
+This section introduces the QEC terminology and decoding algorithms needed to develop the GPU decoder. We begin with the sparse graph representation of circuit-level QEC workloads, then describe Relay-BP message passing and the OSD-0 binary solver. 
+
+QEC Sparse Matrices and Decoding Graphs. The core data structure in graph-based QEC decoding is a sparse binary check matrix H. It records how possible errors affect measured check outcomes: each column represents an error variable and each row a parity check. An entry is one if that error flips the corresponding check outcome, and zero otherwise. The matrix defines a bipartite Tanner graph, with separate node sets for checks and variables and one edge per nonzero (see Fig. 2). Row and column traversals access the neighborhoods of checks and variables, respectively. To infer a correction from syndrome data, the decoder needs a physical noise model specifying possible errors and their probabilities. Examples include depolarizing noise, which introduces random bit flips, phase flips, or both, and measure-ment errors, which flip recorded bits. In circuit-level decoding 
+
+(the model we use in this work), this model assigns error probabilities to individual gates, initialization, idle intervals, and measurements in the circuit used to repeatedly measure stabilizer checks. A detector produces a bit indicating whether the parity of selected measurement outcomes differs from its expected error-free value. QEC simulation tools such as  
+
+> Stim
+
+[3] can generate syndrome samples from noisy circuits and derive a detector error model (DEM). The DEM records each error mechanism’s probability and the detectors it flips, providing the sparse matrix H and the error-probability vector used by the decoder. Each circuit execution produces one syndrome sample s.The decoder seeks a binary error pattern ˆe satisfying Hˆe = s
+
+(mod 2) . Each row evaluates an XOR over its incident error bits, which must match the corresponding syndrome bit. The error probabilities guide the choice among compatible patterns. A batch presents multiple independent right-hand sides for the same sparse matrix. During iterative decoding, row and column traversals gather values from check and variable neigh-borhoods. Their lengths determine the local reduction work,         
+
+> (a) Sparse check matrix (b) Tanner subgraph
+> 020 40 60 80 010 20 30 40 variable index v
+> check index  c
+> checks variables
+> c3
+> c6
+> c7
+> v6
+> v7
+> v14
+> v15
+> v16
+> v17
+> v23
+> v24
+> v25
+> v26
+> two directed messages per edge
+> Fig. 2. Sparse check matrix (a) and the corresponding Tanner subgraph (b). Each nonzero defines a check-variable edge.
+
+while irregular connectivity determines the indexed memory accesses. Each full graph sweep processes the nonzeros, so its work and per-sample edge storage scale with the edge count. The matrix and error probabilities are reused across the batch. 
+
+Message-Passing QEC Decoders. Message-passing decoders infer error patterns through repeated local updates on the decoding graph. The computational pattern is similar to neighborhood aggregation in graph neural networks: nodes gather messages from neighbors, combine them, and send updated information along graph edges (Fig. 2). In belief propagation (BP), messages represent error reliabilities as log-likelihood ratios. Positive values favor no error, negative values favor an error, and larger magnitudes indicate greater confidence. The channel prior is the initial reliability derived from each variable’s error probability. In this work, we use Relay-BP, which adds memory to BP updates [4]. Each iteration executes two dependent ker-nels: (i) Parity/min-sum gathers variable-to-check messages over each check neighborhood and generates check-to-variable messages. For each check-to-variable message, we exclude the incoming message from the recipient variable. The outgoing sign bit is the XOR of the syndrome bit and the remaining incoming sign bits. We use the smallest remaining magnitude as the outgoing confidence: the least certain neighbor limits the strength of the check’s inference. Min-sum approximates BP’s nonlinear check update with sign and minimum reduc-tions. Normalization scales the minimum magnitude down to compensate for the approximation’s overestimate of message confidence. (ii) In Belief/Relay , we form a posterior , the updated reliability estimate for each error variable. We com-bine a weighted blend of the channel prior and previous pos-terior with the sum of incoming check messages. Subtracting the recipient check’s incoming contribution gives the outgoing variable-to-check message. Relay-BP groups iterations into 
+
+legs , each with an iteration limit. A new leg restarts message passing from the channel prior and initializes Relay memory with the preceding leg’s final posterior. After each iteration, we make a hard decision by converting each posterior into a bit: 1 for a predicted error (negative posterior) and 0 otherwise. We retire a sample, stopping further updates, when this candidate reproduces its measured syndrome. Samples unresolved after the final leg proceed to OSD-0. OSD-0: A Binary Linear Solver. Samples unresolved by message passing are passed to OSD-0 [5], which addresses the inverse problem defined by H: the measured syndrome is known, while the error pattern is unknown. For unresolved samples, we compute the residual syndrome , the XOR differ-ence between the measured syndrome and that predicted by the BP candidate. We sort variables by increasing absolute posterior and use Gaussian elimination to select linearly inde-pendent columns of H in this order. These columns form a basis in which we express the residual syndrome, identifying which error bits to toggle. This ordering prioritizes adjustments to the least confident BP estimates. Order zero constructs a sin-gle candidate correction (higher-order OSD explores additional bit flip combinations at greater computational cost). The solver operates over GF(2) (the Galois field with two elements, 0 and 1), where addition and subtraction are XOR and multiplication is AND. Binary Gaussian elimination selects nonzero pivots and cancels entries through XOR operations. Packing vectors into machine words allows each instruction to update many binary entries simultaneously, i.e., a 64-bit XOR updates 64 entries. Ordered pivot selection (choosing linearly independent columns from least to most reliable) introduces sequential dependencies, while sample-dependent elimination compli-cates load balancing on GPUs. Hybrid implementations have consequently retained OSD on the CPU even when message passing runs on the GPU. Efficient GPU execution requires parallelism across packed words and unresolved samples while preserving the reliability order of basis selection. Sorting and elimination also make an OSD-0 invocation substantially more expensive than a message-passing iteration. Resolving more samples through Relay-BP therefore reduces costly post-processing. III. P ERFORMANCE OPTIMIZATION ON NVIDIA GPU S
+
+This section presents the kernel, numerical, and execu-tion optimizations of the NVIDIA GPU decoder. We follow the execution blocks of the instantiated CUDA Graph in Fig. 3 to explain sparse traversal, memory reuse, device-side convergence control, and cooperative binary elimination. For the message-passing stages, we detail reduced-precision FP16 arithmetic, mixed FP16-FP32 arithmetic, and INT8 quantiza-tion, explaining the choice of message formats, accumulated state, and intermediate precision. 
+
+Data Layout and Thread Mapping. All syndrome samples in a batch share the same decoding graph. We store its connectivity once using compressed sparse row (CSR) lists of variables per check and compressed sparse column (CSC) indexing of incident edge IDs per variable. Maintaining both views gives each update direct neighborhood access, avoiding searches through the full edge list. Both directed message arrays share a common check-major edge numbering and use an edge-major layout, with samples contiguous within each edge. Per-variable state follows the same sample-contiguous ordering. Threads processing adjacent samples traverse the same adjacency list and access contiguous message and state values, coalescing memory accesses across the batch. The Parity/min-sum update traverses each check neigh-borhood twice: first to compute sign parity, the two small-est magnitudes, and the minimum’s index, then to generate outgoing messages. In both passes, our optimized variant prefetches two messages into registers before processing either value, software-pipelining loads ahead of dependent arithmetic to increase memory-level parallelism. We advance message pointers by the batch stride to avoid repeated wide edge-offset calculations. In Belief/Relay , we eliminate repeated loads by retaining incoming messages in registers for variables with at most four neighbors. Each cached value contributes to the posterior sum and is then subtracted to form the corresponding outgoing message. Larger neighborhoods use a general traversal. We further reduce arithmetic and control overhead by precomputing Relay coefficients, using fused multiply-add instructions, and applying branchless clipping. 
+
+Convergence and Work Scheduling. As a further opti-mization, we encode the dependent iteration kernels in a preinstantiated CUDA Graph and evaluate convergence on the GPU, avoiding host readbacks between iterations. Each Relay leg contains a conditional WHILE node that repeats the updates while samples remain active and the iteration limit has not been reached. A kernel evaluates this condition using warp ballots and a shared-memory reduction. We retire converged samples by marking their entries inactive in a fixed-capacity sample-ID array. Subsequent kernels skip inactive IDs, preserving message and state offsets throughout Relay-BP. Before the OSD-0 phase, we compact unresolved sample IDs into a contiguous fallback queue. The solver uses these IDs to access message, posterior, and syndrome arrays at their original offsets, avoiding payload movement. We bound OSD-0 workspace through chunked execution because per-sample basis storage grows approximately quadratically with the num-ber of checks. A conditional IF node executes each chunk only when the unresolved count exceeds that chunk’s starting queue index. Kernels compute the unresolved count and evaluate all conditional nodes; the host stages inputs and launches the graph. For concurrent execution, each decoder instance owns a CUDA stream, private buffers, and an instantiated graph. Independent batches can advance through Relay legs and OSD-0 at different rates, exposing kernels from multiple decoder instances to the GPU scheduler. 
+
+Warp-Level Collectives. We parallelize neighborhood reduc-tions and binary-vector operations within each syndrome sam-ple using cooperating warp lanes. Cooperative check variants distribute each check-sample pair across a group of lanes and use shuffle reductions to combine sign parity and the two smallest magnitudes. In OSD-0, lanes update different packed words of a candidate vector and use shuffle reductions to select pivots. These operations exchange intermediate values through registers, avoiding shared-memory staging for the reductions. 
+
+Ordered Multi-Warp OSD-0. We further optimize OSD-0 by parallelizing reliability sorting and overlapping elim-ination across candidate variables. We use NVIDIA’s CUB 
+
+thread-block radix sort to order runs of 2,048 variables, then merge the sorted runs hierarchically. Merge-path partitioning Setup 
+
+> Initialize Relay state Initialize active list
+
+Relay-BP subgraph 
+
+> Check-node min-sum update Variable-node update Hard-decision + syndrome check Retire converged samples
+
+Compaction of unresolved samples OSD-0 Subgraph   
+
+> Precision: FP32 / mixed FP16-FP32 / FP16 / INT8 Rank Ordering Binary Elimination Bit-packed operations Packed GF(2) rows · warp-cooperative elimination
+> Pipelined min-sum
+> pointer walking · two-way prefetch
+> Branch-reduced variable update
+> register cache · fused Relay accumulation Compute hard bits Compute Syndrome Device-side active list update
+> Continue Relay-BP?
+> Dense Compaction
+> Unresolved Samples?
+> yes no yes
+> Final Correction / Status
+> no
+
+CUDA Graph Execution Fig. 3. GPU workflow within one instantiated CUDA Graph. 
+
+divides each merge into independent output ranges. Composite keys combine the absolute posterior with the variable ID, breaking reliability ties deterministically. We reuse scratch storage across sorting and merging. For elimination, we assign one 256-thread block to each unresolved sample and pack matrix columns into 64-bit words, so each XOR updates 64 binary entries. The bivariate bicycle workload used in this study requires thirteen words per column, limiting parallelism within a single candidate. For this reason, we assign eight consecutive candidates to the block’s eight warps and reduce them concurrently against the same unchanged basis. We then revisit candidates in reliability order, reducing each against any basis vectors inserted earlier in the group and inserting it if independent. This preserves sequential OSD-0 basis selection while overlapping independent elimination work. We stop basis construction at the precomputed matrix rank, then express the residual syndrome in that basis to construct the correction. 
+
+Reduced Precision, Mixed Precision, and Quantization. 
+
+As a final optimization, we develop reduced-precision FP16, mixed FP16-FP32, and INT8-quantized Relay-BP kernels to reduce message storage and traffic. Each iteration reads and writes both directed edge-message arrays. For the bivariate bicycle workload used in this study, with a batch of 128 samples, these arrays occupy about 178 MiB in FP32 and 45 MiB in INT8. Because each concurrent decoder instance maintains private messages, the fourfold reduction also low-ers the memory cost of concurrency. We select storage and arithmetic widths according to the numerical requirements of each update [6]. Check updates combine signs and minimum magnitudes, with outgoing messages bounded by clipping. Variable updates sum incoming messages and retain estimates across iterations, producing posterior magnitudes that can ex-ceed the message clipping threshold. Our mixed-precision im-plementation stores messages and Relay memory in FP16 and accumulates and stores posterior beliefs in FP32. The register-cached variable kernel reuses converted FP32 messages for posterior accumulation and outgoing-message generation. Our     
+
+> Channel prior
+> INT8
+> Check →Variable
+> INT8 Belief/Relay update
+> Accumulation: INT32
+> Posterior: INT16
+> Relay memory: INT16
+> Scale + clip Quantize to INT8
+> Variable →Check
+> INT8 Parity/min-sum update
+
+Fig. 4. Relay-BP quantization with INT8 messages, INT32 accumulation, and INT16 posterior beliefs and Relay memory. 
+
+FP16 implementation also stores posterior state and performs accumulation in FP16, using native half-precision arithmetic and half2 for aligned initialization. Fig. 4 distinguishes message storage, accumulation, and re-tained state in the INT8 implementation. We encode fractional reliabilities by multiplying them by six and rounding to an integer; for example, a reliability of 0.5 is stored as 3. Initial rounding selects the nearest integer, with ties away from zero. Clipping reliabilities at magnitude 20 gives the symmetric en-coded range [−120 , 120] , simplifying sign and absolute-value operations. We apply normalized min-sum scaling with wider integer intermediates before rounding outgoing messages back to INT8. For variable updates, we accumulate incoming mes-sages in INT32 and store posterior beliefs and Relay memory in INT16 at the same scale. We implement the Relay blend with fixed-point coefficients and INT64 intermediate products. The wider state retains posterior magnitudes beyond the edge-message clipping threshold, preserving information used by OSD-0 to order variables by reliability. We apply clipping and conversion at the storage boundaries of these updates. 
+
+Additional Optimization Experiments. We also evaluated TABLE I CIRCUIT -LEVEL QEC WORKLOADS AND DECODER GRAPH SIZES .                                    
+
+> Parameter Surface HGP BB90
+> Code [[81 ,1,9]] [[98 ,2,7]] [[90 ,8,10]]
+> Data qubits 81 98 90 Stabilizer checks 80 98 90 Syndrome-extraction rounds 999Two-qubit layers / round 8812 Detector checks 720 882 810 DEM variables 12,391 18,522 30,869 Tanner-graph edges 40,392 67,978 182,410 Samples / noise point 10,000 10,000 10,000
+
+several kernel optimizations that were not retained in the final decoder. These included a two-samples-per-thread mapping with packed half2 message accesses, four-message INT8 packing with uchar4 , and 32-bit packed vectors for binary reduction. The packed-access variants targeted load/store in-struction overhead. For binary post-processing, we separately tested Tensor Core 1-bit matrix multiply-accumulate instruc-tions on dense binary tile products. IV. E XPERIMENTAL SETUP 
+
+Workloads and Accuracy. We evaluate a rotated surface code, a hypergraph product (HGP) code [7], and a bivariate bicycle code (BB90) [8]. Table I lists their circuits and decoding graphs. Their different graph sizes and sparsity patterns let us assess GPU performance across workloads with different mes-sage footprints, neighborhood reduction lengths, and indexed memory-access patterns. In [[ n, k, d ]] , n counts physical data qubits, k encoded logical qubits, and d is the minimum weight of an undetected logical error. Each Z-memory experiment prepares a known encoded state, repeatedly measures stabilizer checks using auxiliary qubits (ancillas), and reads out in the computational basis. Deterministic edge colorings schedule the two check types separately. The noise model applies single-qubit depolarization before each round, two-qubit de-polarization after controlled-NOT gates, post-reset flips, and measurement-result flips, all with p ∈ { 0.001 , 0.003 , 0.005 }.
+
+Stim [3] generates flattened DEMs retaining multi-detector errors and the samples listed in Table I. Identical samples are used across precisions and GPUs. Logical verification com-pares the predicted flip of one selected logical Z observable, a parity of final readout bits, with Stim’s sampled value. The 
+
+logical error rate (LER) is the fraction of samples with a mismatch after complete Relay-BP/OSD-0 decoding. 
+
+Decoder Configuration and Timing. On the GPUs in Ta-ble II, Relay-BP uses at most four legs of 32 iterations, a fixed memory coefficient of 0.5 across variables and legs, normalized min-sum with factor 0.75, and message clipping at magnitude 20. Amortized decoding time is the synchro-nized decoder-call time divided by batch size B. Timing includes graph launch, Relay-BP, compaction, OSD-0, and internal synchronization; setup, transfers, and verification are excluded. For each GPU-staged batch, a host monotonic timer records five repetitions after three warmups. Each                                           
+
+> TABLE II PROFILED GPU PLATFORMS .
+> Data-center / HPC Commodity Parameter A100 GH200 RTX 5080
+> Architecture Ampere Hopper Blackwell Compute capability 8.0 9.0 12.0 SMs 108 132 84 CUDA-visible memory [GiB] 39.4 95.0 15.5 Memory bus [bit] 5120 6144 256 L2 cache [MiB] 40 60 64 Max. GPU clock [GHz] 1.41 1.98 2.70 Max. threads / SM 2048 2048 1536 Max. warps / SM 64 64 48 Shared memory / SM [KiB] 164 228 100 Registers / SM 65,536 65,536 65,536 ECC Yes Yes No
+
+GPU/workload/noise/precision configuration is independently tuned over B ∈ {32 , 64 , 128 , 256 , 512 , 1024 , 2048 } using 2048 samples, two warmups, and three repetitions per can-didate. Time reductions are relative to independently tuned FP32 on the same GPU, workload, and noise point. 
+
+Decoding under Burst Load. Synchronized QEC measure-ments can make multiple decoding requests available at once, motivating an evaluation of throughput and batch response time under burst load. To mimic this scenario, we design a simple benchmark. At p = 0 .003 , we submit finite bursts of 32 independent batches to up to S decoder instances, each with private buffers and a CUDA stream. An instance receives another batch upon completion. Requests include pinned-host syndrome upload, graph execution, and correction download. Batch response spans host submission to observed download completion, excluding time waiting for an available instance. Burst throughput spans first submission to final completion. We sweep B ∈ { 16 , 32 , 64 , 128 , 256 } and S=1-4 on A100/GH200 or S=1-8 on RTX 5080. After four warmup batches, we measure five bursts and report the median of 160 batch responses and the median burst throughput. Precision is mixed FP16-FP32 for A100 Surface/HGP and RTX Surface, and INT8 for the remaining GPU/workload combinations. 
+
+Kernel Profiling. Nsight Compute profiles BB90 at p = 0 .003 
+
+in INT8 using each GPU’s selected batch size. SM and DRAM SOL (“Speed of Light”) express streaming-multiprocessor and device-memory throughput relative to sustained peak. Active warps measure occupancy; eligible warps count ready-to-issue warps per scheduler in an active cycle. Issue activity is the percentage of scheduler cycles issuing an instruction. Long scoreboard reports warp stall cycles waiting for memory results from the L1/texture path, normalized by issue-active cycles. DRAM BW, L1/L2, and Regs/thread report device-memory bandwidth, cache hit rates, and per-thread register allocation, respectively. V. R ESULTS 
+
+We present nine findings covering decoder performance, GPU resource use, and concurrent batch processing.  
+
+> Finding 1
+
+Batch-size autotuning is essential to single-decoder performance. Batch size determines how much inde-TABLE III AMORTIZED DECODING TIME PER SAMPLE . T IME REDUCTIONS AND LER CHANGES ARE RELATIVE TO FP32.                                                                                                                                                                               
+
+> A100 GH200 RTX 5080
+> Code pPrec. B
+> Time (μs) Red. (%) OSD (%) LER (%)
+> ∆(pp) Prec. B
+> Time (μs) Red. (%) OSD (%) LER (%)
+> ∆(pp) Prec. B
+> Time (μs) Red. (%) OSD (%) LER (%)
+> ∆(pp) Surface 0.001 Mixed 2048 72.786 10.0 1.18 0.01 ( +0 .00 )INT8 2048 27.312 10.5 1.17 0.01 ( +0 .00 )INT8 512 35.227 26.0 1.17 0.01 ( +0 .00 )0.003 Mixed 2048 112.861 19.2 9.72 0.12 ( +0 .00 )INT8 2048 40.812 26.8 9.85 0.14 ( +0 .02 )Mixed 256 51.326 27.7 9.72 0.12 ( +0 .00 )0.005 Mixed 2048 121.984 25.7 28.07 1.40 ( −0.03 )INT8 2048 41.927 34.1 28.10 1.49 ( +0 .06 )INT8 256 53.936 29.4 28.10 1.49 ( +0 .06 )HGP 0.001 Mixed 2048 107.166 3.8 1.08 0.00 ( +0 .00 )FP16 2048 38.012 10.1 0.68 0.00 ( +0 .00 )INT8 256 58.217 9.9 1.28 0.00 ( +0 .00 )0.003 Mixed 2048 181.258 18.8 9.68 0.07 ( +0 .00 )INT8 2048 62.427 29.9 9.86 0.08 ( +0 .01 )INT8 256 79.906 43.5 9.86 0.08 ( +0 .01 )0.005 Mixed 2048 198.378 26.8 31.03 0.43 ( −0.02 )INT8 2048 65.411 36.5 30.54 0.52 ( +0 .07 )INT8 256 87.452 41.8 30.54 0.52 ( +0 .07 )BB90 0.001 Mixed 1024 145.097 17.2 0.07 0.00 ( +0 .00 )Mixed 1024 55.537 14.7 0.07 0.00 ( +0 .00 )INT8 128 52.501 34.9 0.09 0.00 ( +0 .00 )0.003 INT8 2048 423.136 15.4 4.73 0.65 ( +0 .03 )INT8 2048 151.154 22.6 4.73 0.65 ( +0 .03 )INT8 128 207.079 50.2 4.73 0.65 ( +0 .03 )0.005 INT8 2048 467.740 31.2 30.85 5.51 ( +0 .32 )INT8 2048 165.692 34.8 30.85 5.51 ( +0 .32 )INT8 128 236.442 55.6 30.85 5.51 ( +0 .32 )
+
+pendent work the GPU can schedule. Larger batches amortize graph-launch and control overheads, supply more independent warps to hide memory and synchronization stalls, and expose more concurrent OSD solvers. This is especially important after sample retirement. For BB90 in mixed precision on A100 at p = 0 .003 , increasing the batch size from 32 to 2048 reduces amortized decoding time from 1466 to 439 μs/sample, a 3.34 × speedup. The optimum also changes with noise: at 
+
+p = 0 .001 , the selected batch is 1024, and doubling it to 2048 increases amortized time by 10.3%. 
+
+Finding 2 CUDA Graphs unify execution with limited timing gains. In this work, CUDA Graphs express iteration control, sample retirement, and selective fallback within a reusable device-controlled workflow. We find that conditional control provides little timing benefit when unresolved samples keep each batch active through the iteration limit. For BB90 on A100 in FP32 with B = 256 , static and conditional graphs take approximately 607 and 614 μs/sample at p = 0 .003 . At 
+
+p = 0 .001 , conditional execution reduces time from 229 to 191 μs/sample by terminating completed batches earlier. The benefit depends on whole-batch convergence. The main CUDA Graph contribution is a unified execution path with device-side control. 
+
+Finding 3 Reduced precision, mixed precision, and quan-tization are key to efficient GPU QEC decoding. Table III shows complete-decoder timing gains across all three GPUs. The fastest format depends on architecture and workload: A100 selects mixed precision for Surface and HGP, while INT8 is selected more often on GH200 and RTX 5080. Narrower messages reduce storage and traffic, but conversion costs and changes in convergence determine the complete-decoder benefit. In Table III, the bold green Surface entries at 
+
+p = 0 .001 mark the shortest Surface decoding times on each GPU, with unchanged reported LER. The green RTX 5080 entries for BB90 highlight larger relative gains. At p = 0 .003 ,INT8 reduces amortized time from 416 to 207 μs/sample, approximately doubling performance, while observed LER changes from 0.62% to 0.65%. At p = 0.005 , the time reduction reaches 55.6%. The bold red entries identify the accompanying higher-noise costs. For BB90 at p = 0 .005 ,INT8 increases observed LER from 5.19% to 5.51% relative to FP32. Its OSD fallback fraction reaches 30.85%, compared with 4.73% at p = 0 .003 , shifting more work into sorting and binary elimination. 
+
+Finding 4 Warp-level collectives accelerate QEC decoding. 
+
+Warp-level collectives expose parallelism inside the small re-ductions and binary-vector updates that recur throughout QEC. Register exchanges between lanes reduce serial work and shared-memory staging for local reductions, complementing concurrency across independent syndromes. OSD-0 demonstrates the impact at both kernel and de-coder levels. On A100, a standalone benchmark with 810 checks and 640 synthetic residuals achieves 20-21 × faster packed reduction than a one-thread-per-sample scalar refer-ence. Extending the production warp-cooperative solver to eight concurrent candidate reductions gives a further 2.25 ×
+
+solver-kernel speedup. Candidates are finalized in reliability order, incorporating preceding basis updates and preserving sequential OSD-0 selection. For BB90 at p=0.005, FP32, and B=256, complete-decoder time decreases by 8.8%, with unchanged logical-error counts. Profiling shows less barrier waiting and higher scheduler issue activity. The cooperative INT8 BP phase applies the same principle to message passing. Lane groups partition each check neigh-borhood and use warp shuffles to combine sign parity and the two minimum message magnitudes before computing outgoing messages. 
+
+Finding 5 Binary Tensor Core instructions provide modest gains in binary algebra. QEC post-processing relies on binary linear algebra, making Tensor Cores an interesting ac-celeration target. NVIDIA’s 1-bit matrix multiply-accumulate instructions process packed binary tiles using bitwise AND and population counts. Extracting each count’s parity produces the binary matrix product. On A100, we compare this Tensor Core path with packed AND and population-count operations. For 65,536 products with 8×8 output tiles and inner dimension 128, kernel time decreases from 30.77 to 27.43 μs, a 1.12 ×
+
+speedup with matching outputs. This modest gain is measured on regular matrix products with inputs already packed. Ex-ploiting Tensor Cores within the OSD-0 solver would require blocked binary updates that preserve these dependencies and amortize tile preparation. TABLE IV RELAY -BP KERNEL PROFILES FOR BB90 AT p = 0 .003 (INT8), WITH BATCH SIZES FROM TABLE III.                                                                     
+
+> Metric Parity/min-sum
+> kernel
+> Belief/Relay
+> kernel
+> A100 B= 2048
+> SM SOL [%] 62.21 64.98 DRAM SOL [%] 24.77 24.93 DRAM BW [TB/s] 0.385 0.388 Active warps [%] 96.54 73.45 Issue active [%] 51.38 65.16
+> L1 hit [%] 25.20 74.71 L2 hit [%] 65.65 73.92
+> Eligible warps / scheduler 1.32 2.05
+> Long scoreboard [ratio] 23.77 9.61
+> Regs/thread 32 40
+> GH200 B= 2048
+> SM SOL [%] 55.58 63.23 DRAM SOL [%] 24.60 28.19
+> DRAM BW [TB/s] 0.990 1.134
+> Active warps [%] 71.84 73.63 Issue active [%] 46.73 63.49 L1 hit [%] 24.62 72.46 L2 hit [%] 55.07 64.89
+> Eligible warps / scheduler 0.90 1.71 Long scoreboard [ratio] 19.93 11.42 Regs/thread 36 40
+> RTX 5080 B= 128
+> SM SOL [%] 40.99 47.90 DRAM SOL [%] 34.63 54.96
+> DRAM BW [TB/s] 0.328 0.520
+> Active warps [%] 68.00 89.44 Issue active [%] 38.59 48.78 L1 hit [%] 25.56 74.41 L2 hit [%] 58.09 35.87
+> Eligible warps / scheduler 0.65 1.15 Long scoreboard [ratio] 16.42 15.06 Regs/thread 40 40
+> Finding 6
+
+L2 reuse and DRAM utilization differ across tuned GPU configurations. Table IV compares BB90 ker-nel profiles at each GPU’s selected INT8 batch size. For each kernel, L1 hit rates remain similar across devices; the larger memory-system differences appear in L2 reuse and DRAM utilization. The green Belief/Relay L2 entries on A100 and GH200 show 74% and 65% hit rates, compared with the red RTX 5080 entry at 36%. The bold DRAM entries distinguish relative utilization from absolute band-width. RTX 5080 reaches 55% DRAM SOL while transferring 0.52 TB/s; GH200 transfers 1.13 TB/s at 28% SOL. The selected RTX configuration consumes a larger fraction of its available bandwidth, while GH200 sustains more than twice the transfer rate at lower relative DRAM utilization.  
+
+> Finding 7
+
+Memory dependencies limit instruction issue at high occupancy. On A100, Parity/min-sum reaches 97% occupancy, yet records 51% issue activity and 1.32 eligible warps per scheduler (both highlighted in red). Belief/Relay 
+
+achieves 65% issue activity and 2.05 eligible warps per scheduler (green) at 73% occupancy. Across all three GPUs, 
+
+Belief/Relay consistently supplies more eligible warps and achieves higher issue activity than Parity/min-sum . The highlighted long-scoreboard ratios connect this readiness gap to memory dependencies: A100 records 23.77 warp stall cycles per issue-active cycle for the Parity/min-sum kernel (red), compared with 9.61 for the Belief/Relay kernel (green). Resident warps waiting for memory operands cannot advance their dependent instructions.  
+
+> Finding 8
+
+Batch size and stream concurrency control the latency-throughput tradeoff. Fig. 5 identifies which com-binations of batch size and stream count deliver the highest measured throughput within a given response-time constraint under burst input. The Surface workload on GH200 illustrates the benefit of concurrency at small batch sizes. At B = 16 ,increasing the stream count from one to four raises throughput from 3.01 to 9.02 kdecodes/s, a 3× gain, while median response increases from 5.93 to 7.78 ms. Concurrent batches supply more independent work while preserving the small batch size of each request. Larger batches show diminishing throughput returns near the frontier’s upper endpoint. At 
+
+S = 4 , doubling B from 128 to 256 increases throughput from 22.18 to 24.10 kdecodes/s, an 8.7% gain, while response increases from 23.05 to 42.72 ms, an 85% increase. For a 10 ms median-response requirement, the best measured configuration is B = 32 , S = 4 , delivering 14.30 kdecodes/s at 8.94 ms.  
+
+> Finding 9
+
+Commodity GPUs can outperform HPC GPUs within a response-time requirement. Comparing the frontiers under fixed response-time limits changes the GPU ranking. Across all three workloads, every A100 frontier point has an RTX 5080 configuration delivering higher throughput with a shorter response. RTX also exceeds GH200’s throughput under short response-time limits. For Surface within 10 ms, RTX delivers 20.11 kdecodes/s compared with GH200’s 14.30 kde-codes/s, a 41% advantage. For BB90 within 20 ms, the corre-sponding rates are 5.95 and 4.03 kdecodes/s, a 48% advantage. GH200 reaches the highest measured throughput for all three code families, with larger batches extending its frontier toward higher throughput and longer responses. On BB90, GH200 delivers 6.50 kdecodes/s with a 156 ms median response; RTX delivers 5.95 kdecodes/s at 17.6 ms, providing 91% of that throughput with an 8.9-times shorter response. RTX uses six concurrent decoder instances processing 16-sample batches, compared with GH200’s four instances processing 256-sample batches. RTX’s efficiency at small batch sizes is key to this latency-throughput advantage. Small batches provide shorter units of work. Each completion returns corrections and releases a de-coder instance for the next request, while other instances con-tinue executing. Multiple instances supply parallelism across requests, allowing RTX to sustain high throughput with less work within each batch. A100 and GH200 benefit more from larger batches to reach high throughput, increasing the work each request must complete before returning corrections. For 32-bit integer addition and minimum instructions, NVIDIA lists 128 results per clock per SM on RTX Blackwell, com-pared with 64 on Hopper. 1 This higher instruction throughput     
+
+> 1NVIDIA CUDA Guide, Table 7, accessed Oct. 20, 2026. 020 40 60 80
+> Median submission-to-correction latency (ms)
+> 510 15 20 25
+> Median throughput (kdecodes/s)
+> (a)
+
+Surface, p = 0.003        
+
+> A100 GH200 RTX 5080 020 40 60 80 100 120 140
+> Median submission-to-correction latency (ms)
+> 246810 12 14 16
+> Median throughput (kdecodes/s)
+> (b)
+
+HGP, p = 0.003       
+
+> A100 GH200 RTX 5080 050 100 150 200 250 300
+> Median submission-to-correction latency (ms)
+> 123456
+> Median throughput (kdecodes/s)
+> (c)
+
+BB90, p = 0.003 
+
+> A100 GH200 RTX 5080
+> B256/S4 B256/S4 B32/S7 B256/S4 B256/S4 B128/S2 B256/S4 B256/S4 B16/S6
+
+Fig. 5. Latency-throughput Pareto frontiers at p = 0 .003 . Endpoint annota-tions give batch size B and stream count S at the highest-throughput point. 
+
+provides a plausible additional advantage for the INT8 up-dates, which repeatedly accumulate message values and select minimum magnitudes. VI. R ELATED WORK 
+
+BP with OSD is an established decoder for quantum low-density parity-check codes [5]. Relay-BP advances message-passing accuracy through memory and relay ensembling [4]; its strong circuit-noise results motivate our choice of algo-rithmic foundation. Localized statistics decoding parallelizes post-processing by using binary solvers on local regions of the decoding graph [9]. B´ ascones et al. [2] study FPGA/ASIC implementations of BP and OSD, including elimination cost. On GPUs, Ferraz et al. [10] implement BP syndrome decoding on commodity hardware. CUDA-Q QEC provides BP/OSD and Relay-BP decoders [11], and Wang et al. [12] investigate parallel BP retries and windowed/streaming execution. Mau-rya et al. [13] study provisioning and scheduling of shared decoders under bursty demand. Knapen et al. [14] develop qLDPC hardware predecoders that reduce OSD invocation and additional Relay-BP legs. VII. C ONCLUSION 
+
+We designed and implemented a Relay-BP/OSD-0 decoder entirely on NVIDIA GPUs, combining specialized kernels, convergence control with CUDA Graphs, ordered multi-warp binary elimination, reduced and mixed precision, and quan-tization. We evaluated decoding time, logical recovery, and latency-throughput tradeoffs for concurrent decoding requests across three circuit-level code families and three GPU architec-tures. Relatively small concurrent batches allow a commodity RTX GPU to approach GH200’s peak burst throughput with substantially shorter responses. These results support commodity GPU clusters as pro-grammable HPC infrastructure for QEC, combining compet-itive decoding throughput with low-latency responses. Such clusters could become standard components of fault-tolerant quantum computers, serving as programmable decoding accel-erators alongside quantum controllers. ACKNOWLEDGMENT 
+
+This work was supported by the Wallenberg Centre for Quantum Technology (WACQT), funded by the Knut and Alice Wallenberg Foundation (KAW). REFERENCES [1] Google Quantum AI and Collaborators, “Quantum error correction below the surface code threshold,” Nature , vol. 638, pp. 920–926, 2025. [2] D. B´ ascones, F. Garcia-Herrero, and J. Valls, “Exploring the FPGA and ASIC design space of belief propagation and ordered statistics decoders for quantum error correction codes,” EPJ Quantum Technology , vol. 12, p. 140, 2025. [3] C. Gidney, “Stim: a fast stabilizer circuit simulator,” Quantum , vol. 5, p. 497, 2021. [4] T. M¨ uller et al. , “Improved belief propagation is sufficient for real-time decoding of quantum memory,” arXiv:2506.01779, 2025. [5] J. Roffe et al. , “Decoding across the quantum low-density parity-check code landscape,” Physical Review Research , vol. 2, p. 043423, 2020. [6] N. J. Higham and T. Mary, “Mixed precision algorithms in numerical linear algebra,” Acta Numerica , vol. 31, pp. 347–414, 2022. [7] J.-P. Tillich and G. Z´ emor, “Quantum LDPC codes with positive rate and minimum distance proportional to the square root of the blocklength,” 
+
+IEEE Transactions on Information Theory , vol. 60, no. 2, pp. 1193– 1202, 2014. [8] S. Bravyi et al. , “High-threshold and low-overhead fault-tolerant quan-tum memory,” Nature , vol. 627, pp. 778–782, 2024. [9] T. Hillmann et al. , “Localized statistics decoding for quantum low-density parity-check codes,” Nature Communications , vol. 16, p. 8214, 2025. [10] ´O. Ferraz et al. , “GPU-accelerated syndrome decoding for quantum LDPC codes below the 63 μs latency threshold,” in 2025 59th Asilomar Conference on Signals, Systems, and Computers . IEEE, 2025, pp. 1878–1882. [11] NVIDIA, “QEC decoders,” CUDA-Q QEC documentation, accessed: Oct. 18, 2026. [Online]. Available: https://nvidia.github.io/cudaq-qec/ components/qec/decoders.html [12] M. Wang et al. , “GPU-based parallel BP decoding for quantum LDPC memory,” arXiv:2610.13879, 2026. [13] S. Maurya et al. , “A case for elastic quantum error correction decoders,” in Proceedings of the 21st European Conference on Computer Systems ,ser. EuroSys ’26. ACM, 2026, pp. 514–531. [14] A. Knapen et al. , “Mitigating classical resource costs in quantum error correction via generalized qLDPC predecoding,” arXiv:2605.03180, 2026.

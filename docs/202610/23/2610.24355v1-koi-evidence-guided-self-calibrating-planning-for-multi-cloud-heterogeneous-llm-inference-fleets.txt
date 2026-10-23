@@ -1,0 +1,715 @@
+Title: Koi: Evidence-Guided, Self-Calibrating Planning for Multi-Cloud, Heterogeneous LLM Inference Fleets
+
+URL Source: https://arxiv.org/pdf/2610.24355v1
+
+Published Time: Tue, 20 Oct 2026 00:34:09 GMT
+
+Number of Pages: 16
+
+Markdown Content:
+# Koi: Evidence-Guided, Self-Calibrating Planning for Multi-Cloud, Heterogeneous LLM Inference Fleets 
+
+## Mankeerat Sidhu 1,* , Gangmuk Lim 2,* , Hetarth Chopra 1, Maximillian Eisenberg 1,Quan Hao Ng 1, Aryan Gosaliya 1, Shu Liu 3, Luka Govedič 4,Jiaxin Shan 5, Hongkuan Zhou 6, Vikram Sharma Mailthody 6, P. Brighten Godfrey 2,Ion Stoica 31Tandemn 2University of Illinois Urbana-Champaign 3UC Berkeley 
+
+4New York University 5ByteDance 6NVIDIA 
+
+## {mankeerat, hetarth, max, quan, aryan}@tandemn.com , {gangmuk2, pbg}@illinois.edu {lshu, istoica}@berkeley.edu , lg3769@nyu.edu jiaxin.shan@bytedance.com , {hongkuanz, vmailthody}@nvidia.com 
+
+USA 
+
+## Abstract 
+
+Deploying a large language model (LLM) requires choosing the right accelerator, parallelization strategy, engine con-figuration, and replica count amongst ∼140 other variables across clouds, regions, and markets. These decisions are inter-twined, and the best cluster-wide plan continually changes as jobs contend for shared capacity on shifting workloads. We present Koi, a self-calibrating cluster planner for het-erogeneous, multi-cloud fleets. Koi uses a Recursive Lan-guage Model (RLM) hierarchy to propose hypotheses and reason over deployment while deterministic components predict serving behavior, score candidates, and control place-ment. It represents inference behavior as a fixed causal graph linking decisions (e.g., accelerator, parallelism), runtime me-diators (e.g., KV-cache pressure, communication overhead), and outcomes (e.g., latency, throughput). Each deployment strengthens or weakens scoped causal relationships, build-ing a comprehensive playbook for inference that the planner employs to guide future decisions. Job-wise configurations are composed into cluster-wide plans and evaluated against serving objectives, resource constraints, SLO risks, and cost. Across benchmarks, Koi achieves 1 .18 × greater goodput than the strongest baseline while reducing $/token by 20% in a real heterogeneous cluster. Ablations isolate the contri-bution of Koi’s architecture: a pure language model attains a composite score of 35.3, the same model equipped with Koi’s deterministic tools reaches 51.6, and the full Koi planner reaches 70.8. 
+
+## 1 Introduction 
+
+An LLM inference provider serves a changing mix of jobs on a shared accelerator fleet that spans clouds, regions, mar-kets (reserved, on-demand, or spot), and hardware gener-ations. Users specify each job’s model, workload profile 
+
+> *Co-first authors.
+
+(input/output lengths and arrival process), class (online or batch), and serving target (a latency bound for online jobs or a completion deadline for batch jobs). The provider de-cides how every job runs, including the environment and accelerator, the parallelism and engine configuration, and the number of replicas, and must revise these decisions as jobs arrive and complete and as available capacity changes. Throughput 
+
+> max. 717 tok/s
+> Cost
+> max. $38.28/M
+> GPU count
+> max. 32
+> SM utilization
+> max. 99.0%
+> Memory BW
+> max. 61.6%
+> TP4/PP2 TP4/PP4 TP8/PP1 TP8/PP2 TP8/PP4
+> 25% 50% 75% 100%
+
+Figure 1. Parallelism configurations expose conflict-ing performance, cost, and utilization trade-offs. It used Llama 3 70B on AWS A10G GPUs with 2,048/512 in-put/output tokens. Each axis is normalized independently. Even for a single job, this choice is consequential. For a profiled 70B dense model on one accelerator family, five feasible tensor- and pipeline-parallel configurations span 4.4× in throughput and 7 .5× in cost per token and trade off performance, cost, and utilization differently (Figures 1 and 2). TP4/PP2 across two four-GPU instances serves the workload at 180 tok/s for $0.97, whereas TP8/PP1 on one eight-GPU instance reaches only 162 tok/s for $2.16. The best configuration also depends on workload shape, because prefill-heavy traffic stresses compute while decode-heavy arXiv:2610.24355v1 [cs.DC] 17 Oct 2026 g5.12xlarge TP4, PP1 2x g5.12xlarge TP4, PP2 4x g5.12xlarge TP4, PP4 g5.48xlarge TP8, PP1 2x g5.48xlarge TP8, DP2 4x g5.48xlarge TP8, PP4 0200 400 600 800    
+
+> Throughput (tok/s)
+> 144 574 130 268 381 36 143 32 67 95
+> ✗OOM
+> 01234
+> Total Cost ($)
+> $0.97 $0.49 $2.16 $2.09 $2.94
+> 0200 400 600
+> Total Time (s)
+> 7m6s 1m47s 7m54s 3m49s 2m42s
+> Input tokens/sec Output tokens/sec Total Cost ($) Total Time (s)
+
+Figure 2. Parallelism substantially changes inference performance and cost. Done on AWS A10G instances with Llama 3 70B model. The workload has 2,048 input and 512 output tokens per request. traffic stresses memory bandwidth and KV-cache capacity. Neither the workload nor the serving stack is stationary. A job’s realized input/output distribution drifts, and engine and library updates change throughput for the same deployment, so a configuration profiled once does not stay optimal and the planner must keep recalibrating from what it observes. These choices are also coupled across jobs that compete for the same finite accelerators, quota, and budget. Most schedulers decide one job at a time, giving each arriving job its best-ranked feasible placement, so scarce capacity goes to whichever job arrives first. This is suboptimal whenever an earlier job has a workable second choice that a later job lacks. For example, an online chat job and a batch evaluation job both prefer the cluster’s only free H100 node, but only the batch job can meet its target on A100s. If the batch job arrives first, a greedy scheduler gives it the H100, and the online job must miss its SLO or wait. Even a correct per-job ranking cannot prevent this, because avoiding it requires weighing the opportunity cost of giving a scarce device to one job rather than another, which only a cluster-wide decision can do. Existing systems address parts of this problem. Serving engines optimize request execution within a given deploy-ment [3, 14, 31]. Multi-cloud orchestrators place workloads across clouds and markets but leave the accelerator type and configuration to the user [18, 30]. Configuration op-timizers and heterogeneous serving planners choose par-allelism, placement, or GPU types for a single model or a fixed set of models [11, 15, 19, 29]. Request schedulers de-cide how requests are queued and served on existing de-ployments [10, 22], and cluster schedulers allocate resources among competing jobs [7, 12, 25], but neither chooses the deployment configuration of an inference job. No existing system jointly chooses deployment configurations and allo-cates shared capacity for all online and batch inference jobs across a heterogeneous, multi-cloud fleet, while recalibrating those choices as observed behavior drifts. Joint planning is hard for two reasons. First, the space is vast. Each job’s deployment sets about 140 configuration knobs (Appendix A), including accelerator, parallelism, en-gine, quantization, batching, and KV-cache settings, which yields at least 2 140 configurations per job. A cluster plan chooses one deployment for every job under shared capacity, so the number of candidate plans grows exponentially with the number of jobs and cannot be enumerated. Second, the planner must predict the performance of never-run deploy-ments for every job and candidate. Analytical models and profile-based simulators [2, 29] rest on fixed assumptions about memory, communication, and engine behavior that break as workloads, hardware, and software change. In our measurements, even a roofline model calibrated with mea-sured peak compute and memory bandwidth errs by up to 4.7×. Language models encode broad systems knowledge but not calibrated, deployment-specific quantities. Two fron-tier models, Claude Opus 4.8 and GPT-5.6 Sol, overpredict throughput by 4 × and 9 ×. A planner therefore cannot trust predictions unless it corrects them from observed behavior. Search-based methods instead deploy candidate configu-rations, observe their end-to-end performance, and use it to choose the next candidates. Bayesian optimization fits a sta-tistical model to these observations [5, 8], and LLM-guided evolutionary search asks a language model to propose new candidates from high-scoring ones [6, 17, 27, 28]. These meth-ods have two fundamental limitations. First, because they learn only from end-to-end outcomes, they cannot tell why a candidate performed as it did, for example whether low throughput came from pipeline bubbles or KV-cache pres-sure, and therefore which fix applies or which other jobs the evidence should inform. Second, every trial is a live de-ployment that occupies capacity other jobs need and can breach a running job’s SLO. Evolutionary search needs many such trials, and Bayesian optimization restarts for each new workload. LLM-guided evolutionary search pairs a language model with measurement only loosely, because the model sees only a scalar score and measurements never confirm or refute its reasoning. A tighter pairing is difficult because the model’s knowledge is qualitative while telemetry is numeric. Koi pairs them tightly through a fixed causal graph on which both can operate. The graph links deployment deci-sions (e.g., accelerator, parallelism), runtime mediators (e.g., KV-cache pressure, communication overhead), and serving outcomes (e.g., latency, throughput). Scoped mechanisms 
+
+compose its edges into testable hypotheses, which a language model can propose and telemetry can support or contradict. For example, one mechanism states that raising pipeline par-allelism lowers throughput through pipeline bubbles for a given model and hardware. Each edge and mechanism car-ries a confidence and an uncertainty updated from runtime evidence, so confident relationships guide exploitation and 
+
+> 2
+
+uncertain ones identify deployments worth testing. Koi runs no separate trials, since every deployment both serves its job and tests the relationships it exercises, and the plan score val-ues both. Bayesian optimization also updates a model after each trial, but that model maps configurations to end-to-end outcomes for a single workload. Koi instead updates its be-liefs about mechanisms, so evidence from one job informs every job within the mechanism’s scope. Koi turns this evidence into a cluster plan by alternat-ing between language-model proposals and deterministic evaluation. For each job, the language model proposes can-didate deployments from the causal graph, the cluster snap-shot, the job’s workload, and the matching mechanisms. The graph lets it focus on the decisions that affect the job’s tar-gets, so Koi evaluates a few candidates per job instead of enumerating the space. Deterministic components predict each candidate’s behavior with a profile-based performance model whose error is tracked against observed outcomes, score it against the job’s weighted objectives, and compose candidates into a cluster-wide plan. The plan score balances serving value, the value of testing uncertain relationships, SLO risk under prediction error, and reconfiguration cost, subject to shared capacity. Because candidates for all jobs compete within one plan, this score exposes the opportunity costs that per-job optimization misses. Only deployment ev-idence updates causal confidence, and the language model only proposes and cannot override measured evidence or cluster constraints. We evaluate Koi on a real 104-GPU cluster spanning three regions and on simulated 400- and 800-GPU clusters, all het-erogeneous, against nine baselines including the approaches above (three on the real cluster). Against the strongest base-line, Koi delivers 1 .18 × the goodput at 20% lower $/token on the real cluster and 45% more goodput at 31% lower $/token in the 3-hour simulation. Ablations show that these gains come mainly from the structure around the language model rather than from the model itself. This paper makes the following three contributions. 
+
+• We design and implement Koi, a provider-side control plane that self-calibrates the cluster-wide deployment plan for mixed online and batch jobs across heteroge-neous clouds, and release it as open source *.
+
+• We develop an evidence-guided agentic planning algo-rithm around a causal DAG that links deployment deci-sions, runtime mediators, and outcomes. Our RLM [33] hierarchy proposes candidates and scoped hypothe-ses, deterministic evaluation selects the cluster plan, and telemetry updates the evidence that guides subse-quent intervals. 
+
+• We evaluate Koi on heterogeneous benchmarks span-ning ten model architectures and nine baselines, where it improves goodput by up to 45% and lowers $/token 
+
+> *https://github.com/Tandemn-Labs/tandemn-koi
+
+by up to 31% while admitting 96% of online and 100% of batch jobs over 12 hours. 
+
+## 2 Background 
+
+2.1 Where deployment planning sits 
+
+LLM serving spans three control layers. Serving engines admit and batch requests [3, 14, 31], routers distribute re-quests among running replicas [10, 22], and a deployment controller chooses the hardware, parallelism, engine configu-ration, replica count, and placement within which those lay-ers operate. Koi composes with serving engines and routers while operating at the third layer, where it plans and con-trols deployment. The separation is operational as well as temporal. Engine and router decisions are made per request and are reversible within milliseconds, whereas a deploy-ment decision commits model weights to devices. Changing one requires loading weights, warming caches, and draining in-flight work, which bounds how many configurations a controller can try in a given period and requires damping against churn. 
+
+2.2 What determines deployment performance 
+
+The deployment objective is not to maximize raw throughput or GPU utilization. Rather, the controller should select the least-cost configuration that satisfies the workload’s service objectives: online workloads must meet TTFT, TPOT, and throughput targets, while batch workloads must complete by their deadlines. Operating closer to saturation can reduce cost, but it also reduces queueing headroom and can sharply degrade tail latency under bursty demand. The lowest-cost feasible configuration is workload-dependent because different workload characteristics expose different hardware bottlenecks. Input-heavy requests make prefill compute the limiting resource and first manifest as elevated TTFT. Long-context and output-heavy requests increase KV-cache residency and HBM-bandwidth pressure, which can degrade TPOT and reduce the capacity available to concur-rent requests. Arrival rate and burstiness determine the repli-cation and queueing headroom required to preserve these objectives. Consequently, a model identifier and mean re-quest rate alone are insufficient to determine the appropriate GPU type, model-parallel configuration, or replica count. Configuration choices affect end-to-end objectives indi-rectly through runtime mechanisms. For example, pipeline parallelism can reduce per-GPU memory pressure but in-troduce pipeline bubbles and stage imbalance; similarly de-graded throughput can instead arise from KV-cache pressure or interconnect contention. These mechanisms require differ-ent corrective actions. Thus, a controller must use runtime evidence to identify the binding bottleneck and select the 
+
+> 3
+
+least-cost feasible intervention, rather than relying on re-peated configuration trials guided only by endpoint metrics. This motivates Koi’s evidence-conditioned control loop. 
+
+## 3 Related Work 
+
+3.1 Deployment configuration and placement 
+
+Per-job optimizers evaluate alternative serving configura-tions against workload and SLO objectives. AIConfigurator predicts configurations across parallelism strategies, serv-ing modes, and engine-specific settings, then ranks them by derived latency and throughput [29]. Other systems extend deployment decisions to concur-rent jobs. AlpaServe places and parallelizes multiple models to improve serving efficiency under bursty workloads [15]. Prism improves multi-model serving through demand-aware cross-model GPU-memory sharing, model placement, and request arbitration [32]. Heterogeneous serving planners optimize a single model across mixed hardware: Mélange computes a minimum-cost heterogeneous GPU allocation for a given workload and latency target [11], while Helix jointly optimizes model placement and request scheduling over heterogeneous GPUs and network links [19]. Cloud systems operate at the infrastructure layer: SkyPilot places workloads across clouds [30], while SkyServe distributes spot and on-demand replicas across regions and clouds [18]. 
+
+3.2 Feedback-driven and causal optimization 
+
+Measurement-driven optimizers refine decisions from ob-served outcomes. CherryPick uses Bayesian optimization to test cloud configurations and select subsequent trials from ob-served execution [5]. SCOOT applies Bayesian optimization to inference-engine parameters, using learned constraints to avoid invalid configurations while optimizing SLOs [8]. Cluster schedulers also adapt from runtime feedback: Pol-lux models how resource allocation and batch size affect training goodput [25]; Cilantro learns online resource-to-performance mappings under application-level objectives [7]; and Tiresias schedules distributed training jobs from obser-vations and prior knowledge of job duration [12]. Causal methods instead use structure to determine which interventions or relationships should generalize. Invariant causal prediction identifies predictors whose relationship with a target remains stable across environments [24], while causal Bayesian optimization selects interventions on a sup-plied causal graph to optimize a target with fewer experi-ments [1]. 
+
+3.3 LLM-guided search 
+
+FunSearch uses an LLM to modify a target function and an evaluator to score each candidate [27]. AlphaEvolve extends this evolutionary search to larger programs and codebases, retaining evaluated programs to guide subsequent propos-als [6]. OpenEvolve maintains a diverse set of high-scoring programs and uses them to guide subsequent mutations [28]. EvoX further co-evolves candidate solutions and the search strategy that selects and varies them, allowing the explo-ration policy itself to adapt during optimization [17]. These systems evolve executable artifacts by repeatedly proposing and scoring candidate programs. 
+
+## 4 Problem Formulation 
+
+At each 𝑛 -minute tick, Koi selects a deployment configura-tion for every job in the cluster. At tick 𝑡 , the cluster contains active jobs A𝑡 and pending jobs Q𝑡 . Each job 𝑖 has a work-load profile 𝑊 𝑖 and target 𝑆 𝑖 : a latency bound for online jobs or a completion deadline for batch jobs. Cluster capacity is represented by a resource map 𝑅 𝑡 over environments 𝑒 .A deployment is organized into the following hierarchy: 
+
+Chain. A chain 𝑐 = (𝑒, 𝑥 ) is one model copy deployed in environment 𝑒 under one deployment configuration. 
+
+Rank. A rank (𝑐, 𝑛 ) consists of 𝑛 homogeneous replicas of the same chain, where 𝑛 is its data-parallel size. 
+
+Ladder. A ladder 𝐿 𝑖 = {( 𝑐 1 
+
+> 𝑖
+
+, 𝑛 1 
+
+> 𝑖
+
+), . . . , (𝑐 𝑘 𝑖 , 𝑛 𝑘 𝑖 )} is the set of ranks assigned to job 𝑖 .
+
+Plan. A cluster plan 𝑃 𝑡 = {𝐿 𝑖 }𝑖 ∈ A 𝑡 ∪Q 𝑡 assigns one ladder to every active and pending job in the cluster. For an active job, 
+
+𝐿 𝑖 = 𝐿 (𝑡 −1) 
+
+> 𝑖
+
+retains its current deployment; for a pending job, 
+
+𝐿 𝑖 = ∅ defers admission. Each ladder 𝐿 𝑖 produces five outcomes ($/tok, p99 TTFT, p99 TPOT, throughput, and SLO margin) collectively denoted 
+
+𝑦 𝑖 (𝐿 𝑖 ) ∈ R5. The first three are minimized and the latter two maximized. Each job 𝑖 specifies objective weights 𝑤 𝑖 = (𝑤 𝑖 1, . . . , 𝑤 𝑖 5),with 𝑤 𝑖 𝑗 ≥ 0 and Í𝑗 𝑤 𝑖 𝑗 = 1, over 𝑦 𝑖 (𝐿 𝑖 ). These weights encode the user’s relative priorities for that job’s serving objectives. Koi reduces these five objectives to a single scalar using an augmented Tchebycheff scalarization [20]. Let 𝑧 ★
+
+> 𝑖
+
+be a reference point for job 𝑖 that weakly dominates every outcome the job can achieve, maintained per job and updated from realized outcomes (§5.4), and let 𝜎 𝑖 𝑗 be a normalizing constant per objective. The normalized gap along objective 
+
+𝑗 is 𝑔 𝑖 𝑗 (𝐿 𝑖 ) =  𝑦 𝑖 𝑗 (𝐿 𝑖 ) − 𝑧 ★
+
+> 𝑖 𝑗
+
+/𝜎 𝑖 𝑗 if 𝑗 is minimized and  𝑧 ★ 
+
+> 𝑖 𝑗
+
+−
+
+𝑦 𝑖 𝑗 (𝐿 𝑖 )/𝜎 𝑖 𝑗 if 𝑗 is maximized, and the ladder’s exploitation score is 
+
+𝐽 𝑖 (𝐿 𝑖 ) = −
+
+h
+
+max 𝑗 ∈ [ 1,5] 𝑤 𝑖 𝑗 𝑔 𝑖 𝑗 (𝐿 𝑖 ) + 𝜌 ∑︁ 5 
+
+> 𝑗 =1
+
+𝑤 𝑖 𝑗 𝑔 𝑖 𝑗 (𝐿 𝑖 )
+
+i
+
+.
+
+(1) where 𝜌 > 0 is an augmentation constant. The max term ensures that no single objective is neglected on non-convex Pareto frontiers; the weighted sum breaks ties among candi-dates with the same maximum gap. 𝐽 𝑖 (𝐿 𝑖 ) ≤ 0 always, and 
+
+𝐽 𝑖 (𝐿 𝑖 ) = 0 only when every objective the job weights attains its reference. Let Switch (𝐿 (𝑡 −1) 
+
+> 𝑖
+
+, 𝐿 𝑖 ) denote the reconfiguration cost de-fined in §5.3.4, with Switch (𝐿, 𝐿 ) = 0 for an unchanged lad-der. Koi selects a cluster-wide plan by maximizing aggregate 
+
+> 4
+
+ladder value minus this cost: max {𝐿 𝑖 }∑︁ 𝑖 ∈ A 𝑡 ∪Q 𝑡 
+
+𝐽 𝑖 (𝐿 𝑖 ) − 𝜆 𝑡 ∑︁ 𝑖 ∈ A 𝑡 
+
+Switch 
+
+
+
+𝐿 (𝑡 −1) 
+
+> 𝑖
+
+, 𝐿 𝑖 
+
+
+
+(2) subject to 
+
+C1 Resource feasibility. The chains requested across all ladders must fit within the available capacity under 𝑅 𝑡 .
+
+C2 Physical feasibility. Each chain must fit available VRAM; TP must divide the attention and KV head counts; PP must partition the model by layers. 
+
+C3 SLO feasibility. Each ladder must satisfy 𝑆 𝑖 under pre-diction uncertainty, with 𝑃 (breach ) ≤ 𝜏 .
+
+C4 Swap budget. At most 𝐵 𝑡 active jobs may change ladders during one tick: |{ 𝑖 ∈ A 𝑡 : 𝐿 𝑖 ≠ 𝐿 (𝑡 −1) 
+
+> 𝑖
+
+}| ≤ 𝐵 𝑡 .
+
+C5 Job policy. Each job must remain within its capacity quota, and higher-priority jobs must take precedence over lower-priority jobs competing for the same resources. A pending job is deferred when no ladder satisfies C1–C3 ,or when job priority, quota, or resource contention favors reserving capacity for another job. Equation (2) defines the decision Koi would make if 𝑦 𝑖 (𝐿 𝑖 )
+
+were known for every candidate ladder. In practice, 𝐿 𝑖 ↦ →
+
+𝑦 𝑖 (𝐿 𝑖 ) is unknown and changes over time. Because evalu-ating a ladder requires deployment, consuming cluster ca-pacity and risking SLO violations, Koi instead estimates 𝑦 𝑖 
+
+from available evidence, deploys, observes the outcome, and updates its estimate for the subsequent tick. 
+
+## 5 Koi 
+
+5.1 Overview 
+
+Each tick, Koi executes an eight-stage closed loop that up-dates evidence from the cluster and searches for a better cluster-wide plan (Figure 3). States S0–S3 refresh the planner state by snapshotting jobs, placements, and capacity (S0), collecting per-rank telemetry (S1), comparing observations against stored predictions (S2), and updating the evidence state (S3). Planning begins at S4, where the agent proposes a cluster-wide action for each job (place, reconfigure, re-tain, or defer). Deterministic evaluation at S5 scores the pro-posal against job-specific performance, expected evidence, SLO risk, and reconfiguration cost, and validates constraints 
+
+C1–C5 . Invalid or non-improving plans return to S4 with scores and diagnostics. Once the search budget is exhausted, Koi commits the best feasible cluster-wide plan (S6) and closes the loop (S7). This design relies on two assumptions: near-optimal proposal coverage (Assumption 5.3) and con-vergence under stationary conditions (Assumption 5.4). 
+
+5.2 Mechanisms and Predictions 
+
+To make deployment behavior testable and transferable, Koi represents inference as a directed acyclic graph (DAG), 
+
+𝑋 → 𝑉 → 𝑌 , where 𝑋 contains planner-controlled decisions (hardware, engine, parallelism, quantization, batching, rout-ing), 𝑉 contains telemetry-derived runtime mediators (KV-cache utilization, pipeline bubbles, communication latency, memory pressure, SM utilization), and 𝑌 contains the serv-ing outcomes defined in §4. Only 𝑋 → 𝑉 and 𝑉 → 𝑌 edges are permitted, ensuring every modeled effect passes through telemetry; the registered edge set 𝐸 ⊆ ( 𝑋 × 𝑉 ) ∪ ( 𝑉 × 𝑌 ) is fixed at initialization. Each edge 𝑒 ∈ 𝐸 maintains a belief 𝑝 𝑒 ∼ Beta (𝛼 𝑒 , 𝛽 𝑒 ),where 𝛼 𝑒 and 𝛽 𝑒 accumulate supporting and contradictory evidence, and 𝑐 𝑒 = 𝛼 𝑒 /( 𝛼 𝑒 + 𝛽 𝑒 ) is its confidence. Because the same confidence can reflect different amounts of evidence (supporting and contradictory deployment behavior), Koi also tracks normalized posterior uncertainty 
+
+𝑈 (𝛼 𝑒 , 𝛽 𝑒 ) = 12 𝛼 𝑒 𝛽 𝑒 
+
+(𝛼 𝑒 + 𝛽 𝑒 )2 (𝛼 𝑒 + 𝛽 𝑒 + 1) , 𝑈 (1, 1) = 1.
+
+Exploration (§5.3.2) prioritizes edges with high 𝑈 , where additional deployment evidence is most informative. Edges compose into scoped hypotheses called mechanisms .A mechanism 𝑚 = (𝐸 𝑚 , 𝑆 𝑚 , 𝜂 𝑚 , 𝐵 𝑚 ) pairs a connected sub-graph 𝐸 𝑚 ⊆ 𝐸 with an applicability scope 𝑆 𝑚 over models, hardware, workloads, and conditions, a natural-language statement 𝜂 𝑚 , and Beta state 𝐵 𝑚 . The LLM proposes mech-anisms, which are admitted only if they form a valid, non-duplicate 𝑋 → 𝑉 → 𝑌 path over registered edges and are initialized with 𝐵 𝑚 = Beta (1, 1).Both b𝑉 and b𝑌 , the predicted mediator and outcome val-ues, come from Koi’s planner-internal deterministic surro-gate. The surrogate builds on AIConfigurator [29]. Given a job’s workload profile and one candidate ladder, it composes operator-level latency profiles with a replay simulator to predict TTFT, TPOT, and throughput point estimates. The remaining mediators and outcomes are derived from those predictions, the job’s targets, and the allocation price carried by 𝑅 𝑡 . When a model has no measured profile, it substi-tutes the nearest profiled architecture on that hardware and rescales by its measured prefill and decode speed ratios. This surrogate is used during planning to score candidates and is distinct from LLMServingSim 2.0, which is used only as the execution environment for the simulated evaluation 6. The surrogate is an approximation, so Koi carries pre-diction uncertainty into planning and rejects ladders with 
+
+𝑃 (breach ) > 𝜏 under C3 . A deployed ladder tests every mech-anism whose scope it satisfies by comparing the predicted mediator and outcome trajectories, b𝑉 and b𝑌 , against the ob-served 𝑉 obs and 𝑌 obs . For either trajectory 𝑂 ∈ { 𝑉 , 𝑌 }, Koi defines the residual at observation 𝑘 as 𝑟 𝑘 = 𝑂 obs ,𝑘 − b𝑂 𝑘 and accumulates it in a two-sided cumulative sum (CUSUM) [21] detector: 
+
+𝑆 + 
+
+> 𝑘
+
+= max (0, 𝑆 +  
+
+> 𝑘 −1
+
++ 𝑟 𝑘 − 𝛿 ) and 𝑆 − 
+
+> 𝑘
+
+= min (0, 𝑆 −  
+
+> 𝑘 −1
+
++ 𝑟 𝑘 + 𝛿 )
+
+> 5
+
+Figure 3. End-to-end Koi architecture. Each planning tick snapshots cluster state, observes runtime telemetry, updates causal confidence, proposes deployment candidates, and deterministically evaluates and selects a cluster-wide plan. with slack 𝛿 = 0.5b𝜎 , declaring divergence when 𝑆 + 
+
+> 𝑘
+
+> ℎ
+
+or 𝑆 − 
+
+> 𝑘
+
+< −ℎ for threshold ℎ = 4b𝜎 , where b𝜎 is the empir-ical residual scale. Accumulating the residual rather than thresholding each sample separates persistent prediction error from isolated deviations. CUSUM assigns each mechanism evaluation to one of four quadrants: Q1 (𝑉 obs ≈ b𝑉 , 𝑌 obs ≈ b𝑌 ), Q2 (𝑉 obs ≈ b𝑉 , 𝑌 obs 0 b𝑌 ),
+
+Q3 (𝑉 obs 0 b𝑉 , 𝑌 obs ≈ b𝑌 ), and Q4 (𝑉 obs 0 b𝑉 , 𝑌 obs 0 b𝑌 ). Q1 adds supporting evidence, Q4 contradictory evidence, and Q2–Q3 
+
+update edges according to their invariant causal prediction (ICP) result [24]. §5.4 uses the Q1 rate to adapt exploration. 
+
+5.3 Scoring a Plan 
+
+Because Koi scores predicted rather than known outcomes, it augments Equation (2) with two terms: risk from prediction error and exploration value from testing uncertain causal relationships. Exploitation, risk, and switching cost sum over jobs; exploration is scored once per plan to avoid double-counting repeated tests. The plan score relies on a corre-sponding coverage assumption: 
+
+Assumption 1. At each tick, the planner generates 𝐾 𝑃 
+
+candidate plans. Let 𝑃 ★ 
+
+> 𝑡
+
+be the optimal feasible plan and Φ(·) 
+
+the plan score. We assume that, with probability at least 𝜂 ,at least one candidate 𝑃 𝑘 has score 
+
+Φ(𝑃 𝑘 ) ≥ Φ(𝑃 ★ 
+
+> 𝑡
+
+) − 𝜀 𝑃 ,
+
+where 𝜀 𝑃 is the tolerated gap from the optimum. 
+
+5.3.1 Exploitation. Exploitation is the per-job score 𝐽 𝑖 (𝐿 𝑖 )
+
+of Equation (1), evaluated on the ladder’s aggregated out-comes. High-confidence causal relationships guide exploita-tive candidates, while 𝐽 𝑖 (𝐿 𝑖 ) favors those whose predicted outcomes best match the job’s weighted priorities. 
+
+5.3.2 Exploration. Exploitation alone favors deployments the surrogate already predicts to be good, so relationships that have never been exercised stay untested. Exploration rewards a plan for testing uncertain edges and mechanisms: Expl (𝑃 ) =∑︁  
+
+> 𝑒 ∈𝐸
+
+𝐴 𝑒 (𝑃 ) 𝑈 (𝛼 𝑒 , 𝛽 𝑒 ) + 𝜔 𝑚 ∑︁ 
+
+> 𝑚 ∈ M
+
+𝐴 𝑚 (𝑃 ) 𝑈 (𝛼 𝑚 , 𝛽 𝑚 ),
+
+(3) where 𝐴 𝑒 (𝑃 ) indicates whether any ladder in 𝑃 exercises edge 𝑒 , and analogously for mechanisms. 𝑈 is the normalized posterior variance from before. Mechanisms, weighted by 
+
+𝜔 𝑚 , are scored separately because their scope can fail even when each constituent edge is well supported. 
+
+5.3.3 Risk. A surrogate is most likely to be wrong when conditions have shifted, which is also when a plan is most likely to breach an SLO. Koi therefore evaluates each predic-tion against a band rather than a point. Let 𝑟 𝑗 be the historical residuals for objective 𝑗 , observed minus predicted as in §5.2, and b𝜎 𝑗 their empirical standard deviation. The band is upper 𝑗 = b𝑦 𝑗 + 𝑄 0.95 (𝑟 𝑗 ) + 2𝜖 b𝜎 𝑗 ,
+
+lower 𝑗 = b𝑦 𝑗 + 𝑄 0.05 (𝑟 𝑗 ) − 2𝜖 b𝜎 𝑗 . (4) where 𝑄 𝑞 is the empirical 𝑞 -quantile. The quantile terms carry the observed error distribution and the 2 𝜖 b𝜎 𝑗 terms inflate it, with 𝜖 in the role of a Wasserstein ambiguity radius around that distribution [13] rather than as the solution 
+
+> 6
+
+to a distributionally robust program. Koi calibrates 𝜖 from realized coverage in the slow loop (§5.4), widening it when outcomes fall outside the band more often than the target rate and tightening it as calibration improves. From the band, Koi estimates the probability 𝑝 brk  
+
+> 𝑗
+
+that each SLO-constrained objective is violated, and combines them as 
+
+𝑝 brk  
+
+> 𝑖
+
+(𝐿 𝑖 ) = 1 −
+
+Ö 
+
+> 𝑗 ∈ S 𝑖
+
+ 1 − 𝑝 brk 
+
+> 𝑗
+
+, (5) where S𝑖 is the set of objectives constrained by 𝑆 𝑖 . Treat-ing those objectives as independent is conservative, since latency violations are positively correlated in practice, so the product understates the joint satisfaction probability and overestimates risk. 
+
+5.3.4 Switching Cost. The reconfiguration cost for job 𝑖 
+
+is decomposed into four components: Switch 𝑖 = 𝐶 cold + 𝐶 parallel + 𝐶 kill + 𝐶 risk .
+
+All terms are zero for an unchanged ladder: 𝐶 cold captures loading and warm-up, 𝐶 parallel concurrent execution, 𝐶 kill 
+
+draining and termination, and 𝐶 risk transient underperfor-mance. The penalty 𝜆 𝑡 adapts to the observed reconfiguration rate (§5.4) to discourage unnecessary migrations. Separately, the swap budget 𝐵 𝑡 imposes the hard C4 cap on how many active jobs may change ladders in one tick. 
+
+5.3.5 Cluster Score. The four terms in Sections 5.3.1–5.3.4 combine into a single plan score: 
+
+Φ(𝑃 ) =∑︁  
+
+> (𝑖,𝐿 𝑖 ) ∈ 𝑃
+
+h
+
+𝐽 𝑖 (𝐿 𝑖 ) − 𝛾 𝑝 brk  
+
+> 𝑖
+
+(𝐿 𝑖 ) − 𝜆 𝑡 Switch 𝑖 (𝐿 (𝑡 −1) 
+
+> 𝑖
+
+, 𝐿 𝑖 )
+
+i
+
++ 𝛽 𝑡 Expl (𝑃 ).
+
+(6) Koi aims to select the highest-scoring feasible plan, 
+
+𝑃 𝑡 ∈ arg max  
+
+> 𝑃 ∈ F 𝑡
+
+Φ(𝑃 ), (7) where F𝑡 is the set of plans satisfying C1–C5 . Exhaustive maximization over F𝑡 is infeasible and the per-tick search is budgeted, so Koi commits the highest-scoring feasible plan it finds rather than the maximizer (§5.5). The exploration weight 𝛽 𝑡 and the switching penalty 𝜆 𝑡 are adapted by the slow loop (§5.4); the risk weight 𝛾 is fixed. 
+
+5.4 Self-Calibration 
+
+Koi adapts the quantities that govern planning from how well its predictions have held. Edge and mechanism confidence update every tick. On a slower schedule, Koi adjusts the exploration weight 𝛽 𝑡 , the swap budget 𝐵 𝑡 , the switching penalty 𝜆 𝑡 , the robustness radius 𝜖 𝑡 , the ideal point 𝑧 ★ 
+
+> 𝑡
+
+, and the CUSUM thresholds, each from accumulated residuals. Most of these follow one signal. Let 𝑞 𝑡 be the fraction of decided evidence–mechanism pairs over a rolling window of 
+
+𝑊 ticks that fall in Q1 , and with 𝑞 ★ = 1 let the regret signal be 
+
+𝑠 𝑡 = 1
+
+𝑊 
+
+> 𝑡
+
+∑︁   
+
+> 𝑘 =𝑡 −𝑊 +1
+
+max (0, 𝑞 ★ − 𝑞 𝑘 ),
+
+which increases as predictions become less reliable. Regret is derived from the Q1 rate: a high regret signal indicates poor configurations and motivates continued exploration. The exploration weight is given by 
+
+𝛽 𝑡 +1 = clip  𝛽 𝑡 exp (𝜂 𝛽 (𝑠 𝑡 − 𝑠 ★)) , 𝛽 min , 𝛽 max 
+
+,
+
+with target regret 𝑠 ★ and adaptation rate 𝜂 𝛽 . The same signal raises the swap budget 𝐵 𝑡 when predictions are unreliable, so more active jobs may be reconsidered. The switching penalty 
+
+𝜆 𝑡 instead follows the observed reconfiguration rate, rising as churn grows to damp thrashing. The radius 𝜖 𝑡 follows realized coverage, widening when outcomes fall outside the band more often than the target rate and tightening otherwise. The ideal reference tracks the best outcomes a job has achieved, 
+
+𝑧 ★ 
+
+> 𝑖,𝑗,𝑡
+
+=
+
+
+
+max  
+
+> 𝑟 ∈ H 𝑖,𝑡
+
+𝑦 𝑟,𝑗 + Δ𝑗 , 𝑗 maximized ,
+
+min  
+
+> 𝑟 ∈ H 𝑖,𝑡
+
+𝑦 𝑟,𝑗 − Δ𝑗 , 𝑗 minimized ,
+
+where H𝑖,𝑡 is job 𝑖 ’s deployment history and Δ𝑗 a margin that preserves dominance. The self-calibration loop relies on a corresponding convergence assumption: 
+
+Assumption 2 (Convergence). If jobs, workloads, avail-able capacity, and serving conditions remain stable for suf-ficiently long, we assume that Koi converges to a stable operating point. At this point, predictions remain accurate, exploration no longer finds materially better plans, reconfig-uration diminishes, and the learned causal and robustness state changes only marginally. 
+
+5.5 Agentic Planner 
+
+The search space for a cluster deployment is vast and coupled. Each chain sets about 140 knobs (Table 7), giving at least 2140 configurations per chain before replica counts and multi-rank ladders are considered. A plan chooses one ladder for every job, so the number of candidate plans grows exponen-tially with the number of jobs, and the choices are coupled because jobs with different workloads and SLOs compete for the same capacity. Koi therefore never enumerates this space. Budget books and backward DAG queries, described next, narrow it for each job, an LLM proposes a small set of ladders within it, and deterministic code evaluates, scores, and selects among them. A root planner receives the frozen cluster snapshot and assigns each job a budget book , a soft upper bound on which GPU types and instance pools the job may consider. Budgets can overlap in resources selected, and contention is resolved later by a capacity-constrained solver that assigns at most one ladder per job to the available GPUs. The root planner 
+
+> 7
+
+invokes per-job specialist sub-agents to propose candidate ladders within each job’s budget. Each specialist sub-agent receives the job’s model architecture, workload profile, cur-rent deployment, budgeted hardware, and all mechanisms whose scope matches the job. It can query the DAG backward: given a target SLO, the sub-agent traces which 𝑋 decisions affect it through which 𝑉 mediators, focusing on the deci-sions that matter (Section 5.2). This division lets the root reason about cluster-wide tradeoffs (which scarce accelera-tors to reserve, which workloads can share resources) while sub-agents focus on the configuration details of individual models. These proposals are advisory: Koi first validates each can-didate for physical feasibility, then invokes the surrogate to predict and score its performance. The resulting ladders compete for finite capacity under the joint selector, which assigns at most one ladder per job to maximize cluster-wide gain (Section 5.3) while accounting for unserved demand, improvement over active deployments, and switching cost. The root planner may inspect the result and propose addi-tional candidates, but cannot override deterministic scores, capacity checks, or constraints C1–C5 .
+
+5.6 Implementation 
+
+Batch and online inference jobs are executed through two different pathways. For batch jobs, large prompt files are sharded and a custom shard manager coordinates shard as-signment and completion for each worker. This ensures that every rank and chain planned by Koi make progress on the same job without conflicts. Online jobs are deployed through the Nvidia Dynamo inference deployment framework. Koi decides on the exact chain configuration and desired num-ber of maximum replicas, while Dynamo autoscales within that maximum replica bound in response to request load and desired SLAs. Per-rank telemetry from all running jobs is continuously streamed from the different worker clusters to a unified cluster state store. At each five-minute tick, Koi reads a snapshot of this store to use for the next plan. 
+
+## 6 Evaluation 
+
+Our evaluation asks three questions. First, how does Koi com-pare with static, classical, outcome-learning, evolutionary, and language-model planners in goodput, SLO attainment, admission, and cost (§6.2)? Second, do joint optimization, ev-idence accumulation, and health-triggered recovery operate as intended, and how do these effects change with deploy-ment scale and duration (§6.3)? Third, what do deterministic planning tools, the causal evidence graph, and cross-tick learning contribute, and how sensitive are the results to the language-model backbone (§6.4)? 
+
+6.1 Experimental Setup Benchmarks. We evaluate Koi in one real-hardware set-ting and three simulated settings: a 3-hour deployment on a 104-GPU heterogeneous GCP cluster, 3-hour and 12-hour het-erogeneous simulations, and a 12-hour homogeneous-cluster simulation. Each setting defines a benchmark consisting of a shared resource pool and a concurrent mix of online and batch workloads. For each benchmark, Koi and each of the ten baselines independently generate the placements and configurations used to serve the same workload. Each benchmark mixes 25 online and batch workloads across ten model architectures: Llama-3.2-1B, Llama-3.3-70B, Qwen2.5-Coder-32B, Phi-4, Mixtral-8x7B, Kimi-K2-Instruct, GLM-4.5-Air, Qwen3-Next-80B, DeepSeek-V3 and Qwen3-235B-A22B-Instruct, spanning 1B to 235B parameters and including dense, mixture-of-experts, and frontier models. Online workloads distribution range from short moderation (256/8 tokens, TTFT < 100 ms) to long-context summaries (24,000/1,200 tokens, TTFT < 3s) and decode-heavy agentic tasks (1,400/4,096 tokens). Six batch jobs carry fixed dead-lines ranging from 20 to 135 minutes. Request traffic follows Poisson, constant, and gamma arrival processes parameter-ized from production profiles to each job type. The work-loads used in simulation and real cluster are summarized in Figure 7 and Table 6 in the Appendix. 
+
+Real-Hardware Execution. Each experiment is conducted with three Google Cloud Kubernetes clusters across three dis-tinct regions: us-central1, us-east5 and europe-west2. There are 104 GPUs in total, consisting of a heterogeneous mix of H100-80GB, A100-80GB, A100-40GB, and RTXPRO6000. Due to cost constraints, non-evolutionary algorithm based baselines were omitted from real experiments. 
+
+Simulation Setup. For the simulation environment, we used LLMServingSim 2.0 [9], a discrete event simulator (DES) as the execution environment for the simulated clusters. Un-like Koi’s internal surrogate model, LLMServingSim 2.0 does not provide point estimates per placement, but rather sim-ulates request execution and queueing semantics for all re-quests routed to a deployed configuration. After a plan is selected by Koi, LLMServingSim 2.0 executes the correspond-ing configuration and provides the realized performance observations that would otherwise come from hardware telemetry. It simulates using per-operator compute profiles across GPU, model, and tensor-parallel configurations, and an ASTRA-SIM [26] backend for collective communication. To support all model–GPU combinations in our benchmark, we augmented LLMServingSim 2.0 with layer-wise profiles for the additional LLM models and GPU types used in the evaluation. 
+
+Baselines. Koi is compared against ten schedulers, grouped by the capability each baseline is intended to test. 
+
+Non-learning baselines. FCFS+First-Fit admits jobs in ar-rival order and assigns the least-VRAM feasible placement. 
+
+> 8
+
+Table 1. Simulated benchmark results for 3-hour (400-GPU) and 12-hour (800-GPU) heterogeneous workloads. Bold marks the best value and underline the second-best; ties are marked for all matching methods  
+
+> Method Hrs Batch prog. (%) Admit online (%) Admit batch (%) $/token (
+
+10 −4)TTFT met (%) TPOT met (%) Goodput (tok/s) Overall score                                                                                                                                                                           
+
+> Non-learning baselines
+> FCFS + first-fit 357.71 77.78 57.14 2.95 3.90 6.89 1830.84 49.13 12 38.69 78.26 50.00 6.09 2.45 6.27 1772.01 31.46 Best fixed configuration 357.71 66.67 57.14 2.91 5.24 13.61 1857.31 50.24 12 24.54 69.57 57.14 29.65 7.63 13.55 364.03 17.59 EDF + first-fit 357.71 77.78 57.14 2.94 4.05 7.27 1833.16 49.27 12 38.62 78.26 50.00 6.09 2.36 6.21 1771.49 31.40
+> Placement and search baselines
+> Rolling CP-SAT 341.99 72.22 57.14 6.69 3.00 15.88 807.03 31.90 12 14.99 78.26 64.29 40.18 2.89 16.83 268.57 15.83 Contextual bandit 344.42 66.67 57.14 5.43 8.09 27.08 993.08 37.49 12 30.52 65.22 50.00 14.16 9.56 23.06 762.20 24.89 PRISM 342.55 77.78 57.14 7.06 2.80 5.16 764.66 29.06 12 15.35 73.91 64.29 57.66 1.94 4.69 187.18 11.14 Rolling EvoX 357.71 66.67 57.14 2.69 9.90 22.10 2004.06 54.34 12 50.71 65.22 64.29 3.37 11.96 24.02 3012.00 50.01 OpenEvolve 356.70 66.67 57.14 4.74 5.22 23.41 1139.00 41.74 12 25.01 78.26 64.29 26.24 9.19 16.14 411.25 19.84 GPT-Only (non-agentic) 352.04 77.78 71.43 6.31 3.98 18.98 855.60 35.28 12 17.54 69.57 71.43 16.86 3.02 17.29 640.25 21.34 Koi 384.55 94.44 71.43 1.85 28.79 41.80 2910.64 70.83
+> 12 49.61 95.65 100.00 3.39 27.95 35.80 3184.15 63.13
+
+Δ vs. best baseline 3 +26.84pp +16.66pp +0.00pp +31.23% +18.89pp +14.72pp +45.24% +30.35% 12 −1.10 pp +17.39pp +28.57pp −0.59 % +15.99pp +11.78pp +5.72% +26.23% 
+
+Table 2. Real-hardware results for the 3-hour, 104-GPU heterogeneous benchmark. Bold marks the best value and underline the second-best. 
+
+> Method Batch prog. (%) Admit online (%) Admit batch (%) $/token (
+
+10 −4)TTFT met (%) TPOT met (%) Goodput (tok/s) Overall score Contextual bandit 50.00 53.33 100.00 0.45 22.23 33.66 2291.03 51.05 Rolling EvoX 50.00 80.00 100.00 0.44 28.08 35.48 2348.15 54.90 OpenEvolve 75.00 100.00 100.00 0.30 65.66 91.41 3497.43 84.44 Koi 100.00 100.00 100.00 0.24 79.05 99.11 4119.51 94.50 
+
+Δ vs. best baseline +25.00pp +0.00pp +0.00pp +20.00% +13.39pp +7.70pp +17.79% +11.91% 
+
+EDF [16] applies the same placement rule but prioritizes earlier deadlines. Best Fixed uses one static hardware and parallelism configuration per job, selected offline by GPT-5.6-Sol with access to the complete workload trace; at runtime, it reuses these configurations and falls back to VRAM-based placement when the selected configuration is unavailable. 
+
+Per-job optimizers. Prism [32] estimates memory and KV-cache pressure to place preconfigured model-parallel groups, reallocating memory at runtime but never choosing GPU type, parallelism, or replica count. To adapt Prism to cluster scheduling, we enumerate policy-compliant GPU-pool and TP/PP placement candidates using workload-derived VRAM and KV-cache demand. Prism then admits waiting jobs by assigning high-KV-demand workloads to the least-pressured feasible pool under global capacity constraints. 
+
+Global optimizers without mechanism learning. Rolling CP-SAT [23] solves ILP at each tick over the same candidate catalog and constraints as Koi. It enumerates policy-valid placements using checked-in maximum VRAM requirements and resource-map capacity, then optimizes lexicographically for priority-weighted admission, lower estimated reserva-tion cost, and lower GPU footprint. But it never learns from outcomes. Contextual Thompson sampling [4] maintains a Bayesian linear reward model over public job and candidate-placement features, updating only from terminal deployment outcomes. Its bounded reward combines online TTFT, TPOT, and throughput attainment with weights 0 .4, 0 .4, and 0 .2, re-spectively; for batch jobs, it combines throughput attainment and deadline completion with weights 0 .4 and 0 .6. 
+
+LLM-guided planners. GPT-only (non-agentic) receives a frozen cluster snapshot, containing the same public job, re-source, policy, and model-catalog information available to Koi, and generates a placement plan without tools or cross-tick state. Its prompt requires a complete policy-compliant ac-tion for each job, specifying feasible GPU pool and TP/PP/DP 
+
+> 9
+
+configuration while respecting current capacity. Agentic ad-ditionally uses a REPL and the same read-only inspection and placement-validation tools available to Koi’s agent. 
+
+Evolutionary search. Rolling EvoX [17] evolves a deter-ministic placement function at each tick, adapting its search strategy when progress stalls. OpenEvolve [28] retains a MAP-Elites database of diverse, high-scoring placement pro-grams across ticks. In each baseline, we used the similar objective function as Koi to make it comparable. EvoX’s each reasoning round takes ≈ 30 seconds. Considering reasonable scheduling overhead, we set it to max 8 rounds or 5 minutes whatever returns first. Again, we provided the same infor-mation with both EvoX and OpenEvolve baselines that was given to Koi. For the main performance evaluation, we used the same LLM model (GPT-5.6-Luna) for the policies that uses LLM. Additionally, we did LLM-backbone sensitivity study with different LLM models for Koi. To standardize the comparison, each baseline is given the same cluster snapshots, candidate catalog, and safety checks. Differences are limited to the plan-search policy and, for Koi alone, cross-tick mechanism learning. 
+
+Metrics. A single evaluator computes every number from per-run traces. All denominators belong to the workload (offered requests, submitted jobs, full campaign sizes, a com-mon clock 𝑇 ), so no planner can improve a metric by refusing, dropping, or narrowing work. Stochastic planners report the mean and range over at least three runs. We collapse results into an overall score with three equally weighted pillars: Quality (TTFT SLO met, TPOT SLO met, deadline met), Coverage (online admission, batch admission, batch progress), and Efficiency (goodput and cost per SLO-token, each normalized to the best in each comparison). The score is their geometric mean; no pillar compensates for another. The problem formulation uses the same instanta-neous outcome vector for online and batch jobs (Section 4). The evaluation, however, judges batch jobs by completion progress and deadline attainment, which capture finite-work completion rather than instantaneous serving quality. 
+
+SLO met is the fraction of offered online requests meeting both TTFT and TPOT p99 targets, averaged per job so one high-volume tenant cannot dominate. Deadline met is the share of batch jobs finishing before their deadline. Admission 
+
+is the share of submitted jobs whose ranks materialized with-out a fatal interruption. Batch progress is request-weighted completion over all submitted jobs. Goodput is SLO-honoring output tokens per second: online tokens passing both latency gates plus the projected tokens of deadline-meeting jobs. Cost per SLO-token divides the fleet capacity cost by total SLO-token output; idle GPUs count as waste, so the cheapest planner produces the most SLO output from the same sunk fleet. Planner LLM cost is reported separately. 
+
+6.2 End-to-End Performance 
+
+End-to-End Performance overview. Table 1 reports the end-to-end results. Over three hours, Koi achieves 2,911 goodput tok/s, 45.24% more than the strongest baseline, while reducing cost per token by 31.23%; it also improves batch progress by 26.84% and TTFT/TPOT SLO attainment by 18.89/14.72%. Over twelve hours, Koi admits 95.65% of on-line jobs and all batch jobs, improves goodput by 5.72%, and leads TTFT/TPOT attainment by 15.99/11.78%, while batch progress is 1.10 points below EvoX and cost is 0.59% higher. Thus, Koi’s gain does not come from maximizing one work-load class: it sustains more admitted work and substantially better online latency while remaining competitive on batch progress and cost. 
+
+6.3 Design Evaluation 
+
+Joint optimization. In the real-cluster run, a Qwen3-235B job waits at tick 18 while ten services are running. The only reclaim candidate would reduce a Phi-4 service from two TP2 RTXPRO6000 replicas to one. This would halve its modeled capacity from 1,572 to 786 tok/s, below its 834 tok/s requirement, while its observed p99 TTFT already exceeds the 500 ms target at 645 ms. A full preemption would be worse, reducing that service’s availability. The joint selector rejects the reclaim as not Pareto-better than keeping Phi-4, defers Qwen for two ticks, and admits it at tick 20 after an-other batch finishes naturally. The ten-minute delay protects an existing service from a predicted SLO regression without sacrificing Qwen’s eventual admission. 
+
+Deployment evidence makes planning more calibrated. 
+
+In the 12-hour simulation on heterogeneous cluster, the mean causal uncertainty ¯ 𝑈 falls from a first-quarter median of 0.0215 to 0.00053 in the final quarter, a 41 × reduction. The fraction of predictions receiving a learned residual correction rises from 2.3% to 10.8%, while their median absolute log error falls from 0.965 to 0.823. During warm-up, the regret signal raises the exploration weight from 0.49 to 2.0 by tick 23. As evidence accumulates, the median DRO radius tightens from 0.379 to 0.260, then widens again after the late workload shift since the uncertainty increases again with it. Thus, Koi becomes more confident where observations repeat while retaining the ability to increase exploration and robustness when conditions change. 
+
+Swap. In the real cluster experiment, a Mixtral service reaches critical health at tick 15 after only one of its two A100-80GB replicas materializes and observed p99 TTFT reaches 2,299 ms against a 700 ms target. The per-job sub-agent pro-poses one physically launchable TP8 A100 rank, and the deterministic scorer assigns a 25 .44 gain over keeping the failed deployment, including a 25 .00 critical-rehabilitation credit. The joint selector commits only this swap and keeps the other active jobs unchanged. The request-level TTFT 
+
+> 10
+
+pass rate rises from 2.4% before recovery to 99.9% on the relaunched rank, and the job is healthy by tick 18. This exam-ple connects telemetry, candidate generation, deterministic scoring, and cluster-wide commitment in one decision. 
+
+Learning and performance improvement. We distin-guish fleet scale from elapsed learning time using two com-parisons. Over roughly three hours, the 104-GPU real clus-ter commits 20 deployments and selects eight mechanisms, whereas the 800-GPU simulation commits 80 deployments and selects 17 mechanisms. At a larger cluster scale (800 GPUs for 12 hours vs. 104 GPUs for 3 hours), Koi gath-ered more evidence, increasing from 407 to 2,272 pieces of evidence, and ran more CUSUM tests, increasing from 18,705 to 101,420. The share of decisive mechanism tests that support their predicted mediator–outcome path rises from 1.9% to 19.1%, and ICP acceptance for the same workload-to-mediator edge rises from 11.0% to 63.3%. These runs show that more concurrent deployments activate learning sooner and that a longer horizon strengthens its evidence. 
+
+Evidence changes both allocation and planner state. 
+
+Figure 4 shows Koi increasing its plan-declared allocation above 90% as jobs arrive while sustaining high served-job TTFT and TPOT attainment. As observed outcomes expose prediction-band misses, Koi widens its DRO radius from 0.15 to 0.191 rather than continuing to trust an under-covering bound. In parallel, the cumulative mechanism set grows to 64 as new workload contexts arrive. 
+
+Balance between exploitation and exploration. Fig-ure 5 shows long stable placement intervals under Koi, with changes concentrated on a subset of degraded services. EvoX and the contextual bandit instead produce dense swap se-quences across nearly every online workload, while OpenEvolve and GPT-only perform no explicit swaps and largely preserve their initial choices; OpenEvolve’s additional transitions are failure-driven relaunches. Across the complete trace, Koi is-sues 201 swaps and 2,076 keeps, compared with 1,464 swaps for EvoX and 1,928 for the bandit. The timeline therefore places Koi between two failure modes: repeatedly perturbing productive deployments and never correcting a poor initial placement. 
+
+6.4 Ablation Study 
+
+Koi sub-component ablation. Figure 6 and Table 4 com-pare progressively more complete planners. Giving the lan-guage model deterministic prediction, scoring, and validation tools increases goodput from 856 to 1,827 tok/s, raises TTFT attainment from 3.98% to 25.74%, and reduces cost per token from 6 .31 × 10 −4 to 2 .95 × 10 −4. The complete system reaches 2,911 tok/s; removing the causal graph reduces goodput to 1,770 tok/s, while freezing online updates reduces it to 1,621 tok/s. Full Koi also completes 84.55% of batch work, versus 
+
+Figure 4. Real-cluster allocation, SLO attainment, and adaptation over three hours. (a) Plan-declared logical GPU allocation for each policy, with Koi’s realized swap marked; (b) equal-job mean TTFT (solid) and TPOT (dashed) attain-ment among served online jobs; (c) Koi’s calibrated DRO radius; and (d) active/applicable and cumulatively discov-ered mechanisms. 
+
+Figure 5. Online workload scheduling across methods. 
+
+Per-job GPU assignments for nine workloads over 12 hours under Koi, EvoX, OpenEvolve, the contextual bandit, and GPT-only. Colors denote GPU families; markers indicate placement, swap, and rank relaunch events. 59.42% without the graph and 63.01% without online learn-ing, despite admitting fewer batch jobs than either variant. The result separates two roles: deterministic tools ground each planning attempt, while persistent mechanism evidence improves which valid plans are retained and revisited across ticks. 
+
+LLM backbone ablation. The backbone ablation localizes the Cohere–GPT-5.6 Sol difference to a single 7,200-request Llama-70B batch campaign. Both planners admit it at 00:15 and never reconfigure it, but Cohere selects one eight-GPU MI300 TP8 chain and finishes at 01:07 with 82 minutes of deadline slack, whereas Sol selects four TP4 A100 replicas  
+
+> 11 GPT-only (non-agentic) GPT-only (agentic) Koi w/o DAG Koi w/o OL Koi
+> 020 40 60
+> Overall score
+> (a) Overall score
+> GPT-only (non-agentic) GPT-only (agentic) Koi w/o DAG Koi w/o OL Koi
+> 020 40
+> SLO met (%)
+> (b) SLO met ratio
+> TTFT TPOT
+> GPT-only (non-agentic) GPT-only (agentic) Koi w/o DAG Koi w/o OL Koi
+> 01000 2000 3000
+> Goodput
+> (c) Goodput
+
+Figure 6. Ablations over the 3-hour heterogeneous sim-ulation. Overall score, TTFT and TPOT SLO attainment, and goodput across five planner variants. using 16 GPUs and reaches 7,115 requests by the 02:30 dead-line, missing by 85. Because batch goodput credits the cam-paign only when it meets its deadline, this single decision contributes 8.64 million tokens and explains 99.3% of their trace-derived goodput gap; their online contributions differ by only 57,921 tokens. The insight is that deterministic val-idation bounds the action space but cannot make all valid candidates equally useful: a small number of initial proposals can dominate the final result. This single-run comparison does not isolate accelerator type, parallelism, replication, or batching limits, which change together. Another insight is that the achieved outcomes (TTFT, TPOT etc.) of all the jobs, in all ablations are well within three standard deviations of each other - indicating a model agnostic behavior. 
+
+## 7 Discussion, Limitations and future work 
+
+Koi benefits from a larger fleet as it runs more concurrent jobs, exercising more relationships per tick and covering more scopes. Evidence accumulates faster and applies to a wider set of future jobs. Additional headroom also makes exploration affordable without putting an SLO at risk, and planner cost is charged per tick and amortized over the jobs in it. Utilization rises 24.5% between the first and last quarter of the 12-hour run, but the run is too short to reach the con-vergence conditions. New decision axes enlarge 𝑋 without changing Koi’s per-tick cost, which is bounded by the num-ber of candidates evaluated rather than by the size of the space. Expert parallelism, prefill–decode disaggregation, and engine-level tuning are therefore straightforward to admit. Each requires only that telemetry report at least one medi-ator through which its effect passes, since an axis with no measured mediator can be scored but not tested. Enumera-tive and black-box search have no such property and require more samples as the space grows. New accelerators, includ-ing AMD and TPU can then be additional environments in 𝑅 𝑡 
+
+and need no change to the planner. Training, post-training, and fine-tuning jobs have the same three properties Koi relies on: a configuration space that can be enumerated, runtime behavior the stack already reports, and evaluations too ex-pensive to run exhaustively. Extending the planner to admit them would let one controller allocate a fleet across all of these workloads rather than inference alone. 
+
+## 8 Conclusion 
+
+Heterogeneous LLM inference requires more than a better predictor. A useful controller must allocate scarce devices globally, act safely under prediction error, and decide which expensive deployments should improve its future knowledge. Koi addresses these requirements by attaching falsifiable, mediator-grounded mechanisms to deployment plans; us-ing a sandboxed LLM only to propose candidate plans; and keeping scoring, validation, and side effects deterministic. Telemetry closes a calibrated slow loop, while a stateless exe-cution plane keeps fast serving and recovery independent of the planner. The result is a cluster control architecture that can improve with use without making availability depend on an agent’s correctness. 
+
+## 9 Acknowledgements 
+
+Generative AI tools, specifically ChatGPT, Claude Code and DeepSeek, were used to assist with generating sections of this work, including text, tables, graphs and code. 
+
+## References 
+
+[1] Virginia Aglietti, Xiaoyu Lu, Andrei Paleyes, and Javier González. 2020. Causal Bayesian Optimization. In Proceedings of the Twenty-Third International Conference on Artificial Intelligence and Statistics (Proceedings of Machine Learning Research, Vol. 108) . PMLR, Palermo, Sicily, Italy, 3155–3164. https://proceedings.mlr.press/v108/aglietti20a. html 
+
+[2] Amey Agrawal, Nitin Kedia, Jayashree Mohan, Ashish Panwar, Nipun Kwatra, Bhargav S. Gulavani, Ramachandran Ramjee, and Alexey Tumanov. 2024. Vidur: A Large-Scale Simulation Framework for LLM Inference. In Proceedings of Machine Learning and Systems , Vol. 6. 351–366. https://proceedings.mlsys.org/paper_files/paper/2024/hash/ b74a8de47d2b3c928360e0a011f48351-Abstract-Conference.html 
+
+[3] Amey Agrawal, Nitin Kedia, Ashish Panwar, Jayashree Mohan, Nipun Kwatra, Bhargav Gulavani, Alexey Tumanov, and Ramachandran Ram-jee. 2024. Taming Throughput-Latency Tradeoff in LLM Inference with Sarathi-Serve. In 18th USENIX Symposium on Operating Systems Design and Implementation (OSDI 24) . USENIX Association, 117–134. 
+
+https://www.usenix.org/conference/osdi24/presentation/agrawal 
+
+[4] Shipra Agrawal and Navin Goyal. 2013. Thompson Sampling for Contextual Bandits with Linear Payoffs. In Proceedings of the 30th International Conference on Machine Learning (Proceedings of Machine Learning Research, Vol. 28) . PMLR, 127–135. [5] Omid Alipourfard, Hongqiang Harry Liu, Jianshu Chen, Shivaram Venkataraman, Minlan Yu, and Ming Zhang. 2017. CherryP-ick: Adaptively Unearthing the Best Cloud Configurations for Big Data Analytics. In 14th USENIX Symposium on Networked Systems Design and Implementation (NSDI 17) . USENIX Association, 469– 482. https://www.usenix.org/conference/nsdi17/technical-sessions/ presentation/alipourfard 
+
+[6] Matej Balog, Alexander Novikov, Ngan Vu, Marvin Eisenberger, Emi-lien Dupont, Po-Sen Huang, Adam Zsolt Wagner, Sergey Shirobokov, Borislav Kozlovskii, Francisco J. R. Ruiz, Abbas Mehrabian, M. Pawan Kumar, Abigail See, Swarat Chaudhuri, George Holland, Alex Davies, 
+
+> 12
+
+Sebastian Nowozin, and Pushmeet Kohli. 2025. AlphaEvolve: A Coding Agent for Scientific and Algorithmic Discovery. Google Deep-Mind technical report. https://storage.googleapis.com/deepmind-media/DeepMind.com/Blog/alphaevolve-a-gemini-powered-coding-agent-for-designing-advanced-algorithms/AlphaEvolve.pdf 
+
+[7] Romil Bhardwaj, Kirthevasan Kandasamy, Asim Biswal, Wenshuo Guo, Benjamin Hindman, Joseph E. Gonzalez, Michael I. Jordan, and Ion Stoica. 2023. Cilantro: Performance-Aware Resource Allocation for General Objectives via Online Feedback. In 17th USENIX Symposium on Operating Systems Design and Implementation (OSDI 23) . USENIX Association, 623–643. https://www.usenix.org/conference/osdi23/ presentation/bhardwaj 
+
+[8] Ke Cheng, Zhi Wang, Wen Hu, Tiannuo Yang, Jianguo Li, and Sheng Zhang. 2024. SCOOT: SLO-Oriented Performance Tuning for LLM Inference Engines. arXiv preprint arXiv:2408.04323 (2024). [9] Jaehong Cho, Hyunmin Choi, Guseul Heo, and Jongse Park. 2026. LLMServingSim 2.0: A Unified Simulator for Heterogeneous and Dis-aggregated LLM Serving Infrastructure. In 2026 IEEE International Symposium on Performance Analysis of Systems and Software (ISPASS) .1–14. doi: 10.1109/ISPASS69572.2026.00012 
+
+[10] Kanishk Goel, Jayashree Mohan, Nipun Kwatra, Ravi Shreyas Anupindi, and Ramachandran Ramjee. 2026. QoServe: Breaking the Silos of LLM Inference Serving. In Proceedings of the 31st ACM Interna-tional Conference on Architectural Support for Programming Languages and Operating Systems, Volume 2 . 1492–1507. doi: 10.1145/3779212. 3790206 
+
+[11] Tyler Griggs, Xiaoxuan Liu, Jiaxiang Yu, Doyoung Kim, Wei-Lin Chi-ang, Alvin Cheung, and Ion Stoica. 2024. Mélange: Cost Efficient Large Language Model Serving by Exploiting GPU Heterogeneity. arXiv:2404.14527 [cs.DC] https://arxiv.org/abs/2404.14527 
+
+[12] Juncheng Gu, Mosharaf Chowdhury, Kang G. Shin, Yibo Zhu, Myeong-jae Jeon, Junjie Qian, Hongqiang Liu, and Chuanxiong Guo. 2019. Tire-sias: A GPU Cluster Manager for Distributed Deep Learning. In 16th USENIX Symposium on Networked Systems Design and Implementation (NSDI 19) . USENIX Association, 485–500. https://www.usenix.org/ conference/nsdi19/presentation/gu 
+
+[13] Daniel Kuhn, Soroosh Shafiee, and Wolfram Wiesemann. 2025. Dis-tributionally Robust Optimization. arXiv:2411.02549 [math.OC] doi: 10.48550/arXiv.2411.02549 
+
+[14] Woosuk Kwon, Zhuohan Li, Siyuan Zhuang, Ying Sheng, Lianmin Zheng, Cody Hao Yu, Joseph E. Gonzalez, Hao Zhang, and Ion Stoica. 2023. Efficient Memory Management for Large Language Model Serving with PagedAttention. In Proceedings of the 29th Symposium on Operating Systems Principles . 611–626. doi: 10.1145/3600006.3613165 
+
+[15] Zhuohan Li, Lianmin Zheng, Yinmin Zhong, Vincent Liu, Ying Sheng, Xin Jin, Yanping Huang, Zhifeng Chen, Hao Zhang, Joseph E. Gonzalez, and Ion Stoica. 2023. AlpaServe: Statistical Multiplexing with Model Parallelism for Deep Learning Serving. In 17th USENIX Symposium on Operating Systems Design and Implementation (OSDI 23) . USENIX Association, 663–679. https://www.usenix.org/conference/osdi23/ presentation/li-zhouhan 
+
+[16] C. L. Liu and James W. Layland. 1973. Scheduling Algorithms for Multiprogramming in a Hard-Real-Time Environment. J. ACM 20, 1 (1973), 46–61. doi: 10.1145/321738.321743 
+
+[17] Shu Liu, Shubham Agarwal, Monishwaran Maheswaran, Mert Cemri, Zhifei Li, Qiuyang Mang, Ashwin Naren, Ethan Boneh, Audrey Cheng, Melissa Z. Pan, Alexander Du, Kurt Keutzer, Alexandros G. Dimakis, Koushik Sen, Matei Zaharia, and Ion Stoica. 2026. EvoX: Meta-Evolution for Automated Discovery. arXiv:2602.23413 [cs.LG] doi: 10.48550/arXiv.2602.23413 
+
+[18] Ziming Mao, Tian Xia, Zhanghao Wu, Wei-Lin Chiang, Tyler Griggs, Romil Bhardwaj, Zongheng Yang, Scott Shenker, and Ion Stoica. 2025. SkyServe: Serving AI Models across Regions and Clouds with Spot Instances. In Proceedings of the Twentieth European Conference on Computer Systems . 159–175. doi: 10.1145/3689031.3717459 
+
+[19] Yixuan Mei, Yonghao Zhuang, Xupeng Miao, Juncheng Yang, Zhihao Jia, and Rashmi Vinayak. 2025. Helix: Serving Large Language Models over Heterogeneous GPUs and Network via Max-Flow. In Proceedings of the 30th ACM International Conference on Architectural Support for Programming Languages and Operating Systems, Volume 1 . 586–602. doi: 10.1145/3669940.3707215 
+
+[20] Kaisa Miettinen. 1999. Nonlinear Multiobjective Optimization . Interna-tional Series in Operations Research & Management Science, Vol. 12. Kluwer Academic Publishers. doi: 10.1007/978-1-4615-5563-6 
+
+[21] E. S. Page. 1954. Continuous Inspection Schemes. Biometrika 41, 1–2 (1954), 100–115. doi: 10.1093/biomet/41.1-2.100 
+
+[22] Archit Patke, Dhemath Reddy, Saurabh Jha, Haoran Qiu, Christian Pinto, Chandra Narayanaswami, Zbigniew Kalbarczyk, and Ravis-hankar Iyer. 2024. Queue Management for SLO-Oriented Large Lan-guage Model Serving. In Proceedings of the 2024 ACM Symposium on Cloud Computing . 18–35. doi: 10.1145/3698038.3698523 
+
+[23] Laurent Perron, Frédéric Didier, and Steven Gay. 2023. The CP-SAT-LP Solver. In 29th International Conference on Principles and Practice of Constraint Programming (CP 2023) (Leibniz International Proceedings in Informatics (LIPIcs), Vol. 280) . Schloss Dagstuhl – Leibniz-Zentrum für Informatik, 3:1–3:2. doi: 10.4230/LIPIcs.CP.2023.3 
+
+[24] Jonas Peters, Peter Bühlmann, and Nicolai Meinshausen. 2016. Causal Inference by using Invariant Prediction: Identification and Confidence Intervals. Journal of the Royal Statistical Society: Series B (Statistical Methodology) 78, 5 (2016), 947–1012. doi: 10.1111/rssb.12167 
+
+[25] Aurick Qiao, Sang Keun Choe, Suhas Jayaram Subramanya, Willie Neiswanger, Qirong Ho, Hao Zhang, Gregory R. Ganger, and Eric P. Xing. 2021. Pollux: Co-adaptive Cluster Scheduling for Goodput-Optimized Deep Learning. In 15th USENIX Symposium on Operating Systems Design and Implementation (OSDI 21) . USENIX Association, 1–18. https://www.usenix.org/conference/osdi21/presentation/qiao 
+
+[26] Saeed Rashidi, Srinivas Sridharan, Sudarshan Srinivasan, and Tushar Krishna. 2020. ASTRA-SIM: Enabling SW/HW Co-Design Exploration for Distributed DL Training Platforms. In 2020 IEEE International Symposium on Performance Analysis of Systems and Software (ISPASS) .81–92. doi: 10.1109/ISPASS48437.2020.00018 
+
+[27] Bernardino Romera-Paredes, Mohammadamin Barekatain, Alexander Novikov, Matej Balog, M. Pawan Kumar, Emilien Dupont, Francisco J. R. Ruiz, Jordan S. Ellenberg, Pengming Wang, Omar Fawzi, Pushmeet Kohli, and Alhussein Fawzi. 2024. Mathematical Discoveries from Program Search with Large Language Models. Nature 625 (2024), 468–475. doi: 10.1038/s41586-023-06924-6 
+
+[28] Asankhaya Sharma. 2025. OpenEvolve: An Open-Source Evolution-ary Coding Agent. https://github.com/algorithmicsuperintelligence/ openevolve . Open-source evolutionary coding agent. [29] Tianhao Xu, Yiming Liu, Xianglong Lu, Yijia Zhao, Xuting Zhou, Aichen Feng, Yiyi Chen, Yi Shen, Qin Zhou, Xumeng Chen, Ilya Sher-styuk, Haorui Li, Rishi Thakkar, Ben Hamm, Yuanzhe Li, Xue Huang, Wenpeng Wu, Anish Shanbhag, Harry Kim, Chuan Chen, and Junjie Lai. 2026. AIConfigurator: Lightning-Fast Configuration Optimization for Multi-Framework LLM Serving. arXiv preprint arXiv:2601.06288 
+
+(2026). doi: 10.48550/arXiv.2601.06288 
+
+[30] Zongheng Yang, Zhanghao Wu, Michael Luo, Wei-Lin Chiang, Romil Bhardwaj, Woosuk Kwon, Siyuan Zhuang, Frank Sifei Luan, Gautam Mittal, Scott Shenker, and Ion Stoica. 2023. SkyPilot: An Intercloud Broker for Sky Computing. In 20th USENIX Symposium on Networked Systems Design and Implementation (NSDI 23) . USENIX Association, 437–455. https://www.usenix.org/conference/nsdi23/presentation/ yang-zongheng 
+
+[31] Gyeong-In Yu, Joo Seong Jeong, Geon-Woo Kim, Soojeong Kim, and Byung-Gon Chun. 2022. Orca: A Distributed Serving System for Transformer-Based Generative Models. In 16th USENIX Symposium on Operating Systems Design and Implementation (OSDI 22) . USENIX      
+
+> 13 Association, 521–538. https://www.usenix.org/conference/osdi22/ presentation/yu
+> [32] Shan Yu, Yifan Qiao, Mingyuan Ma, Yangmin Li, Shuo Yang, Xinyuan Tong, Yang Wang, Zhiqiang Xie, Yuwei An, Shiyi Cao, Ke Bao, Deepak Vij, Xiaoning Ding, Yichen Wang, Qingda Lu, Zhong Wang, Gao Gao, Harry Xu, Junyi Shu, Jiarong Xing, and Ying Sheng. 2025. Prism: Cost-Efficient Multi-LLM Serving via GPU Memory Ballooning. Accepted to OSDI 2026. arXiv:2505.04021 [cs.DC] https://arxiv.org/abs/2505.04021
+> [33] Alex L. Zhang, Tim Kraska, and Omar Khattab. 2026. Recursive Lan-guage Models. arXiv:2512.24601 [cs.AI] https://arxiv.org/abs/2512. 24601
+
+## A Deployment Configuration Space 
+
+Table 7 groups the configuration knobs that a chain sets into families, with representative knobs for each. 
+
+## B Baseline Implementation Details 
+
+This section describes the non-Koi baselines that were im-plemented. It excludes Koi and its ablations. 
+
+B.1 Common Store-to-plan contract 
+
+Each implemented driver independently reads one frozen Store snapshot at a planning tick: the resource map and the running, waiting, paused, and finished job groups for the evaluated user. It subtracts the footprint of running jobs from the resource map before making new assignments. It then emits exactly one lifecycle action for every visible job: keep 
+
+for running jobs, place or defer for waiting jobs, defer for paused jobs, and preempt for finished jobs. A placement is serialized as a normal Store plan and is checked against the concrete environment or pool capacity before it is recorded. CP-SAT, contextual Thompson sampling, Prism, and EvoX each locally construct their candidate set from the same kinds of public facts, rather than reading Koi state. For every waiting job, they read the model, token and SLO fields, prior-ity, and an explicit or benchmark VRAM requirement. They enumerate available resource targets and policy-permitted TP values, choose the smallest PP sufficient for the VRAM requirement with DP fixed to one, and record each candi-date’s resource keys, GPU footprint, price, model-weight estimate, and KV-demand estimate. The drivers reject can-didates that violate the configuration policy or nested en-vironment/pool capacity. This gives the four methods the same job and resource-map interface while leaving their se-lection rules independent of Koi’s predictions, mechanisms, and objective. The contextual Thompson-sampling and EvoX drivers are currently registered in the simulator CLI. The best-fit, CP-SAT, AIConfigurator, and Prism drivers are implemented and unit-tested Store adapters, but still need factory registration before they can be selected through the CLI. 
+
+B.2 Implemented baseline policies 
+
+Best fixed configuration. The static control uses a checked-in mapping from benchmark job identity to hardware target and TP/PP/DP configuration. For each waiting job, it resolves that mapping against the current resource map and greed-ily places the job only when the required target still has capacity. If a mapping is absent or no longer fits, the im-plementation uses a VRAM-feasible fallback; otherwise it defers the job. The fallback lets the control produce a valid Store plan when a named benchmark configuration cannot be bound to the current fleet. It must be reported as a fallback, not as a development-selected fixed configuration. 
+
+Rolling CP-SAT.. CP-SAT receives the static candidates and capacity constraints above. It creates one Boolean vari-able for each job–candidate pair, constrains each job to at most one selected candidate, and constrains every environ-ment and pool footprint to its available capacity. The solver first maximizes priority-weighted job admission. With that value fixed, it minimizes hourly price, GPU footprint, and a stable candidate-order tie break. It uses one worker, seed zero, and a declared time limit. We use a rolling solve be-cause capacity and the waiting queue change each tick; the re-solve is necessary to make the static optimizer operate on the actual current resource map rather than an offline snapshot. 
+
+Contextual Thompson sampling. The contextual-bandit baseline uses a Bayesian linear reward model over 11 public action features: an intercept; job priority and queue depth; average input and output lengths; SLO tightness; candidate GPU count, memory, KV-cache pressure, price, and requested capacity share. Jobs are processed in priority order. For each job, the planner samples a weight vector from its current linear-Gaussian posterior, scores the feasible candidates with that sample, and chooses the highest-scoring candidate be-fore reserving its capacity. After the simulator returns an outcome, the driver applies the corresponding rank-one pos-terior update. Online reward is the fraction of offered output tokens that meet both latency targets, minus a normalized price penalty; batch reward is zero when the deadline is missed. We use Thompson sampling rather than LinUCB, epsilon-greedy, a neural bandit, or a tree/forest bandit because the action set is discrete, the context is a small explicit feature vector, and the controller needs to act from few observations. Sampling from the posterior performs probability matching: a candidate is explored when uncertainty gives it a plausible chance of being best, instead of using a fixed random-action rate or a separately tuned UCB bonus. The implementation is deliberately a linear Thompson sampler, not Bayesian optimization and not a claim that it dominates the other bandit families on these workloads. Its default posterior-draw scale is 0.25 and its random seed is zero for reproducibility. 
+
+Prism port. The Prism adapter translates a memory-pressure placement rule to the aggregate resource map. It orders jobs 
+
+> 14
+
+Table 3. Mixed online/batch homogeneous results. All runs use the 12-hour workload horizon on the simulator.                                             
+
+> Method Batch progress (%) Admit (%) online / batch $/token (10 −4)SLO met (%) TTFT/TPOT Goodput (tok/s) Overall score Best Fixed Configuration 37.58 60.87/42.86 3.56 24.38/31.09 2147.77 50.69 Contextual Bandit 1.89 43.48/7.14 14.04 10.32/10.95 544.34 14.59 Rolling EvoX 14.92 65.22/14.29 4.76 29.61/37.10 1606.39 40.37 Openevolve 14.92 65.22/14.29 6.76 20.26/32.46 1130.77 33.18 GPT-Only (non agentic) 40.06 65.22/ 57.14 4.29 18.15/33.62 1783.61 49.17 Koi 36.62 78.26 /57.14 3.51 31.37 /39.29 2175.63 56.68
+> Δvs. best baseline −3.44 pp +8.11pp +1.40% +1.76pp / +2.19pp +1.30% +11.82%
+
+Table 4. Agentic and Koi ablations. All runs use the 3-hour workload horizon on the simulator.                                       
+
+> Variant Batch progress (%) Admit (%) online / batch $/token (10 −4)SLO met (%) TTFT/TPOT Goodput (tok/s) Overall score GPT-only (non agentic) 52.04 77.78/71.43 6.31 3.98/18.98 855.60 35.28 Opencode SDK (GPT-5.6-Luna) 54.77 88.89/57.14 2.95 25.74/32.62 1826.64 51.55 Koi without DAG/mechanisms 59.42 94.44/100.00 3.05 21.66/38.33 1770.03 58.34 Koi without online learning 63.01 94.44/85.71 3.33 16.49/37.74 1621.48 54.79 Full Koi 84.55 94.44 /71.43 1.85 28.79 /41.80 2910.64 70.83
+> Δvs. best baseline +21.54pp −8.00 pp +37.29% +3.05pp +59.34% +21.41%
+
+Table 5. Koi backbone LLM ablation. All runs use the 3-hour workload horizon on the simulator.                 
+
+> Base model Batch progress (%) Admit (%) online / batch Planner $/tick Overall score GPT-5.6 Sol 67.31 94.44/85.71 0.75 62.12 DeepSeek-V4 Pro 48.76 94.44/71.43 0.30 50.44 Cohere Command-A 67.37 94.44/85.71 0.44 68.84 Koi (default, GPT-5.6 Luna)
+> 84.55 94.44 /71.43 0.057 70.83
+
+by decreasing maximum estimated KV demand and then pri-ority. For each job, it filters out candidates that do not leave room for the model weights or exceed remaining nested ca-pacity, then chooses the target with the least accumulated KV demand divided by residual memory. Price, GPU foot-print, and candidate ID are deterministic tie breaks. After selection, the target’s residual memory and KV-demand state are updated before placing the next job. This preserves the memory-centric placement idea while using Store-expressible, exclusive shapes and the common safety checks. It is a documented heuristic port, not a claim that the full Prism artifact, including its complete sharing and scheduling runtime, is executed unchanged. 
+
+Rolling EvoX.. At each tick, EvoX receives the static can-didate payload and nested capacities. SkyDiscover evolves a deterministic Python function, compute_placement(payload) ,that returns one candidate ID or a defer decision for every waiting job. The evaluator rejects malformed or infeasible programs and scores valid outputs by priority-weighted ad-mission, followed by hourly price and GPU-footprint tie breaks. The initial program is a simple priority-first greedy 
+
+Table 7. Configuration knobs per chain, grouped by family. 
+
+Family Knobs Representative knobs Environment [?] market, cloud, region, avail-ability zone, GPU type, in-stance type, nodes per chain, interconnect Parallelism [?] TP, PP, DP, EP, SP, CP Engine and runtime [?] engine and version, runtime image, attention backend, CUDA graphs, torch.compile Batching and scheduling [?] max sequences, max batched tokens, max model length, chunked prefill and chunk size, scheduling, preemption, and router policies Memory and KV cache [?] GPU memory utilization, block size, KV-cache dtype, prefix caching, KV offloading, KV transfer method Quantization [?] weight and activation dtypes, weight quantization method and bits, activation quantiza-tion method Speculative decoding [?] method, draft model, spec-ulative tokens, acceptance threshold Disaggregation [?] prefill/decode split, prefill and decode worker counts Total ∼140 
+
+policy; the best program from one tick seeds the next tick’s search. The winning program is rerun on the frozen payload,       
+
+> 15 0h 0h 1h 1h 2h 2h 3h Elapsed time
+
+Benchmark Overview 
+
+> 00.1 110 94.7
+> Requests/s
+
+Figure 7. 3-hour simulation benchmark schedule and traffic patterns. 10 1 10 2 10 3 10 4
+
+> Value (log scale) TTFT TPOT ISL OSL Tok/s
+
+Benchmark Metric Distributions 
+
+> Median Mean Min –max
+
+Figure 8. 3-hour simulation benchmark workload distribution characteristics. 
+
+Workload Model Mode ISL OSL SLO / deadline Free multiturn chat Llama-3.2-1B Online 900 300 TTFT <700 ms; TPOT <55 ms Premium chat Llama-3.3-70B Online 1,200 500 TTFT <600 ms; TPOT <38 ms Code autocomplete Qwen2.5-Coder-32B Online 1,800 120 TTFT <180 ms; TPOT <45 ms Safety moderation Llama-3.2-1B Online 256 8 TTFT <100 ms; TPOT <30 ms Small-model chat Llama-3.2-1B Online 256 64 TTFT <300 ms; TPOT <40 ms Phi-4 long-context chat Phi-4 Online 9,000 220 TTFT <1.5 s; TPOT <55 ms Small-model chat Llama-3.2-1B Online 256 64 TTFT <300 ms; TPOT <40 ms Support assistant Mixtral-8x7B Online 1,400 350 TTFT <700 ms; TPOT <50 ms Nightly evaluation Llama-3.3-70B Batch 1,800 1,200 Completion deadline: 135 min Phi-4 quantization probe Phi-4 Batch 1,000 512 Completion deadline: 105 min Code morning burst Qwen2.5-Coder-32B Online 2,200 96 TTFT <160 ms; TPOT <45 ms Enterprise chat Phi-4 Online 1,500 420 TTFT <500 ms; TPOT <42 ms Product-launch chat burst Mixtral-8x7B Online 850 280 TTFT <650 ms; TPOT <50 ms Moderation launch burst Llama-3.2-1B Online 320 8 TTFT <90 ms; TPOT <30 ms Agentic decode-heavy reasoning Kimi-K2-Instruct Online 1,400 4,096 TTFT <2.5 s; TPOT <45 ms GLM frontier reasoning GLM-4.5-Air Online 1,800 2,500 TTFT <2.2 s; TPOT <50 ms Small-active MoE reasoning Qwen3-Next-80B Online 1,200 900 TTFT <1 s; TPOT <45 ms Phi-4 calibration probe Phi-4 Batch 1,400 512 Completion deadline: 85 min P0 safety replay Llama-3.3-70B Batch 2,200 700 Completion deadline: 60 min P0 safety reasoner Phi-4 Online 900 160 TTFT <350 ms; TPOT <40 ms Long-context meeting summary Qwen3-Next-80B Online 24,000 1,200 TTFT <3 s; TPOT <65 ms Sales-report generation Qwen3-Next-80B Batch 18,000 1,400 Completion deadline: 55 min Legal review Llama-3.3-70B Online 3,000 700 TTFT <1 s; TPOT <45 ms Held-out frontier evaluation DeepSeek-V3 Batch 1,800 1,600 Completion deadline: 35 min MoE exploration probe Qwen3-Next-80B Batch 1,000 800 Completion deadline: 20 min 
+
+Table 6. Workload overview of 3-hour simulation benchmark. its choices are revalidated, and valid choices become Store placement actions. EvoX is the search procedure in this baseline; there is no second optimizer. Candidate construction and feasibility checks stay in the simulator so evolved code cannot invent hardware or bypass capacity rules. The rolling driver adapts to the current queue and resource map, but its EvoX evaluator currently uses static placement facts rather than simulated serving outcomes as its fitness signal. The frozen-snapshot EvoX table uses the same candidate encoding and evaluator without the cross-tick lifecycle loop. 
+
+B.3 Real hardware configuration 
+
+Each of the real experiments are conducted on 3 Google Kubernetes Engine (GKE) clusters, in the following regions: us-central1 (Iowa, USA), us-east5 (Ohio, USA), europe-west2 (London, UK). The 3 clusters combine to a fleet of 104 het-erogeneous GPUs, consisting of a mix of Nvidia H100-80GB, RTX PRO 6000, A100-80GB and A100-40GB. The H100s and A100s are placed in 8-GPU instances, and the RTX PRO 6000 are placed in both 8-GPU instances and 4-GPU instances. 
+
+16

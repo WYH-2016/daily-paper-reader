@@ -1,0 +1,137 @@
+Title: Workload-Aware Monitoring for AI-RAN
+
+URL Source: https://arxiv.org/pdf/2610.31627v1
+
+Published Time: Fri, 23 Oct 2026 01:42:10 GMT
+
+Number of Pages: 2
+
+Markdown Content:
+# Workload-Aware Monitoring for AI-RAN 
+
+## Babak Azkaei 
+
+Eindhoven University of Technology Eindhoven, Netherlands b.azkaei@tue.nl 
+
+## Georgios Exarchakos 
+
+Eindhoven University of Technology Eindhoven, Netherlands g.exarchakos@tue.nl 
+
+## Kishor Chandra Joshi 
+
+Eindhoven University of Technology Eindhoven, Netherlands k.c.joshi@tue.nl 
+
+Abstract 
+
+AI-RAN platforms are expected to share CPU and GPU resources between radio workloads and AI services. Aggregate telemetry re-ports operating conditions, but timing changes may reflect different workloads, processors, or measurement boundaries. We propose workload-aware monitoring that associates radio-work descriptors with processing paths, timing boundaries, and operating context before comparing like with like. In 16 over-the-air downlink ex-periments, hybrid dispatch (CPU for transport blocks (TBs) below 4,096 bytes and GPU otherwise) has 29.66% and 22.93% lower mean host-callback durations than direct GPU dispatch, without and with a synthetic GPU co-runner, respectively. Grouping locates the separation in small TBs, while large-TB callback-duration ranges overlap. These observations identify a candidate for complementary CPU/GPU use. 
+
+CCS Concepts 
+
+• Networks → Network monitoring ; Mobile networks .
+
+Keywords 
+
+AI-RAN, workload-aware, telemetry, CPU/GPU dispatch 
+
+ACM Reference Format: 
+
+Babak Azkaei, Georgios Exarchakos, and Kishor Chandra Joshi. 2026. Workload-Aware Monitoring for AI-RAN. In ACM CoNEXT 2026 Student Workshop (CoNEXT-SW ’26), December 07–10, 2026, Utrecht, Netherlands. 
+
+ACM, New York, NY, USA, 2 pages. https://doi.org/10.1145/3843179.3858061 
+
+1 Introduction 
+
+AI-RAN platforms run software radio processing on CPUs and GPUs [1, 6], and AI-and-RAN designs share these GPUs with AI services [3]. Choosing a processor for each radio task requires monitoring that explains where processing time goes. Telemetry usually exports aggregates, since per-task records are voluminous: one phone in our testbed produces about 1,400 downlink transport blocks (TBs) per second. But aggregates can mislead. We showed that letting the CPU process small blocks (hybrid approach) lowers mean host-callback durations by about a quarter. Did the GPU get faster, did the workload change, or did work move to the CPU? The average alone cannot tell. Benchmarks also show that accel-erator gains shrink for small tasks, as an example in LDPC decod-ing [7]. Systems such as CloudRIC [4] coordinate heterogeneous 
+
+> This work is licensed under a Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International License.
+> CoNEXT-SW ’26, Utrecht, Netherlands
+> © 2026 Copyright held by the owner/author(s). ACM ISBN 979-8-4007-2976-8/2026/12 https://doi.org/10.1145/3843179.3858061
+
+Associate selected measurements: four linked views 
+
+Workload: what was processed? 
+
+TB size, modulation, allocation 
+
+Dispatch: which path? 
+
+policy + size → implied CPU/GPU 
+
+Timing: what was timed? 
+
+processor entry → host callback 
+
+Context: under which conditions? 
+
+co-runner, host policy, receiver rate 
+
+Selected workload-conditioned summaries 
+
+Online: update windows | Offline: analyze stored logs 
+
+Figure 1: Workload-aware monitoring (italics: Our PDSCH use case). 
+
+RAN resources; our focus is interpreting workload-conditioned observations. GPU traces [5] and resource managers [3] provide building blocks. What is missing is a RAN-level layer that keeps, for each unit of work, what was processed, where it ran, what was timed and under which conditions , revealing what benchmarks cannot: in a running base station, the scheduler sets task sizes and the task mix shifts. We propose such workload-aware monitoring and illus-trate it on over-the-air physical downlink shared channel (PDSCH) processing. 
+
+2 Workload-Aware Monitoring 
+
+The unit of analysis is a work item , such as a PDSCH encoding request. For each item, the framework keeps four linked views (workload , dispatch , timing and context ), each answering one ques-tion (Figure 1). They draw on native logs and counters, run records and, optionally, user-defined telemetry: a Janus codelet [2] or CUPTI records [5] could add the processor that actually ran an item and when its GPU output was ready. Native logs already pair TB de-scriptors with callback duration here. Two rules turn the views into monitoring output. Associate before aggregating : link records through shared work identifiers or fields logged together, not nearby timestamps alone. Aggregate like with like : per context, report the share and timing of each workload class on each processor (e.g., a duration histogram labeled by TB size and processor), not one overall mean. An overall change can then be traced to a different workload mix, a different processor, or a timing change within comparable work. Online monitoring would update bounded summaries as records arrive; offline analysis applies the associations to stored logs. Only workload relevant key performance indicators (KPIs) receive chosen groupings: Here we condition callback duration on TB class and policy. This case uses online collection and offline analysis. 
+
+Accepted for publication. To appear in the proceedings of the ACM CoNEXT 2026 Student Workshop. arXiv:2610.31627v1 [cs.NI] 22 Oct 2026 CoNEXT-SW ’26, December 07–10, 2026, Utrecht, Netherlands Azkaei et al. DGX Spark 
+
+Open5GS core + UDP source 
+
+OCUDU gNB 
+
+PDSCH, lower PHY Synthetic co-runner 
+
+GB10 GPU 
+
+CUDA 
+
+Arm CPU 
+
+cores USRP X310 SDR 5G phone UDP receiver  
+
+> UHD over the air direct: all TBs hybrid: ≥4,096 B hybrid:
+> <4,096 B
+
+Figure 2: Testbed. Black: downlink traffic. Blue: where the compared PDSCH stage runs under each policy. Dash-dot: the optional co-runner’s GPU work. Table 1: Callback duration: minimum–maximum of the per-run averages. Small: TB < 4,096 B. Large share: range of large/all retained-record fractions per run. Shading: CPU-selected small cells; hybrid all-TB cells mix paths. 
+
+Mean callback duration ( 𝜇 s) Large Policy All TBs Small TBs Large TBs share 
+
+Without co-runner 
+
+Direct 49.4–52.5 48.3–52.5 52 .3–56 .6 0.0–26.5% Hybrid 34.3–38.2 28.5–38.0 53.5–56.3 0.9–23.2% 
+
+With GPU co-runner 
+
+Direct 48.8–51.9 47.8–51.8 53 .5–61 .1 0.0–32.3% Hybrid 37.0–39.8 29.2–39.5 51.3–54.6 1.5–31.7% 
+
+3 Illustrative PDSCH Case 
+
+Testbed and policies. An NVIDIA DGX Spark (Arm CPU, GB10 GPU) runs the Open5GS core and a CUDA-enabled OCUDU base station (gNB) [6] (Figure 2). A USRP X310 radio serves one phone over a 20-MHz single-antenna (1 ×1) link in 5G NR band n77; a UDP source sends 30 Mbps for 20 s, and the gNB’s scheduler sets the TB sizes. At the compared PDSCH codeword-processing stage, 
+
+direct runs every TB on the GPU, while hybrid runs small TBs (below 4,096 bytes) on the CPU and large ones on the GPU; the rest of the workflow is similar. To emulate AI-and-RAN GPU sharing, a synthetic co-runner is configured for nominal 1-ms GPU work followed by 9-ms host sleep. 
+
+Mapping to the views. Live logs pair TB size, modulation and allocation with the steady-clock processor-entry-to-callback-entry interval (0.1-𝜇 s rounding). This host-callback duration excludes pre-entry queueing and logger submission, not all internal waiting. GPU callbacks can precede output readiness. Policy and size im-ply, rather than trace, execution; run settings and receiver reports supply context. 
+
+Population. We retain 223,979 single-codeword callbacks for the target phone from 16 selected successes, four per setting. Their later producer-log timestamps select [5,15) s after each traffic-control request, not exact callback-entry times. 
+
+4 Results 
+
+Hybrid’s observed advantage. Table 1 groups each run-wide policy’s workload by size; the columns are not additional modes. Comparing equal-weight averages of run means, not range mid-points, hybrid’s all-TB callback durations are 29.66%/22.93% lower without/with the co-runner. Small-TB means are 36.09%/30.29% lower where hybrid selects the CPU, while retaining CUDA for larger blocks. This locates an observed callback time advantage. 
+
+Workload composition. The “Large share” column shows that the proportion of large TBs varies across runs. Comparing results within the same size category does not make the workloads identi-cal. Each direct-policy large-TB range uses three runs because the fourth contains no large-TB records. Overlapping callback-duration ranges do not establish equal GPU performance. The logs do not identify whether processing delay, buffering or link adaptation caused the different TB-size proportions. 
+
+Scope. Client-returned receiver reports give near 30 Mbps and zero reported UDP loss over approximately 20-s intervals. Enabled-logger/export counters report zero loss. 
+
+5 Conclusion 
+
+In our OTA PDSCH case, workload-aware analysis locates lower small-TB host-callback durations under hybrid dispatch, where the configured path uses the CPU. These observations motivate comple-mentary CPU/GPU use. Next steps are an online implementation, device-side completion timing (e.g., via CUPTI), a cutoff sweep, and more stages such as uplink shared-channel (PUSCH) decod-ing. More broadly, such monitoring could drive online CPU/GPU dispatch that adapts to load and co-located AI work. 
+
+Acknowledgments 
+
+This work is partially supported by the European Union’s Horizon Europe Marie Skłodowska-Curie Action SCION under Grant Agree-ment No. 101072375 and the NL National Growth Fund 6G flagship project Future Network Services. 
+
+References

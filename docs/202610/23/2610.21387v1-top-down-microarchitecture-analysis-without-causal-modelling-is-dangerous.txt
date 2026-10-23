@@ -1,0 +1,579 @@
+Title: Top-Down Microarchitecture Analysis Without Causal Modelling Is Dangerous!
+
+URL Source: https://arxiv.org/pdf/2610.21387v1
+
+Published Time: Fri, 16 Oct 2026 00:52:17 GMT
+
+Number of Pages: 13
+
+Markdown Content:
+# TOP -D OWN MICROARCHITECTURE ANALYSIS WITHOUT CAUSAL 
+
+# MODELLING IS DANGEROUS !
+
+EDITED BY
+
+## CHENXI WANG 
+
+## LEI WANG 
+
+## WANLING GAO 
+
+## GUOXIN KANG 
+
+## FANDA FAN 
+
+## JIANFENG ZHAN 
+
+BenchCouncil: International Open Benchmark Council http://www.benchcouncil.org 
+
+TECHNICAL REPORT NO. B ENCH COUNCIL -CTMA-2026 
+
+OCT 15, 2026 arXiv:2610.21387v1 [cs.PF] 15 Oct 2026 Top-Down Microarchitecture Analysis Without Causal Modelling Is Dangerous! 
+
+Chenxi Wang 1,3 , Lei Wang 1,2,3 , Wanling Gao 1,2,3 , Guoxin Kang 1,2 , Fanda Fan 1,2 , Jianfeng Zhan 1,2 
+
+> 1
+
+Institute of Computing Technology, Chinese Academy of Sciences, Beijing, China 
+
+> 2
+
+The International Open Benchmark Council, Hong Kong, China 
+
+> 3
+
+University of Chinese Academy of Sciences, Beijing, China Email: {wangchenxi21s, wanglei 2011, gaowanling, kangguoxin, fanfanda, zhanjianfeng }@ict.ac.cn 
+
+Abstract —Top-Down Microarchitecture Analysis (TMA) is the standard for identifying CPU bottlenecks. However, TMA implicitly models performance via asingle causal path: Workload(dataset, algorithm) ⇒
+
+CPU(CPI) ⇒ System(Performance) (microarchitectural efficiency path). It overlooks two hidden causal paths: Workload(dataset, algorithm) ⇒ Instructions(Retired) ⇒
+
+System(Performance) (algorithmic efficiency path) and Workload(dataset, algorithm) ⇒ Instructions(Retired) ⇒
+
+CPU(CPI) ⇒ System(Performance) (microarchitecture-algorithm efficiency path). This causal blindness often misleads architects into futile hardware optimizations. To address this, we propose Causal Top-Down Microarchitecture Analysis (CTMA). Utilizing the object causal model, CTMA explicitly models these three causal paths among the workload, instructions, CPU, and system. We validate CTMA across Intel, AMD, and ARM plat-forms. Our experiments reveal counterintuitive insights: (1) CPI Profiling Blindness : Algorithmic instruction bloat can double elapsed time while the CPI profile remains frozen. (2) Over-Speculation Congestion : Throttling the Frontend paradoxically improves performance in pointer-chasing algorithms. (3) ILP Window Collapse : Extreme data topologies shift bottlenecks from Backend ROB capacity to Frontend fill-rate starvation. (4) Op-Cache SMT Overlap : Ultra-small footprints yield SMT speedups on Intel but cause severe thrashing on AMD. (5) “Ghost State” Artifact : Stale pipeline mitigations on Intel Xeon Gold 5120T artificially boost performance by 22.75% on SPEC CPU2017 and 42.2% on SPEC CPU2026. Based on this, we propose a dynamic speculation throttling mechanism. 
+
+I. I NTRODUCTION 
+
+Modern processor design and optimization heavily rely on Top-Down Microarchitecture Analysis (TMA). By cat-egorizing CPU pipeline slots into Frontend Bound, Back-end Bound, Retiring, and Bad Speculation, TMA pro-vides a clear snapshot of pipeline bottlenecks and guides pipeline efficiency optimizations (i.e., minimizing CPI). Viewed through the lens of causal modeling, TMA im-plicitly models performance via a single, oversimplified causal path: Workload(dataset, algorithm) ⇒ CPU(CPI) ⇒
+
+System(Performance) . In this article, we use the object causal model (OCM) in Evaluatologly as the causal modeling language and methodology [43], [44]. Here, the causal path 
+
+A(p) ⇒ B(q) denotes that object A (via its property (observed metric) or mechanism p) causally impacts object B (altering its property or mechanism q). By fixing the workload inputs, traditional TMA tacitly assume the workload emits a static stream of instructions, placing the root cause of performance variations squarely on the CPU’s microarchitectural efficiency (e.g., CPI). This oversimplified causal path creates severe “causal blindness,” completely ignoring two hidden but critical causal paths. Real-world workloads are algorithmically dynamic: as the topology, distribution, or locality of input dataset changes, algorithms adapt, causing pipeline bottlenecks to drift significantly. This activates two completely hid-den causal paths. First, the Algorithmic Efficiency Path :
+
+Workload(dataset, algorithm) ⇒ Instructions(Retired) ⇒
+
+System(Performance) , where algorithmic instructions bloat can silently drastically alter elapsed time while the CPU’s CPI remains perfectly stable (Details in Section III-B). Second, the Microarchitecture-Algorithm Efficiency Path :
+
+Workload(dataset, algorithm) ⇒ Instructions(Retired) ⇒
+
+CPU(CPI) ⇒ System(Performance) , where changes in instructions volume can fundamentally reshape microarchi-tectural states, artificially altering the CPI (Details in Sec-tion III-E). Ignoring these paths would trick architects into optimizing hardware for what are essentially software anoma-lies. To address this critical flaw, we introduce a Causal Top-Down Microarchitecture Analysis (CTMA) . CTMA aims to infer unconfounded architecture insights that can be extended to real-world settings. In the rest of this article, we use the term treatment to describe the change of a target object while keeping the others the same to understand its causal effect. As shown in Figure 1, instead of passively profiling the static workload configuration, CTMA intentionally generates and profiles several workload configuration treatments by mu-tating specific algorithmic traits (e.g., graph randomness, re-cursion depth, spatial locality) to expose the TMA-overlooked Algorithmic Efficiency Path and Microarchitecture-Algorithm Efficiency Path. This treatment is to model how the algorithm adapt, and how the pipeline bottlenecks transit shift as the topology, distribution, or locality of input dataset changes. Meanwhile, CTMA uses non-invasive hardware treatments to establish unconfounded baselines on real silicon across three major microarchitectural platforms (Intel, AMD, ARM). These hardware platforms feature diverse hardware mecha-1Workload Config                  
+
+> Compiled Instruction
+> Target CPU
+> ... System
+> TMA
+> Pipeline slots break-down
+> Frontend
+> Bound
+> Bad
+> Speculation Retiring Backend
+> Bound
+> Exposed Causal Paths
+> Workload CPU System
+> Workload Config 0
+> Compiled Instruction
+> Target CPU
+> ...
+> System
+> Workload Config N
+> Compiled Instruction
+> Target CPU
+> ...
+> System
+> ......
+> Treatment 0 (Baseline)
+> Treatment N
+> CTMA
+> Intervening on the Workload
+> Object
+> Using OCM for Causal
+> Modeling
+> Cross-validation on the CPU
+> object
+> Frontend
+> Bound
+> Bad
+> Speculation Retiring Backend
+> Bound
+> ......
+> Frontend
+> Bound
+> Bad
+> Speculation Retiring Backend
+> Bound
+> Bottleneck Analysis on Treatment 0
+> Bottleneck Analysis on Treatment N
+> a) Top-Down Microarchitecture Analysis Framework of the Static Workload Configuration (Traditional TMA)
+> Workload CPU System
+> Workload Instructions System
+> Workload CPU System Instructions
+> b) Causal Top-Down Microarchitecture Analysis Framework of Treatment Workload Configurations (CTMA)
+> Real-world Computer System
+> Workload Instructions
+> CPU System
+> Workload Config
+> Compiled Instruction
+> Target CPU
+> ...
+> System
+> Exposed Causal Paths
+> Bottleneck Analysis
+
+Fig. 1. The comparison of traditional TMA and our causal TMA (CTMA). 
+
+nisms—such as SMT resource partitioning (e.g., partitioning the Reorder Buffer via co-running pause process on the sibling logical core), and core frequency scaling. With the cross-validation of hardware treatments and/or workload configu-ration treatments, CTMA validates all exposed causal paths. By exposing and controlling the aforementioned three causal paths, CTMA can infer unconfounded architecture insights that can be applied to real-world settings. Utilizing CTMA, we have achieved five counter-intuitive architectural insights. 
+
+• CPI Profiling Blindness (the leela r workload from SPEC CPU2017): We prove the existence of “Algorithmic In-structions Bloat,” where modifying spatial locality of the dataset causes a more than 100% elapsed time variation while leaving the CPI profile completely frozen. Cross-ISA validation confirmed a universal mathematical con-stant of 2.06 × instructions inflation, effectively proving that microarchitectural tuning is futile against algorithmic degradation. 
+
+• Over-Speculation Congestion (mcf r): In pointer-chasing algorithms, highly regular data improves branch pre-diction but halves performance. Aggressive speculation continuously pushes memory requests into the Backend, overflowing the Line Fill Buffers and causing memory controller congestion. Manually throttling the pipeline by injecting NOP instructions alleviates this traffic jam and slightly improves performance. 
+
+• ILP Window Collapse (cactuBSSN r): Spatial topol-ogy distortion causes dense short-loops and frequent branch mispredictions. By using SMT to partition the Reorder Buffer (ROB) via pause process, we found that the perfect-topology datasets suffer severe degradation (∼23% on the Intel Platform and ∼12% on the AMD Platform), while distorted datasets are relatively immune (∼9% on the Intel Platform and ∼10% on the AMD Platform). This indicates that extreme dataset distortion shifts the bottleneck from ROB capacity to dynamic fill-rate, rendering deep out-of-order Backend useless. 
+
+• Op-Cache SMT Overlap (xalancbmk r): Deep recursion causes severe Frontend Bandwidth bottlenecks. Tradition-ally, co-running two identical copies of the workload on the two SMT sibling logical cores worsens Frontend contention. However, when the recursion’s instructions footprint is extremely small, it resides perfectly within Intel’s Decoded Stream Buffer (DSB), enabling cycle-level overlapping and yielding SMT speedups. In con-trast, AMD Zen3 suffers more than 50% degradation, exposing rigid Op-cache sharing policies. 
+
+• “Ghost State” artifact on the Intel Xeon Gold 5120T: We discovered that forcefully terminating (via kill -9 )an SMT sibling process without an OS-level microar-chitectural flush leaves the CPU pipeline in a highly aggressive state, resulting in an average of 22.75% artifi-cial performance boost on SPEC CPU2017 and 42.20% performance boost on SPEC CPU2026. This exposes a critical measurement artifact linked to spectre v2 mitiga-tion toggles on specific unbalanced-designed CPUs. We propose a dynamic speculation throttling mechanism for real-time congestion control in the next-generation CPU. Our contributions are summarized as follows. 1) For the first time, we introduce the causal modeling methodology, specifically, the object causal model in architecture research. 2) We expose that TMA based on static workload evalua-tion severs causal blindness and completely ignores two hidden but critical causal paths. 3) We introduce a Causal Top-Down Microarchitecture Analysis framework, bridging the semantic gap between algorithmic data treatment and microarchitectural hard-ware behavior. We open source our workload configu-ration treatment tools for SPEC CPU2017. 4) We provide empirical evidence of counter-intuitive hard-ware behaviors across three major microarchitectural platforms: CPI Profiling Blindness, Over-Speculation Congestion, ILP Window Collapse, and Op-Cache SMT Overlap. 5) Based on the “Ghost State” and over-speculation dis-coveries, we offer actionable architectural recommenda-2tions, proposing a dynamic speculation throttling mech-anism to online throttle pipelines for CPU design. The remainder of the article is organized as follows. Sec-tion II introduces the background and related works. Sec-tion III discusses the motivation. Section IV proposes our methodology. Section V shows the evaluation, and Section VI concludes and discusses our future work. II. B ACKGROUND AND RELATED WORK 
+
+To fully comprehend the dynamic interplay between soft-ware workloads and hardware pipelines, it is essential to establish the foundational concepts of modern performance analysis and causal inference. This section introduces the terminology and highlights the systemic causal gaps in current benchmarking methodologies. 
+
+A. Traditional Benchmarking and Top-Down Analysis 
+
+Traditional Benchmarking Paradigms. Computer archi-tecture heavily relies on empirical methodologies, utilizing benchmark suites [3], [6], [7], [10], [12], [14]–[17], [20], [24], [28]–[30], [39], [40] (e.g., SPEC CPU [31]–[37], PARSEC [5], [6], [45], SPLASH [40]) to proxy real-world performance. The canonical approach aggregates execution outcomes across predefined, static system configurations to yield a synthesized metric (e.g., the SPEC score). 
+
+The Top-Down Microarchitecture Analysis (TMA). To understand why a CPU achieves a certain score on the given benchmark, the industry standard is Intel’s Top-Down Mi-croarchitecture Analysis (TMA) [41]. By utilizing Hardware Performance Counters (PMUs) [1], [2], [21], [24], [39], TMA classifies CPU pipeline stalls into a hierarchical tree: Frontend Bound, Backend Bound, Bad Speculation, and Retiring. While TMA is a powerful “speedometer” that accurately measures the pipeline efficiency (e.g., CPI), it inherently treats the workload configuration as a static entity. It provides a snapshot of the hardware’s status but lacks the mechanism to trace performance variations back to shifts in the input data or algorithmic adaptations. 
+
+B. Bridging Algorithm and Microarchitecture 
+
+To break down the system performance, we must explicitly decouple the software algorithmic behavior from hardware ex-ecution efficiency based on the Iron Law of Performance [13]: 
+
+Elapsed T ime = Retired Instructions ×CP I F requency . We define two key architectural concepts pivotal to our later analysis. 
+
+Algorithmic Instructions Bloat. This occurs when achange in the input dataset’s distribution (e.g., spatial locality) forces the software algorithm to take a longer execution path (e.g., traversing deeper search trees). The total retired instruc-tions ( Retired Ins ) surge exponentially, increasing elapsed time, even if the hardware CP I remains perfectly stable. 
+
+Capacity-Bound vs. Fill-Rate-Bound Pipelines. Modern Out-of-Order (OoO) processors rely on deep Reorder Buffers (ROB) to extract Instruction-Level Parallelism (ILP). When                                              
+
+> TABLE I MACHINE INFORMATION IN OUR EXPERIMENTS .
+> Machine Platform A Platform B Platform C
+> CPU Model Name Intel Xeon Gold 5120T AMD EPYC 7543 Kunpeng 920 Micro-architecture Skylake Zen3 Taishan 110 ISA x86-64 x86-64 AArch64 Socket(s) 222Core(s) Per Socket 14 64 32 Thread(s) Per Core 221L1 (Per Core) 32KiB I, 32KiB D 32KiB I, 32KiB D 64KiB I, 64KiB D L2 (Per Core) 1MiB 512KiB 512KiB L3 (Per Socket) 19.25MiB Unified 256MiB Unified 32MiB Unified Compiler GCC11 GCC11 GCC11 Memory 384GiB 512GiB 384GiB Disk 2TiB 252GiB 2TiB Operating System Ubuntu 20.04.6 LTS Ubuntu 22.04.5 LTS Ubuntu 22.04.4 LTS Linux kernel 5.4.0-216-generic 5.15.0-181-generic 6.5.0-15-generic
+
+branch prediction is highly accurate, the CPU can fill a mas-sive ROB (e.g., 256 entries), making performance Capacity-Bound (sensitive to the physical size of the buffer). However, under severe control-flow chaos (e.g., extreme data distortion), frequent branch flushes clear the pipeline continuously. The CPU can barely fill a fraction of the ROB before flushing. In this state, the pipeline becomes Fill-Rate-Bound ; enlarging or halving the physical ROB capacity has minimal effect on overall system performance. 
+
+C. Causal Inference and the Object Causal Model 
+
+To rigorously model complex system interactions, we es-tablish our framework on the foundational concepts of cause and effect. Traditional Structural Causal Model (SCM) [18], [26], [27] formalize causal relationships (Cause A → Effect 
+
+B) between variables A and B. Recent hardware bottleneck quantification frameworks [11], [23] can be viewed as domain-specific instantiations of these variable-level causal models. However, computer architecture operates across abstracted, hierarchical objects (e.g., Workload, Instructions, and CPU). Purely observation-based, variable-driven SCM often fail to capture interactions across structural depth. To bridge this semantic gap, Zhan et al. [42], [43] introduced 
+
+Evaluatology and the object causal model (OCM) . Unlike SCM, OCM centers its modeling on system objects (Evaluated Object EO ⇒ Affected Object AO ), characterized by their in-ternal mechanisms and properties (observable metric) . Within a Self-Contained System (SCS) [38], [43], we can model performance evaluation across four fundamental interacting objects, identifying the dominant causal path among complex interactions: 1) Workload Object: Its underlying algorithm serves as the mechanism, and the configuration parameters (e.g., dataset) represent its observable properties. 2) Instructions Object: Represents the compiled instruc-tion execution trace. Its observable property is the Re-tired Instructions Count .3) CPU Object: The microarchitecture. Its mechanism is the out-of-order pipeline and microarchitectural behavior (e.g., branch predictor behavior), and its observable properties are the efficiency metric ( CPI ) and behavior metric (e.g., Branch MPKI ). 4) System Object: The overarching computer system, with 
+
+Performance (Elapsed Time) as its observable property. 3TABLE II CAUSAL DATASET TREATMENT SPECIFICATIONS . T O GUARANTEE STRICT “APPLES -TO -APPLES ” COMPARISONS , THE ABSOLUTE DATA SCALE ACTS AS AN INVARIANT ANCHOR ACROSS ALL TREATMENTS FOR EACH WORKLOAD . T REATMENT DIMENSIONS (T1, T2) ARE DELIBERATELY DIALED TO PERTURB INSTRUCTION BEHAVIORS AND CPU MICROARCHITECTURAL STATES (E.G., C ACHE , B RANCH PREDICTOR ). Q1–Q4 REPRESENT ORTHOGONAL EXTREME QUADRANTS , WHILE GRAD -0.1 ∼0.9 REPRESENTS SMOOTH PARAMETER INTERPOLATIONS .                       
+
+> Workload Invariant Data Scale (Anchor to SPEC ref )Treatment 1 (T1)
+> ⇒Affected Object Treatment 2 (T2)
+> ⇒Affected Object Orthogonal Extremes (Q1 – Q4 Matrix) Smooth Gradients (Grad-0.1 ∼0.9) 541.leela r (MCTS for Go)
+> Total Moves: 600 Placed Stones
+> Spatial Locality [0.0, 1.0] 0=Global Scatter, 1=Local Fights
+> ⇒Instructions / CPU
+> Board Size Constraint
+> 19x19 vs. 9x9 Grid
+> ⇒Instructions / CPU
+> Q1 : T1=0 (Scattered), T2=19x19
+> Q2 : T1=1 (Clustered), T2=19x19
+> Q3 : T1=0 (Scattered), T2=9x9
+> Q4 : T1=1 (Clustered), T2=9x9 Sweep T1 from 0.1 to 0.9 while fixing T2=19x19 (Observe locality collapse)
+> 505.mcf r (Network Simplex)
+> 15,000 Nodes 117,202 Edges
+> Spatial Locality [0.0, 1.0] 0=Scattered, 1=Clustered
+> ⇒Instructions / CPU
+> Cost Predictability [0.0, 1.0] 0=Random, 1=Linear
+> ⇒Instructions / CPU
+> Q1 : T1=0 (Scattered), T2=0 (Random)
+> Q2 : T1=0 (Scattered), T2=1 (Linear)
+> Q3 : T1=1 (Clustered), T2=0 (Random)
+> Q4 : T1=1 (Clustered), T2=1 (Linear) Sweep T2 from 0.1 to 0.9 while fixing T1=0 (Observe branch sensitivity)
+> 507.cactuBSSN r (3D PDE Solver)
+> Total Volume:
+> 84 3Vertices (80 Iters)
+> Spatial Distortion [0.0, 1.0] 0=Perfect Cube, 1=Extreme Needle
+> ⇒Instructions / CPU
+> N/A (Invariant Physics)
+> (Topology solely drives bottleneck)
+> Q1 : T1=0 (Cube 84 ×84 ×84 )
+> Q2 : T1=1 (Needle 10 ×10 ×5,927 )
+> Orthogonal comparison achieved via extreme geometric warping.
+> Sweep T1 from 0.1 to 0.9 (Observe ILP window collapse)
+> 523.xalancbmk r (XML Parsing)
+> 36,000 XML Items (∼58 MB File Size)
+> Recursion Depth [0.0, 1.0] 0=Shallow, 1=Deep (400 chars)
+> ⇒Instructions / CPU
+> String Randomness [0.0, 1.0] 0=Repetitive, 1=Random
+> ⇒Instructions / CPU
+> Q1 : T1=1 (Deep), T2=1 (Random)
+> Q2 : T1=1 (Deep), T2=0 (Repetitive)
+> Q3 : T1=0 (Shallow), T2=1 (Random)
+> Q4 : T1=0 (Shallow), T2=0 (Repetitive) Sweep T1 from 0.1 to 0.9 while fixing T2=1 (Observe recursion footprint)
+
+III. M OTIVATION : T HE PITFALLS OF TRADITIONAL TMA 
+
+A. The Causal Blindness of TMA 
+
+The fundamental goal of CPU design and optimization is to reduce elapsed time. The classic performance equation dictates that Elapsed T ime = Retired Instructions ×CP I F requency .The Top-Down Microarchitecture Analysis (TMA) attempts to optimize this equation by breaking down pipeline stalls to minimize the CPI. However, the community predomi-nantly evaluates TMA using statically prescribed workload configurations (e.g., SPEC CPU ref inputs). This implic-itly models performance through a single explicit causal path: Workload(dataset, algorithm) ⇒ CPU(CPI) ⇒
+
+System(Performance) . Because TMA only profiles microar-chitectural efficiency (the property of the CPU object), it blindly assumes that the workload emits an invariant stream of instructions on the given static configuration. Consequently, performance variations are strictly dictated by how fast the CPU processes that work. However, from an OCM perspective, this single-path model is fundamentally incomplete and misleading. Real-world appli-cations dynamically adapt to data space properties. Changing the workload activates two entirely overlooked causal paths that completely bypass or perturb the CPU’s CPI. 1) The Algo-rithmic Efficiency Path (Workload(dataset, algorithm) ⇒
+
+Instructions(Retired) ⇒ System(Performance)): Variations in data topology can dictate the algorithm’s execution depth (e.g., algorithmic instruction bloat). This path can double elapsed time while the CPU’s CPI remains perfectly sta-ble. 2) The Microarchitecture-Algorithm Efficiency Path (Workload(dataset, algorithm) ⇒ Instructions(Retired) ⇒
+
+CPU(CPI) ⇒ System(Performance)): An exponential surge in instructions volume can fundamentally alter the execution footprint (e.g., shrinking entirely into the Op-cache). The algorithmic scale dynamically reshapes the hardware state, causing an artificial shift in CPI. In the rest of this section, we apply treatment to four diverse SPEC CPU2017 workloads on the Intel Gold 5120T Machine in Table I. For each workload, as shown in Table II, we strictly fix the absolute data scale (e.g., total nodes, grid volume, or file size) same as SPEC ref to ensure an “apples-to-apples” comparison. We then actively mutate specific treatment (e.g., spatial locality, structural randomness) to generate orthogonal extreme datasets (denoted as Q1-Q4) and smooth parameter gradients (Grad-0.1 to 0.9). By doing so, we activate the TMA-overlooked causal paths ( Workload(dataset, algorithm) ⇒
+
+Instructions(Retired) ⇒ System(Performance) and 
+
+Workload(dataset, algorithm) ⇒ Instructions(Retired) ⇒
+
+CPU(CPI) ⇒ System(Performance) ). The following four counter-intuitive case studies demonstrate why traditional TMA leads to causal blindness. 
+
+B. The Microarchitectural Freeze (leela r) 
+
+Dataset Treatment Strategy: In Monte Carlo Tree Search (leela r ), we generated treatment SGF datasets by strictly fixing the total moves on Go board (600 moves). We exclu-sively manipulated the spatial locality gradient. Stones were progressively shifted from being globally scattered across the board to being locally clustered, spanning the orthogonal ex-treme quadrants (Q1–Q4) and smooth parameter interpolations (Grad-0.1 ∼0.9) defined in Table II. 
+
+The Illusion of Profiling: The most dangerous flaw of TMA is its causal blindness to algorithmic instructions bloat. As shown in Figure 2, the TMA pipeline breakdown (back-ground bars) remains entirely “frozen” across all treatments. The Retiring ( ∼44%), Frontend Bound ( ∼25%), and Bad Speculation (∼26%) slots are virtually identical, and the overall CPI stabilizes at approximately 1.17. 
+
+The Causal Reality (Workload(dataset, algorithm) ⇒
+
+Instructions(Retired) ⇒ System(Performance) ): A com-puter architect looking solely at these TMA snapshots would confidently conclude that the workload’s behavior is invariant. Yet, the elapsed time (red line) oscillates violently from 630s to 1293s ( > 100% variation). Clustering the data locality did not alter the pipeline efficiency (CPI); instead, it trapped the MCTS algorithm in deep tactical evaluations, inflating 4ref Q1 Q2 Q3 Q4 Grad-0.1 Grad-0.2 Grad-0.3 Grad-0.4 Grad-0.5 Grad-0.6 Grad-0.7 Grad-0.8 Grad-0.9 020 40 60 80 100                                                                        
+
+> Percentage of Pipeline Slots (%)
+> 44.1% 43.7% 44.2% 43.7% 44.3% 43.7% 43.4% 43.4% 43.6% 43.5% 43.6% 43.8% 43.7% 43.8% 25.6% 25.3% 25.2% 26.6% 26.8% 25.3% 25.3% 25.5% 25.3% 25.4% 25.3% 25.3% 25.3% 25.3% 25.3% 25.9% 25.5% 24.9% 24.2% 25.8% 26.0% 25.8% 26.0% 25.9% 26.0% 25.8% 25.8% 25.7% 3.5% 3.6% 3.6% 3.4% 3.3% 3.6% 3.7% 3.6% 3.6% 3.6% 3.6% 3.6% 3.6% 3.6%
+> 128.8T 81.2T 98.6T 76.8T 82.4T 134.5T 130.0T 158.3T 110.1T 140.0T 107.2T 122.5T 127.5T 147.5T
+> Retired Ins Retiring Front-End Bound Bad Speculation Memory Bound Core Bound Elapsed Time 0200 400 600 800 1000 1200 1400
+> Elapsed Time (s)
+
+Fig. 2. The Microarchitectural Freeze in leela r : As the dataset’s spatial locality varies (Grad-0.1 to 0.9), the TMA pipeline break-down (bar charts) remains entirely frozen. However, the elapsed time (red line) perfectly correlates with the algorithmic instructions bloat (green line), proving the causal path Workload(dataset, algorithm) ⇒ Instructions(Retired) ⇒ System(Performance). Grad-0.4 Grad-0.5 Grad-0.6 Grad-0.7 Grad-0.8 Grad-0.9 0100 200 300 400 500 600 700  
+
+> Elapsed Time (s)
+> 27.3T 24.6T 22.6T 17.6T 12.5T 8.9T Elapsed Time (s) CPI
+> 3.5 3.6 3.7 3.8 3.9
+> CPI
+
+Fig. 3. The Pointer-Chasing Paradox in mcf r : As graph edges become more structured, CPI drastically worsens, yet overall elapsed time counter-intuitively drops. 
+
+the number of retired instructions (green line) from 76.8T to 158.3T. TMA only shows how efficiently the processor is running, completely ignoring that the algorithm forced the CPU to execute more than twice the amount of work. 
+
+C. The Pointer-Chasing Paradox (mcf r) 
+
+Dataset Treatment Strategy: In the network simplex al-gorithm ( mcf r ), we maintained a strict graph scale (15,000 nodes and 117,202 edges) but modulated the cost randomness .As shown in Table II, we smoothly shifted the edge costs from purely random values to a predictable, linear distance-based pattern. 
+
+The Directional Fallacy: Even when TMA accurately detects a change in CPI, blindly optimizing for it can lead to paradoxical results. Figure 3 illustrates a striking anomaly among the Grad-0.6 and Grad-0.8 datasets: the CPI worsens Q1 (Dist-0.0) Gradient (Dist-0.5) Q2 (Dist-1.0)      
+
+> 0100 200 300 400 500
+> Elapsed Time (Seconds) 1.49T 1.4T 0.46T
+> Elapsed Time Branch MPKI CPI
+> 01234567
+> Branch MPKI 1.21 1.42 1.69
+
+Fig. 4. The Masked Disaster in cactuBSSN r : Algorithmic pruning causes elapsed time to drop, completely hiding the exponential surge in Branch MPKI. 
+
+drastically (from 3.4 to 3.9), but the elapsed time drops precipitously from 550s to 350s. 
+
+The Causal Reality (Workload(dataset, algorithm) ⇒
+
+Instructions(Retired) ⇒ System(Performance) overrid-ing Workload(dataset, algorithm) ⇒ CPU(CPI) ⇒
+
+System(Performance)): TMA would flag Grad-0.8 as a mi-croarchitectural disaster. The predictable edge costs ironically turn highly accurate branch predictions into “Over-Speculation Congestion,” where the CPU aggressively fetches deep, depen-dent pointers, causing severe Line Fill Buffer (LFB) conges-tion. However, the structured data also allows the algorithm to find shorter routing paths, plummeting the instructions count from 22.6T to 12.5T. The massive reduction in algorithmic work entirely overrides the severe microarchitectural penalty. Optimizing the CPU pipeline solely based on the bloated CPI of Grad-0.8 would be fundamentally misguided. 5D. The Hidden Bottleneck Shift (cactuBSSN r) 
+
+Dataset Treatment Strategy: Following Table II, in the 3D PDE solver ( cactuBSSN r ), we kept the total computational volume strictly identical ( 84 3 vertices) but morphed the spatial distortion . We stretched the space from a perfect cube (Q1, 
+
+84 × 84 × 84 ) to an intermediate form (Gradient-0.5, 47 ×
+
+47 × 268 ), and then to an extreme needle-shape (Q2, 10 ×
+
+10 × 5, 927 ). 
+
+The Masked Disaster: Extreme spatial distortion results in a massive 70% drop in retired instructions (from 1.47T down to 0.45T) due to algorithmic boundary pruning and early PDE convergence. Naturally, the elapsed time drops, giving the illusion of a lighter and healthier workload (Figure 4). However, this reduction in time hides a catastrophic shift in the underlying bottleneck. Under extreme distortion, short innermost loops ( 10 × 10 ) destroy hardware prefetcher strides and cause the Branch MPKI to triple (from 1.84 to 6.05). The pipeline abruptly shifts from being capacity-bound (efficiently filling a 256-entry Reorder Buffer) to fill-rate-bound (stalling constantly due to branch flushes). 
+
+The Causal Reality (The Tug-of-War between Workload(dataset, algorithm) ⇒
+
+Instructions(Retired) ⇒ System(Performance) and Workload(dataset, algorithm) ⇒ CPU(CPI) ⇒
+
+System(Performance)): This workload exposes a dynamic “Tug-of-War” between two causal paths. When shifting from Q1 to the extreme Q2, the algorithmic efficiency path (Workload(dataset, algorithm) ⇒ Instructions(retired) ⇒
+
+System(Performance)) is the absolute dictator; the 70% instructions reduction easily masks the microarchitectural penalty, dropping elapsed time from 422.6s to 195.2s. Conversely, the transition from Q1 to Gradient-0.5 reveals the power of the microarchitectural efficiency path (Workload(dataset, algorithm) ⇒ CPU(CPI) ⇒
+
+System(Performance)). As the space begins to stretch, instructions drop slightly (from 1.49T to 1.40T), yet the elapsed time paradoxically increases from 422.6s to 424.4s. The geometric distortion hits a pathological threshold for the pipeline Frontend, driving the CPI up from 1.21 to 1.42, overpowering the algorithmic reduction. TMA is fundamentally unequipped to capture this non-linear, threshold-driven reality. 
+
+E. The Workload Anomaly (xalancbmk r) 
+
+Treatment Strategy: As detailed in Table II, in XML pars-ing ( xalancbmk r ), we fixed the input file item at 36,000 items. To trigger varying degrees of nested XSLT template calls, we progressively increased the recursion depth by padding inner string lengths from 2 to 400 characters. 
+
+The Bandwidth Illusion: Through causal treatment, we observed a complex bottleneck drift to a significant Frontend Bound (the break-down Frontend bound shifts from 20.2% on SPEC ref dataset to more than 32% on our treatment datasets). Moreover, as shown in Figure 5, the Q1 dataset retires 65 Trillion instructions, yet finishes faster than the SPEC ref dataset, which retires only 53 Trillion instructions. 20 30 40 50 60    
+
+> Total Instructions Retired (Trillions)
+> 100 150 200 250 300 350 400 450
+> Elapsed Time (Seconds)
+> Ref (CPI: 1.16) Q1 (CPI: 0.83) Q3 (CPI: 0.83) Q4 (CPI: 0.81) Grad-0.1 (CPI: 0.82) Grad-0.2 (CPI: 0.82) Grad-0.3 (CPI: 0.82) Grad-0.4 (CPI: 0.82) Grad-0.5 (CPI: 0.82) Grad-0.6 (CPI: 0.82)
+> 0.85 0.90 0.95 1.00 1.05 1.10 1.15 CPI
+> Fig. 5. The Workload Anomaly in xalancbmk r : The retiring 65 Trillion instructions finishes faster than the reference retiring only 53 Trillion instruc-tions.
+
+The Causal Reality (Workload(dataset, algorithm) ⇒
+
+Instructions(Retired) ⇒ CPU(CPI) ⇒
+
+System(Performance)): This anomaly exposes a compounded causal interaction. Deep recursion triggers a massive instructions bloat via nested CALL/RET operations. However, this specific bloat collapses the dynamic instructions footprint into an ultra-small code segment. This perfectly packs the execution into the Op-cache (DSB), completely bypassing the legacy decode pipeline and saturating the Frontend dispatch bandwidth. Consequently, the CPI drops so dramatically (from 1.16 down to 0.83) that it overcompensates for the extra algorithmic work. 
+
+F. Summary: The Need for Causal TMA 
+
+These four cases demonstrate that TMA snapshots suffer from severe causal blindness. This blindness is why relying solely on TMA is dangerous—it inevitably misleads architects into optimizing hardware for what are essentially software anomalies (e.g., blindly expanding ROB capacity for cactuB-SSN r when it is fill-rate-bound). To capture the holistic performance landscape, we propose the Causal Top-Down Microarchitecture Analysis (CTMA) .By deliberately intervening on the Workload object and de-ploying hardware probes to cross-validate on the CPU object, CTMA explicitly models and validates all three causal paths, providing a robust, generalized framework for CPU design. IV. T HE CAUSAL TOP -D OWN MICROARCHITECTURE 
+
+ANALYSIS (CTMA) As demonstrated in Section III, traditional TMA suffers from causal blindness when algorithmic-related causal paths dynamically adapt. To systematically decouple these complex system interactions, we propose Causal Top-Down Microar-chitecture Analysis (CTMA) .Rather than a rigid set of specific experimental steps, CTMA is designed as a generalized, plug-and-play framework based on the object causal model (OCM). As illustrated in Figure 6, it establishes a tight feedback loop between System object and a casual modeling and performance profiling engine. Instead of passively profiling a static workload, CTMA explicitly defines 6two abstract treatment interfaces: the Software Interface 
+
+(intervening on the Workload Object ) and the Hardware Interface (intervening on the CPU Object ). This framework identifies and models dynamic bottleneck migrations and rigorously cross-validates the modeled causal paths. CTMA operates in three fundamental phases. 
+
+A. Phase I: The Software Interface (Intervening on the Work-load Object) 
+
+The first phase aims to activate the hidden causal paths overlooked by TMA by systematically intervening the Work-load Object . In the OCM paradigm, a workload’s underlying algorithm acts as its mechanism, and its configuration param-eters act as its properties. Therefore, the Software Interface is designed to mutate the workload properties (e.g., s, compiler flags, concurrency) to trigger dynamic algorithmic adaptations. To ensure scientific rigor, this phase operates strictly around an anchor point: the “Default Configuration” (e.g., the official SPEC ref inputs). We generate a spectrum of “Treat-ment Configurations” by dialing specific workload properties (e.g., spatial locality of dataset) known to change algorithmic instructions behaviors and stress microarchitectural bottle-necks, while strictly preserving other properties same with the default. 
+
+Our Reference Implementation: In this article, we imple-ment the Software Interface via DataSet Treatment . To main-tain the “apples-to-apples” anchor, we fix the absolute data scale (e.g., maintaining exactly 84 3 vertices in cactuBSSN r ,or 600 moves in leela r ). By keeping the total scale constant while morphing its topological distribution, any fluctuation in the retired instructions is definitively isolated as an algorithmic adaptation (e.g., boundary pruning), rather than a trivial change in raw input size. 
+
+B. Phase II: Dynamic Bottleneck Analysis (Using OCM for Causal Modeling and Performance Profiling) 
+
+Once the treated Workload Objects are compiled to Instruc-tions Objects and applied to the CPU Objects, the resulting computer system (System Objects) yield performance profiles. Then CTMA transitions to causal modeling (right side of Figure 6). Unlike traditional TMA that collapses all system be-haviors into an opaque overall system metric (CPI or Elapsed Time), CTMA utilizes the object causal model (OCM) to track interactions across the four fundamental system objects: Workload, Instructions, CPU, and System. By mapping the bottleneck migration across treated configurations, CTMA models three distinct causal paths. 1) Workload(dataset, algorithm) ⇒ CPU(CPI) ⇒
+
+System(Performance) : The traditional microarchitectural efficiency path. Variations in input data directly alter hardware behavior (e.g., spatial distortion destroying prefetcher strides). 2) Workload(dataset, algorithm) ⇒
+
+Instructions(Retired) ⇒ System(Performance) : The algorithmic efficiency path. This formalizes how algorithmic instructions bloat dictates elapsed time, successfully explaining why performance plummets even when pipeline efficiency (CPI) remains completely frozen (as seen in Figure 2 and Figure 7). 3) 
+
+Workload(dataset, algorithm) ⇒ Instructions(Retired) ⇒
+
+CPU(CPI) ⇒ System(Performance) : The microarchitecture-algorithm efficiency path. Changes in instructions volume can fundamentally alter the execution footprint (e.g., shrinking entirely into the Op-cache), thereby artificially inflating the CPU’s pipeline efficiency. These decoupled causal paths provide a robust, mathematical blueprint of the real-world system constraints, transcending the “black-box” nature of traditional TMA under the static workload configuration. 
+
+C. Phase III: The Hardware Interface (Cross-Validation on the CPU Object) 
+
+The final phase addresses a profound challenge in sys-tems research: validating theoretical model predictions against physical execution. To prevent correlational illusions, CTMA implements a “Cross-validation” loop using Treatment Hard-ware Probes .As a generalized plug-and-play framework, the Hardware Interface of CTMA accepts any mechanism capable of probing or constraining the CPU Object . Researchers can plug in cycle-accurate simulators [4], [8], [9], [19], [22], [25] (e.g., gem5 [8]) for ultimate register-level control, or utilize real silicon environments. 
+
+Our Reference Implementation: To prove the ecological validity of our findings, we forgo simulators and deploy a suite of Non-Invasive Real-Silicon Probes across commercial pro-cessors (Intel, AMD, ARM in Table I). Instead of introducing confounding variables via artificial noise code (e.g., cache-thrashing memory loops), we exploit native hardware facilities or controlled software codes to enforce constraints on the CPU Object:  
+
+> •
+
+Core Frequency Clamping: To eliminate the non-deterministic noise of modern power management (e.g., thermal throttling and Turbo Boost) and to isolate memory-wall effects, we deploy OS-level frequency gov-ernors (e.g., cpupower ). By explicitly disabling Turbo Boost and clamping the CPU to a strict frequency (e.g., 1.2 GHz), we forcefully decouple the processor’s com-pute speed from the uncore memory frequency.  
+
+> •
+
+SMT Resource Partitioning: To differentiate be-tween capacity-bound and fill-rate-bound states, we pin a highly constrained process (e.g., executing only 
+
+_mm_pause() ) to the sibling logical core. This triggers the hardware to statically or dynamically partition the Reorder Buffer (ROB) and queues without consuming dynamic fetch bandwidth, cleanly isolating the impact of Backend depth.  
+
+> •
+
+SMT Stress Test: To expose Frontend resource shar-ing policies, we co-run identical processes of a target workload aggressively pinned to a pair of sibling logical cores (e.g., utilizing OS-level affinity via taskset -c 1 and 29 on the Intel Xeon Machine). Compared with a solitary execution with the sibling logical core idle, this concurrent setup forces the CPU to dynamically 7System Object          
+
+> Evaluation
+> Feedback
+> Phase II : Causal Modeling & Performance Profiling
+> Workload CPU System
+> Instructions System
+> CPU System Instructions Workload
+> Workload
+> Object Causal Model
+> Workload Object
+> Instruction Object
+> CPU Object
+> Treatment
+> Bottleneck Distribution Migration
+> Default
+> Configuration
+> Treatment
+> Configurations Cross-validation
+> Core Frequency
+> Clamping
+> SMT Capacity Slicing
+> SMT Stress Test
+> Manual Speculation
+> Throttling
+> ...
+> ...
+> Phase I :Intervening on the Workload Object
+> Phase III :Cross-validation on
+> the CPU Object Fig. 6. Overview of the Causal Top-Down Microarchitecture Analysis (CTMA). By treating the workload configuration and perturbing microarchitectural states via hardware probes, we capture dynamic bottleneck migrations and cross-validate causal performance models. The framework accommodates both real-silicon probes and cycle-accurate simulators.
+
+arbitrate fetch bandwidth. It cleanly reveals whether the hardware achieves cycle-level overlapping (e.g., seam-lessly interleaving fetch slots from a shared Decoded Stream Buffer during CALL stalls) or suffers massive performance regressions due to rigid Op-cache capacity partitioning.  
+
+> •
+
+Manual Speculation Throttling: To verify “Over-Speculation Congestion,” we dynamically patch hot func-tions with explicit NOP instructions on the workload source code. This acts as a hardware “traffic light,” artificially slowing the Frontend to observe if the Backend memory queue congestion alleviates and performance paradoxically improves. By aligning the observed shifts triggered via the Software Interface (Workload Object) with the deterministic responses from the Hardware Interface (CPU Object), CTMA achieves fully closed-loop causal verification. This generalizable frame-work provides architects with actionable, dynamic insights, fundamentally redefining the performance profiling and CPU design space exploration (DSE) paradigm. V. E VALUATION 
+
+In this section, we deploy the hardware probes defined in our methodology (Section IV-C) to cross-validate the causal bot-tleneck models (Section IV-B). We execute our CTMA across three distinct microarchitectures to prove the universality of our findings. 
+
+A. Experimental Setup 
+
+As shown in Table I, our evaluation spans three major commercial platforms: Intel Xeon Gold 5120T (Skylake-SP), AMD EPYC 7543 (Zen 3), and ARM Kunpeng 920 (ARMv8). To rigorously eliminate Operating System (OS) scheduling noise and background interrupts, we explicitly isolate the testing cores using GRUB kernel parameters. For instance, on the Intel Xeon machine, we apply GRUB_CMDLINE_LINUX="isolcpus=1,29 nohz_full=1,29 rcu_nocbs=1,29 irqaffinity=0,28" . The baseline SPEC process is strictly pinned to an isolated logical core (e.g., core 1). When an SMT hardware probe is applied, the treatment process (e.g., the _mm_pause() workload) is pinned to the isolated sibling logical core (e.g., core 29 on the Intel Xeon Machine). Hardware performance events are collected via Linux perf [2] and Intel VTune [1]. 
+
+B. Validating Algorithmic Instruction Bloat via Frequency Clamping (leela r) 
+
+Software Treatment Insight: As established in Section III, manipulating spatial locality in leela r triggers a “Microar-chitectural Freeze.” The TMA CPI profile remains entirely static, yet elapsed time oscillates violently, driven by a 2.06 ×
+
+constant instructions bloat across all three platforms (Figure 7). To definitively eliminate the hypothesis of a hidden “Memory Wall” (which TMA might misclassify), we deploy the Core Frequency Clamping hardware probe. 
+
+Hardware Probe Cross-Validation: If a workload is memory-bound, downclocking the CPU core will not propor-tionally increase elapsed time, as the uncore RAM frequency remains constant. Table III demonstrates the elapsed time under high and low frequency locks. Across the Intel, ARM, and AMD platforms, the elapsed time ratio perfectly matches the physical frequency ratio (e.g., 2.2GHz/ 1.2GHz ≈ 1.833 )across all treatments. This linear scaling provides strong evidence that the CPU remains in a steady compute-bound state, fully executing the bloated instructions. 
+
+C. Isolating Backend Vulnerabilities via SMT Slicing (cactuB-SSN r) 
+
+Software Treatment Insight: In cactuBSSN r , changing spatial distortion from a perfect cube (Q1) to an extreme needle-shape (Q2) causes the elapsed time to drop signif-icantly. However, this algorithmic pruning masks a severe microarchitectural penalty: Branch MPKI surges drastically (e.g., from 1.84 to 6.05 on Intel, and 0.11 to 0.19 on AMD), causing Backend stalls to explode. We causally model this as 815 Datasets (Sorted by Elapsed Time )     
+
+> 0.6 0.8 1.0 1.2 1.4 1.6 1.8 Instructions Per Cycle (IPC)
+> Despite execution time doubling, IPC remains absolutely flat across all ISAs.
+> Intel Xeon (x86) AMD EPYC (x86) Kunpeng (ARM)
+> 100 150 200 250 300 350
+> Total Retired Instructions (Trillions) 400 600 800 1000 1200 1400 Elapsed Time (Seconds)
+> Algorithmic Bloat Factor: Constant ~2.06x retired instruction expansion across ALL architectures
+> Intel ( R2=0.9992) AMD ( R2=0.9988) Kunpeng ( R2=0.9967)
+
+Fig. 7. The “Microarchitectural Freeze” in leela r across three major commercial platforms. Elapsed time doubles strictly due to the Instructions Object (Algorithmic Bloat), while the CPU Object (TMA pipeline slots and CPI) remains utterly blind to the degradation. TABLE III FREQUENCY CLAMPING VALIDATES PURE INSTRUCTION BLOAT (leela r )
+
+Dataset Intel Xeon (2.2GHz vs 1.2GHz) ARM Kunpeng (2.2GHz vs 1.2GHz) AMD EPYC (2.8GHz vs 2.1GHz) 
+
+Time (2.2) Time (1.2) Scaling Ratio Time (2.2) Time (1.2) Scaling Ratio Time (2.8) Time (2.1) Scaling Ratio 
+
+ref 1222.2s 2243.6s 1.836x 706.0s 1289.9s 1.827x 669.2s 894.6s 1.337x Q1 784.8s 1421.2s 1.811x 458.8s 841.9s 1.835x 430.5s 579.9s 1.347x Q2 939.1s 1725.3s 1.837x 548.0s 1001.8s 1.828x 514.1s 685.0s 1.332x Q3 740.2s 1375.1s 1.858x 407.1s 745.3s 1.831x 398.7s 532.4s 1.335x Q4 784.4s 1443.4s 1.840x 433.6s 788.9s 1.819x 423.1s 562.3s 1.329x 
+
+Expected 2.2/1.2 1.833x 2.2/1.2 1.833x 2.8/2.1 1.333x 
+
+a transition from a capacity-bound state to a fill-rate-bound state. 
+
+Hardware Probe Cross-Validation: To prove this, we deploy the SMT Resource Partitioning probe on the x86 platforms (as Kunpeng 920 does not support SMT). By co-running a _mm_pause() process on the sibling logical core, we partition the physical ROB entries. On Intel, the ideal topology (Q1) degrades by ∼23% under ROB partitioning, confirming its reliance on a massive instructions window to extract ILP (Capacity-Bound). Conversely, the extremely distorted topology (Q2) degrades by only ∼9% (AMD exhibits a similar ∼12% vs. ∼10% trend). Because Q2 suffers from severe branch flushes, it can never fill even a partitioned ROB. This hardware probe provides targeted evidence of the fill-rate vulnerability that TMA overlooks. 
+
+D. The Architectural Divide of Op-Cache Sharing (xalancbmk r) 
+
+Software Treatment Insight: Deep recursion in 
+
+xalancbmk r causes a massive instructions surge (13 .4T → 308 .2T on Intel, 15 .7T → 382 .0T on Kunpeng, and 39 .2T → 677 .1T on AMD). Counter-intuitively, ICache misses remain negligible across all platforms (Max L1 ICache Miss: 2.84% on Intel, 0.99% on Kunpeng, 1.25% on AMD), yet the Frontend Bandwidth Bound skyrockets to 24% on Intel. The dense CALL/RET operations shatter the fetch bandwidth, trapping the execution entirely within a tiny code footprint inside the Op-cache. 
+
+Hardware Probe Cross-Validation: To verify this “Band-width Illusion,” we deploy the SMT Stress Test . As shown in Figure 8, Intel surprisingly achieves speedups. Because the tiny code footprint allows a large fraction of the μops to be delivered from Intel’s Decoded Stream Buffer (DSB), for example, 53% of the μops are delivered from the DSB on the Q2. The two processes exhibit constructive cycle-level overlapping: when Process A encounters control-flow or Frontend stalls, Process B can utilize otherwise idle fetch and execution slots. This SMT-enabled latency hiding allows each workload instance to complete faster under co-execution than when running alone. Conversely, AMD Zen 3 suffers a massive performance regression, indicating that its rigid Op-cache partitioning policies fail to exploit this ultra-small footprint overlap. 
+
+E. Throttling Over-Speculation Congestion via NOP Injection (mcf r) 
+
+Software Treatment Insight: To rigorously infer the effects of branch predictability and spatial locality on the microar-chitecture, we generated four treatment datasets (Q1–Q4) for 
+
+mcf r maintaining the exact same graph scale (nodes and 9ref (Official) Q1 (Mixed Bottleneck) Q2 (Recursion Bottleneck) Q3 (Branch Bottleneck) Q4 (No Bottleneck)    
+
+> xalancbmk_r Datasets
+> 0.5 1.0 1.5 2.0 2.5
+> SMT Ratio (SMT Time / Single Run Time)
+> SMT Acceleration Zone (< 1.0) SMT Thrashing Zone (> 1.0) 1.20x 0.80x 0.97x 0.71x 0.69x 2.11x 1.73x 1.67x 1.78x 1.76x
+> Intel Xeon 5120T (DSB Synergy) AMD EPYC 7543 (Resource Thrashing)
+
+Fig. 8. SMT Stress Test ( xalancbmk r ): Intel achieves speedups due to DSB overlap on small footprints, while AMD suffers severe resource thrashing. 
+
+edges) as the official ref input. We paired them by spatial locality: Q1 and Q2 share scattered spatial locality, whereas Q3 and Q4 share clustered spatial locality. Within each pair, we solely manipulated the edge cost randomness: Q1 and Q3 feature completely random costs (unpredictable branches), while Q2 and Q4 feature linearly predictable costs. As shown in Table IV, treatment datasets with highly predictable patterns (Q2, Q4) paradoxically execute slower 
+
+than their random counterparts (Q1, Q3) across all three plat-forms. CTMA reveals that highly accurate branch predictions, combined with deep pointer-chasing, act as “Over-Speculation Congestion.” The aggressive Frontend unleashes a Distributed Denial of Service (DDoS) attack on the Line Fill Buffers (LFB), severely exacerbating Backend memory bottlenecks. For example, on the Intel platform, the FB Full ratio (LFB congestion) surges from 42.5% (Q1) to 59.2% (Q2), and astonishingly from 6.4% (Q3) to a complete deadlock at 100% (Q4). Correspondingly, the Backend Bound metric increases from 28.2% (Q1) to 30.0% (Q2), and from 17.2% (Q3) to 32.7% (Q4). 
+
+TABLE IV MICROARCHITECTURAL PROFILES ACROSS DATASET TREATMENTS 
+
+(mcf r )                                                                  
+
+> CPU Dataset Br MPKI L1D MPKI LLC MPKI IPC Time (s) Intel Q1 24.58 84.18 43.16 0.26 777.7
+> Q2 20.42 81.96 40.75 0.28 859.5
+> Q3 30.64 59.24 28.08 0.31 103.7
+> Q4 18.29 82.71 43.54 0.25 197.8
+> ARM Q1 17.81 77.55 40.75 0.15 1284.5
+> Q2 15.69 75.33 39.74 0.15 1497.5
+> Q3 21.50 51.80 26.45 0.21 143.1
+> Q4 15.10 73.85 45.42 0.13 373.0
+> AMD Q1 15.05 93.44 0.34 0.55 324.7
+> Q2 13.86 91.38 0.39 0.51 399.6
+> Q3 17.84 64.29 0.35 0.64 43.2
+> Q4 14.09 93.68 0.46 0.35 113.7
+
+Hardware Probe Cross-Validation: To cross-validate this congestion, we apply the Manual Speculation Throttling probe. By compiling __asm__ __volatile__("nop"); loops inside the hot function 
+
+price_out_impl() , we establish a “Hardware Traffic Light.” Specifically, these injected NOP instructions force the pipeline to consume fetch and decode cycles without generating any actual data-memory requests. This acts like a red light, intentionally throttling the Frontend’s commit rate and restricting the volume of speculative memory operations dispatched to the Backend. As shown in Table V, despite forcing the CPU to execute 
+
+more useless instructions, the elapsed time either remains stable or slightly decreases across all three platforms. This proves that artificially slowing down the Frontend relieves Backend memory congestion, advocating for dynamic specu-lation throttling mechanisms in future CPU designs. A native hardware implementation could provide similar memory con-gestion relief without the instruction-delivery and retirement overhead of NOP s, enabling higher execution efficiency. 
+
+TABLE V NOP T HROTTLING PERFORMANCE PARADOX (mcf r )                                      
+
+> Dataset Intel Xeon (s) ARM Kunpeng (s) AMD EPYC (s)
+> Control Treat (NOP) Control Treat (NOP) Control Treat (NOP)
+> ref 794.99 789.97 723.39 722.28 261.22 260.50
+> Q1 457.60 455.30 406.44 406.57 138.35 138.79
+> Q2 502.51 500.48 456.66 456.31 155.84 154.24
+> Q3 71.59 70.92 51.84 51.69 21.22 21.48
+> Q4 101.07 100.91 96.42 96.41 35.89 35.82
+
+F. Case Study: The Microarchitectural Ghost State and Pipeline Balancing on the Intel Xeon Gold 5120T 
+
+Our causal treatments demonstrate that on the Intel Xeon Gold 5120T, modern CPU benchmarking workloads frequently trigger severe Frontend and Backend imbalances (e.g., LFB congestion in mcf r , DSB reliance in xalancbmk r , Branch MPKI surges cactuBSSN r ). During our SMT hardware prob-ing, we observed a microarchitectural artifact that practically demonstrates the potential benefits of dynamically balancing these pipeline bottlenecks. Based on this artifact, we present a case study on microarchitectural bottleneck mitigation. 
+
+Experimental Setup & Observations: We evaluated the SPEC CPU2017 and CPU2026 suites under three strictly controlled isolation states on the Intel Xeon gold 5120T:  
+
+> •
+
+Clean-ST A1 (Baseline): The workload runs isolated on a single pinned core (e.g., core 1).  
+
+> •
+
+Throttled-SMT (Hardware Throttling): The work-load process runs on core 1, while a constrained 
+
+_mm_pause() process runs continuously on its sibling logical core (e.g., core 29 on our Intel Xeon Machine). This state structurally partitions the Backend queues (ROB/LSQ) and introduces coarse-grained bandwidth throttling.  
+
+> •
+
+Ghost-ST (The Artifact): The constrained 
+
+_mm_pause() process is forcefully terminated via the OS command kill -9 . Immediately afterward, we re-execute the workload on core 1 while its SMT sibling (core 29) is reported as idle by the OS scheduler. As shown in Figure 9 and Figure 10, even under the coarse-grained resource restriction of Throttled-SMT , workloads exhibit an average speedup of 2.52% on SPEC CPU2017 and 16.09% on SPEC CPU2026 compared to Clean-ST. This con-firms that for modern intensive benchmarks, blindly allowing a wide pipeline to operate at maximum capacity often degrades 10 perlbench gcc bwaves mcf cactuBSSN namd parest povray lbm omnetpp wrf xalancbmk x264 blender cam4 deepsjeng imagick leela nab exchange2 fotonik3d roms xz GEOMEAN 0.0 0.5 1.0 1.5 2.0   
+
+> Normalized Speedup
+> Clean-ST (A1) Throttled-SMT Ghost-ST
+
+Fig. 9. The Ghost State Speedup on the Intel Xeon Gold 5120T: Executing workloads in the stale pipeline (Ghost-ST) yields an average of 22.75% speedup on SPEC CPU2017. stockfish ntest sqlite cactus omnetpp cpython gcc palm llvm cppcheck abc astcenc vpr gem5 ocio gmsh flightdm fotonik3d sealcrypto ns3 roms femflow nest marian zstd lbm GEOMEAN 0.0 0.5 1.0 1.5 2.0 2.5   
+
+> Normalized Speedup
+> Clean-ST (A1) Throttled-SMT Ghost-ST
+
+Fig. 10. The Ghost State Speedup yields 42.20% speedup on SPEC CPU2026. 
+
+performance due to congestion; restricting the pipeline band-width can actually yield positive returns, with higher pressure workloads (CPU2026) benefiting more significantly. However, the most notable anomaly occurs in the Ghost-ST . After the kill -9 termination, the OS clears the process context; yet, the hardware fails to immediately reset dynamic pipeline configurations, leaving a microarchitectural ”Ghost State”. Executing workloads in this state yields an average speedup of 22.75% on SPEC CPU2017 (ranging from 0.09% to 119.45%) and 42.20% on CPU2026 (ranging from 0.19% to 184.73%) over the Clean-ST baseline. 
+
+Root Cause Analysis: Through CTMA profiling on SPEC CPU2026 (Figures 11 to 12), we observed that Ghost-ST exhibits a massive surge in the DSB uOps ratio alongside a drastic reduction in Memory Stall Cycles (The profiling results on SPEC CPU2017 are similar to SPEC CPU2026). Crucially, the microarchitectural signature of Ghost-ST exactly matches a clean baseline core booted with the kernel parameter 
+
+GRUB_CMDLINE_LINUX_DEFAULT="spectre_v2=off" 
+
+(denoted as Clean-ST A2 ). This evidence implies that the abrupt process termination bypasses the OS kernel’s security context-scrubbing routines, inadvertently disabling the severe DSB suppression imposed by Spectre V2 mitigations, thereby unleashing the Frontend. 
+
+Microarchitectural Implications: Dynamic Speculation Throttling. Observed on a typical Intel Xeon Gold 5120T processor, this “Ghost State” paradox illuminates a profound design flaw: modern wide-issue pipelines are often substan-tially unbalanced. When security mitigations arbitrarily throttle stockfish ntest sqlite cactus omnetpp cpython gcc palm llvm cppcheck abc astcenc vpr gem5 ocio gmsh flightdm fotonik3d sealcrypto ns3 roms femflow nest marian zstd lbm 020 40 60 80 100 
+
+> DSB uOps Ratio (%)
+> Clean-ST (A1) Clean-ST (A2) Throttled-SMT Ghost-ST
+
+Fig. 11. DSB uOps Ratio surges in Ghost-ST on SPEC CPU2026, matching the unmitigated state. stockfish ntest sqlite cactus omnetpp cpython gcc palm llvm cppcheck abc astcenc vpr gem5 ocio gmsh flightdm fotonik3d sealcrypto ns3 roms femflow nest marian zstd lbm 010 20 30 40 50 
+
+> Memory Stalls Cycles (×10¹²)  Clean-ST (A1) Clean-ST (A2) Throttled-SMT Ghost-ST
+
+Fig. 12. Memory Stall Cycles drastically decrease in Ghost-ST on SPEC CPU2026. 
+
+the Frontend (as seen in Clean-ST), performance suffers. Conversely, when unrestricted speculation creates Backend memory traffic jams (as seen in mcf r ), static hardware queues fail, and artificially throttling the bandwidth (as seen in Throttled-SMT) actually yields positive effects. Rather than blindly expanding pipeline buffers (which hit marginal utility ceilings) or applying rigid, one-size-fits-all security throttles, future CPU designs should incorporate dy-namic speculation throttling mechanisms . Processors re-quire a closed-loop monitoring interface that observes Back-end congestion (e.g., LFB occupancy limits) to dynamically throttle or unleash Frontend speculation. CTMA demonstrates that strategically balancing the pipeline flow yields far greater dividends than brute-force capacity scaling. VI. C ONCLUSION AND FUTURE WORK 
+
+Traditional Top-Down Microarchitecture Analysis (TMA) suffers from causal blindness . By profiling static workloads, it blindly attributes performance variations solely to microarchi-tectural efficiency (CPI), fundamentally ignoring algorithmic instructions bloat and dynamic bottleneck migrations. To cure this causal blindness, we proposed Causal TMA (CTMA) . Grounded in the object causal model (OCM), CTMA pairs software treatments with hardware probe (e.g., core frequency clamping, SMT resource partitioning) cross-validation across Intel, AMD, and ARM platforms. We systematically proved that predictable data triggers “Over-Speculation Congestion,” geometric distortions shift pipelines from capacity-bound to fill-rate-bound, and Op-cache foot-prints dictate SMT overlap. Furthermore, uncovering an av-erage of 42.20% performance boost of the “Ghost State” artifact exposed the severe penalties of unbalanced pipelines. Ultimately, CTMA prevents architects from falling into corre-lational traps and optimizing the wrong bottlenecks. 11 CTMA lays the groundwork for a new performance analysis and CPU DSE paradigm. We plan to extend this work in below directions: 1) Simulator Integration: Extending our hardware probing interface to simulators for register-level causal interventions beyond the limits of commercial silicon. 2) Dynamic Speculation Throttling: Developing closed-loop hardware controllers that dynamically regulate Frontend dispatch based on Backend congestion, achieving pipeline balance without expanding pipeline buffer. REFERENCES [1] “Intel vtune,” https://software.intel.com. [2] “Performance counters for linux,” https://perf.wiki.kernel.org/index.php/ Main Page. [3] M. Anderson, “Better benchmarking for supercomputers,” Spectrum, IEEE , vol. 48, no. 1, pp. 12–14, 2011. [4] D. Bartholomew, “Qemu: a multihost, multitarget emulator,” Linux Journal , vol. 2006, no. 145, p. 3, 2006. [5] C. Bienia, “Benchmarking modern multiprocessors,” Ph.D. dissertation, Princeton University, 2011. [6] C. Bienia, S. Kumar, J. Singh, and K. Li, “The parsec benchmark suite: Characterization and architectural implications,” in Proceedings of the 17th international conference on Parallel architectures and compilation techniques . ACM, 2008, pp. 72–81. [7] C. Bienia, S. Kumar, and K. Li, “Parsec vs. splash-2: A quantitative com-parison of two multithreaded benchmark suites on chip-multiprocessors,” pp. 47–56, 2008. [8] N. Binkert, B. Beckmann, G. Black, S. K. Reinhardt, A. Saidi, A. Basu, J. Hestness, D. R. Hower, T. Krishna, S. Sardashti et al. , “The gem5 simulator,” ACM SIGARCH computer architecture news , vol. 39, no. 2, pp. 1–7, 2011. [9] N. L. Binkert, R. G. Dreslinski, L. R. Hsu, K. T. Lim, A. G. Saidi, and S. K. Reinhardt, “The m5 simulator: Modeling networked systems,” Ieee micro , vol. 26, no. 4, pp. 52–60, 2006. [10] S. Campanoni, G. Agosta, S. Crespi Reghizzi, and A. Di Biagio, “A highly flexible, parallel virtual machine: Design and experience of ildjit,” 
+
+Software: Practice and Experience , vol. 40, no. 2, pp. 177–207, 2010. [11] S. Dave, T. Nowatzki, and A. Shrivastava, “Explainable-dse: An ag-ile and explainable exploration of efficient hw/sw codesigns of deep learning accelerators using bottleneck analysis,” in Proceedings of the 28th ACM International Conference on Architectural Support for Programming Languages and Operating Systems, Volume 4 , 2023, pp. 87–107. [12] M. Ferdman, A. Adileh, O. Kocberber, S. Volos, M. Alisafaee, D. Jevd-jic, C. Kaynak, A. D. Popescu, A. Ailamaki, and B. Falsafi, “Clearing the clouds: a study of emerging scale-out workloads on modern hardware,” 
+
+Acm sigplan notices , vol. 47, no. 4, pp. 37–48, 2012. [13] J. L. Hennessy and D. A. Patterson, Computer architecture: a quantita-tive approach . Elsevier, 2012. [14] K. Hoste and L. . Eeckhout, “Microarchitecture-independent workload characterization,” IEEE micro , vol. 27, no. 3, pp. 63–72, 2007. [15] K. Hoste and L. Eeckhout, “Comparing benchmarks using key microarchitecture-independent characteristics,” pp. 83–92, 2006. [16] K. Hoste, L. Eeckhout, and H. Blockeel, “Analyzing commercial pro-cessor performance numbers for predicting performance of applications of interest,” vol. 35, no. 1, pp. 375–376, 2007. [17] K. Hoste, A. Phansalkar, L. Eeckhout, A. Georges, L. K. John, and K. De Bosschere, “Performance prediction based on inherent program similarity,” pp. 114–122, 2006. [18] G. W. Imbens and D. B. Rubin, Causal inference in statistics, social, and biomedical sciences . Cambridge university press, 2015. [19] S. Li, J. H. Ahn, R. D. Strong, J. B. Brockman, D. M. Tullsen, and N. P. Jouppi, “Mcpat: An integrated power, area, and timing modeling framework for multicore and manycore architectures,” in Proceedings of the 42nd annual ieee/acm international symposium on microarchitecture ,2009, pp. 469–480. [20] A. Limaye and T. Adegbija, “A workload characterization of the spec cpu2017 benchmark suite,” in 2018 IEEE International Symposium on Performance Analysis of Systems and Software (ISPASS) . IEEE, 2018, pp. 149–158. [21] M. Madhav, A. Lee, A. Mejia, B. Moore, C. Soppadandi, C. Cambly, C. M¨ ullner, D. Bowers, D. Reiner, D. Bakhvalov et al. , “Spec cpu: The next generation,” arXiv preprint arXiv:2605.01575 , 2026. [22] M. M. Martin, D. J. Sorin, B. M. Beckmann, M. R. Marty, M. Xu, A. R. Alameldeen, K. E. Moore, M. D. Hill, and D. A. Wood, “Multifacet’s general execution-driven multiprocessor simulator (gems) toolset,” ACM SIGARCH Computer Architecture News , vol. 33, no. 4, pp. 92–99, 2005. [23] A. Nasr-Esfahany, M. Alizadeh, V. Lee, H. Alam, B. W. Coon, D. Culler, V. Dadu, M. Dixon, H. M. Levy, S. Pandey et al. , “Concorde: Fast and accurate cpu performance modeling with compositional analytical-ml fusion,” in Proceedings of the 52nd Annual International Symposium on Computer Architecture , 2025, pp. 1480–1494. [24] R. Panda, S. Song, J. Dean, and L. K. John, “Wait of a decade: Did spec cpu 2017 broaden the performance horizon?” pp. 271–282, 2018. [25] A. Patel, F. Afram, and K. Ghose, “Marss-x86: A qemu-based micro-architectural and systems simulator for x86 multicore processors,” in 1st International Qemu Users’ Forum . Citeseer, 2011, pp. 29–30. [26] J. Pearl, Causality: Models, Reasoning, and Inference , 1st ed. Cam-bridge University Press, 2000, cited for the formal definition of Causality and the do-operator. [27] J. Pearl and D. Mackenzie, The book of why: the new science of cause and effect . Basic books, 2018. [28] A. Phansalkar, A. Joshi, and L. John, “Analysis of redundancy and appli-cation balance in the spec cpu2006 benchmark suite,” ACM SIGARCH Computer Architecture News , vol. 35, no. 2, pp. 412–423, 2007. [29] A. Phansalkar, A. Joshi, L. Eeckhout, and L. K. John, “Measuring program similarity: Experiments with spec cpu benchmark suites,” in 
+
+IEEE International Symposium on Performance Analysis of Systems and Software, 2005. ISPASS 2005. IEEE, 2005, pp. 10–20. [30] Y. S. Shao and D. Brooks, “Isa-independent workload characterization and its implications for specialized architectures,” in 2013 IEEE Inter-national Symposium on Performance Analysis of Systems and Software (ISPASS) . IEEE, 2013, pp. 245–255. [31] SPEC, “SPEC CPU89,” 1989, available at https://www.spec.org/cpu89. [32] SPEC, “SPEC CPU92,” 1992, available at https://www.spec.org/cpu92. [33] SPEC, “SPEC CPU95,” 1995, available at https://www.spec.org/cpu95. [34] SPEC, “SPEC CPU2000,” 2000, available at https://www.spec.org/ cpu2000. [35] SPEC, “SPEC CPU2006,” 2006, available at https://www.spec.org/ cpu2006. [36] SPEC, “SPEC CPU2017,” 2017, available at https://www.spec.org/ cpu2017. [37] SPEC, “SPEC CPU2026,” 2026, available at https://www.spec.org/ cpu2026. [38] C. Wang, L. Wang, W. Gao, F. Fan, G. Kang, H. Li, Y. Su, and J. Zhan, “Inference of component effect on system performance,” arXiv preprint arXiv:2605.26643 , 2026. [39] L. Wang, K. Yang, C. Wang, W. Gao, C. Luo, F. Zhang, Z. Ge, L. Zhang, G. Kang, and J. Zhan, “Wpc: Whole-picture workload characterization,” 
+
+arXiv preprint arXiv:2302.12954 , 2023. [40] S. C. Woo, M. Ohara, E. Torrie, J. P. Singh, and A. Gupta, “The splash-2 programs: Characterization and methodological considerations,” ACM SIGARCH computer architecture news , vol. 23, no. 2, pp. 24–36, 1995. [41] A. Yasin, Y. Ben-Asher, and A. Mendelson, “Deep-dive analysis of the data analytics workload in cloudsuite,” in 2014 IEEE International Symposium on Workload Characterization (IISWC) . IEEE, 2014, pp. 202–211. [42] J. Zhan, L. Wang, W. Gao, H. Li, C. Wang, Y. Huang, Y. Li, Z. Yang, G. Kang, C. Luo, H. Ye, S. Dai, and Z. Zhang, “Evaluatology: The science and engineering of evaluation,” BenchCouncil Transactions on Benchmarks, Standards and Evaluations , vol. 4, no. 1, p. 100162, 2024. [43] J. Zhan, L. Wang, W. Gao, C. Wang, H. Li, F. Fan, and G. Kang, 
+
+Evaluatology: The Science of Uncovering the Effects , version 1.0, first ed. Hong Kong: BenchCouncil Press, 2025. [Online]. Available: https://press.benchcouncil.org/books [44] J. Zhan, L. Wang, W. Gao, C. Wang, H. Li, F. Fan, and G. Kang, 
+
+Evaluatology: The Science of Uncovering the Causes and Effects ,2nd ed. Hong Kong, China: BenchCouncil Press, 2026. [45] X. Zhan, Y. Bao, C. Bienia, and K. Li, “Parsec3.0: A multicore benchmark suite with network stacks and splash-2x,” ACM Sigarch Computer Architecture News , vol. 44, no. 5, pp. 1–16, 2017. 
+
+12
