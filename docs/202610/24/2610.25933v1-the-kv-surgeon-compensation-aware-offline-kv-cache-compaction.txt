@@ -1,0 +1,1636 @@
+Title: The KV-Surgeon: Compensation-Aware Offline KV-Cache Compaction
+
+URL Source: https://arxiv.org/pdf/2610.25933v1
+
+Published Time: Tue, 20 Oct 2026 02:20:06 GMT
+
+Number of Pages: 36
+
+Markdown Content:
+Preprint. Under review. 
+
+# THE KV-S URGEON : C OMPENSATION -A WARE OFFLINE 
+
+# KV-C ACHE COMPACTION 
+
+Moritz Wagner 1∗ Christophe Roux 1 2 Max Zimmer 1 2 Sebastian Pokutta 1 2 1Department for AI in Society, Science, and Technology, Zuse Institute Berlin, Germany 
+
+> 2
+
+Institute of Mathematics, Technische Universit¨ at Berlin, Germany 
+
+# ABSTRACT 
+
+Offline compaction of the key–value cache (KV-cache) reduces the cost of repeat-edly querying a fixed context by constructing a smaller cache once and reusing it subsequently. The central challenge of compaction is deciding which cache entries to delete and which to retain. Existing methods score each candidate for deletion on its own, with the rest of the cache being held fixed. However, softmax renor-malization of the attention operation couples these decisions in a nonlinear man-ner: removing one entry changes the attention weights of every remaining one. In this work, we introduce KV-S URGEON , which uses calibration data to take inter-actions into account in a tractable way. We derive a quadratic surrogate that admits closed-form expressions for jointly making the optimal greedy removal decision as well as compensation within the remaining entries. On QuALITY, LongHealth, and Long Code Arena, and at every evaluated compaction ratio, KV-S URGEON 
+
+substantially advances the cost–accuracy Pareto frontier of dense and mixture-of-experts models from 4B to 30B parameters. At 50 × compaction, KV-S URGEON 
+
+improves question-answering accuracy by up to four points over attention match-ing (Zweiger et al., 2026), the state of the art, at comparable cost. Lastly, we introduce an even faster variant, which also exceeds the state of the art while re-quiring only two fifths of its cost. 
+
+# 1 INTRODUCTION 
+
+Many large language model (LLM) applications repeatedly query a fixed context such as a docu-ment, patient record, or codebase. The key–value cache (KV-cache) for such a context grows linearly with its length and occupies a large fraction of the memory used during long-context inference. Ev-ery attention layer reads this cache for every generated token, so every request pays for its size in both memory and latency. Offline compaction reduces this cost by processing the context once and compressing the resulting cache, which is then used to serve all later requests (Eyuboglu et al., 2026; Kim et al., 2026; Zweiger et al., 2026). Unlike serving-time eviction, which discards cache entries within the forward pass of a request (Zhang et al., 2023; Li et al., 2024), offline compaction can spend a larger one-time budget that is amortized over future requests. In particular, it can use calibration queries , i.e., query vectors the model produces while re-reading or discussing the context, to decide which entries to retain. Eyuboglu et al. (2026) introduce this regime with Cartridges , which trains a new latent cache per context. More recent work makes offline compaction much cheaper by replacing end-to-end training with eviction-inspired selection and efficient optimization of the remaining cache (Zweiger et al., 2026). The central problem in cache compaction is deciding which cache entries can be removed while preserving the resulting attention outputs. For one attention head, a cache of T entries contains a key kj ∈ Rdk and a value vj ∈ Rdv at each position j = 1 , . . . , T . A query q ∈ Rdk produces 
+
+P ≜ softmax 
+
+ q⊤kℓ
+
+√dk
+
+Tℓ=1 
+
+!
+
+∈ RT , o ≜
+
+> T
+
+X
+
+> j=1
+
+Pj vj ∈ Rdv ,
+
+> ∗
+
+Correspondence to: Moritz Wagner wagner@zib.de 
+
+1arXiv:2610.25933v1 [cs.LG] 19 Oct 2026 Preprint. Under review.     
+
+> 10 100 50 60 70 80
+> Full context ( 80 .7±0.4% )Summarization KVzip KV-S URGEON -fast OBCache AM-HAK-fast KVMerger KV-S URGEON
+> AM-HAK AM-OMP-CS AM-OMP
+> Pipeline time per context (seconds, log scale) QA accuracy (%)
+
+Figure 1: Cost–accuracy frontier at 50 × KV-cache compaction on QuALITY with Qwen3-30B-A3B. KV-S URGEON reaches 72 .5% accuracy in 159 seconds and KV-S URGEON -fast reaches 
+
+71 .4% in 54 seconds. Pipeline time per context includes calibration-query generation and com-paction. OBCache, KVMerger, and KVzip are adapted to our pipeline (Appendix G). Points are five-seed means. The solid and dash-dotted curves are the Pareto frontiers with and without our methods. where Pj is the attention weight of entry j and o is the resulting output. Removing cache entry j
+
+does not simply subtract Pj vj , since softmax renormalization changes the attention weights of all remaining entries. The effect of one deletion therefore depends on which other entries remain, mak-ing selection a combinatorial problem rather than a ranking problem. Scores based only on received attention, as in attention matching (Zweiger et al., 2026), additionally overlook value redundancy: if an entry’s value is close to the output the head already produces, i.e., ∥vj − o∥22 is small, removing it might change the output little, even when its attention weight is large. Good selection must therefore account not only for the contribution of each entry, but also for how deletions interact. Recent output-aware methods instead estimate the output error caused by deleting a single entry (Goel et al., 2026; An et al., 2026; Gu et al., 2026; Feng et al., 2026). CAOTE (Goel et al., 2026) de-rives the exact change caused by deleting one entry for a single calibration query, and OBCache (Gu et al., 2026) uses a Taylor approximation of the attention output error aggregated across queries. These methods nevertheless evaluate the deletion of one entry while the rest of the cache is held fixed. Attention matching (Zweiger et al., 2026) refits the retained cache to minimize the error of the compacted output, but only after the retained set has been chosen. What is missing is compensation-aware selection : each candidate deletion should be scored by the error remaining after the surviving entries have been adjusted to compensate for it, so that selection and refitting are optimized jointly 
+
+rather than in sequence. This is difficult under softmax attention because deletion changes the nor-malization itself, so the error after both deletion and compensation has no obvious closed form. In this work, we substantially advance the cost–accuracy Pareto frontier for offline KV-cache com-paction. We derive a quadratic surrogate that makes compensation-aware selection tractable. We introduce KV-S URGEON , which uses this surrogate for greedy, compensation-aware elimination. For each candidate deletion, the surrogate admits closed-form expressions for both the optimal com-pensating update and the resulting increase in surrogate loss. Each candidate entry is assigned a score after the remaining entries have been adjusted to compensate for its removal, and the update is then applied to the cache, so the next deletion is chosen against the compensated entries, as Optimal Brain Surgeon (OBS) (Hassibi & Stork, 1993) does for network weights. We evaluate KV-S URGEON on QuALITY, LongHealth, and Long Code Arena, using dense and mixture-of-experts models from 4B to 30B parameters and compaction ratios from 5× to 100 ×.Across these settings, KV-S URGEON improves the cost–accuracy frontier at every ratio, achieving higher mean accuracy at comparable cost. Mean question-answering accuracy across our experi-ments exceeds the state of the art by 4.3 percentage points at 100 × compaction and 3.0 percentage points at 50 ×. The gains are less pronounced at 5× and 10 ×, where the strongest methods al-2Preprint. Under review. ready suffer almost no deterioration relative to the uncompacted cache. At 50 × compaction the state of the art, attention matching with its AM-HAK selection rule (Zweiger et al., 2026), reaches 
+
+62 .0% accuracy in 138 seconds 1 per context. KV-S URGEON reaches 65 .1% in 145 seconds, and KV-S URGEON -fast reaches 63 .9% in 54 seconds. Figure 1 shows the resulting frontier at 50 ×
+
+compaction on the largest model we evaluate. Our contributions are the following. 1. Quadratic surrogate. We derive a quadratic surrogate to the exact attention-output error, which allows us to design efficient methods for approximately solving the compaction problem. 2. Compensation-aware selection. Based on this surrogate, we introduce KV-S URGEON ,which iteratively removes entries while adjusting the remaining entries in closed form after each deletion, then jointly refits the retained cache. Unlike prior output-aware scores or post-selection refitting, compensation directly influences which entries are retained. 3. A new cost–accuracy Pareto frontier. Across QuALITY, LongHealth, and Long Code Arena, dense and mixture-of-experts models from 4B to 30B parameters, and 5× to 100 ×
+
+compaction, KV-S URGEON substantially advances the frontier, with gains at every eval-uated ratio and the largest improvements at 50 × and 100 ×. We show empirically that accounting for compensation during selection substantially improves accuracy over exact single-deletion scoring. 
+
+# 2 RELATED WORK 
+
+Other forms of KV-cache compression. KV-caches can be compressed along several axes. Quan-tization lowers the precision of stored keys and values (Liu et al., 2024; Hooper et al., 2024), and low-rank methods reduce the feature dimension (Saxena et al., 2024; Chang et al., 2025). Both are complementary to reducing the number of entries. A different route, LLM summarization , shortens the text input itself by prompting an LLM to summarize it. This approach transfers across models, but gives no direct control over cache size. We study compaction along the sequence dimension, where a fixed budget of entries is retained from an already computed cache. 
+
+Offline compaction. Offline methods exploit contexts that are processed once and queried repeat-edly. Cartridges (Eyuboglu et al., 2026) trains a new latent cache per context from self-generated data. KVzip (Kim et al., 2026) removes cache entries based on the attention they receive while the model repeats the context verbatim. Attention matching (Zweiger et al., 2026) also keeps a subset of the original keys, then fits a scalar logit bias per retained key and refits the stored values to re-produce the original attention outputs on reference queries. Its AM-HAK variant selects entries by root-mean-square attention, and AM-OMP, based on orthogonal matching pursuit (OMP), greedily selects keys so that their reweighted attention reproduces the attention mass of the full cache. In both, the support is chosen from attention statistics before the values are refit, so the ability of the retained entries to reproduce the output does not influence selection. 
+
+Eviction by proxy scores. Serving-time eviction discards entries within a single request, ranking each one by a score that ignores the rest of the cache: accumulated attention, as in H2O (Zhang et al., 2023) and related methods (Oren et al., 2024; Li et al., 2024; Liu et al., 2023), or a query-free proxy such as position (Xiao et al., 2024), key norm (Devoto et al., 2024), alignment with a principal query direction (Godey et al., 2025), deviation from neighboring keys (Liang et al., 2025), or value norm (Guo et al., 2024). Merging methods soften the same decision by folding evicted entries into retained ones. KVMerger (Wang et al., 2024) merges similar entries into attention-weighted pivots, and Zhang et al. (2024); Wan et al. (2024); Nawrot et al. (2024) use related rules. In all of these, the score of an entry is fixed before any other entry is removed. 
+
+Output-aware eviction. More recent methods score entries directly through the attention-output error induced by their removal (Goel et al., 2026; An et al., 2026; Gu et al., 2026; Feng et al., 2026). CAOTE (Goel et al., 2026) and ReST-KV (An et al., 2026) derive the exact effect of deleting one entry for one query. OBCache (Gu et al., 2026) derives a second-order approximation in the style 
+
+> 1Pipeline times differ by more than an order of magnitude between model–benchmark pairs, so an arithmetic mean would be dominated by the slowest pair. We therefore report the geometric mean of the pipeline times.
+
+3Preprint. Under review. of Optimal Brain Damage (LeCun et al., 1989). CriticalKV (Feng et al., 2026) considers deletion of an arbitrary set for one query and derives an additive upper bound on the resulting output error for selection. These methods differ in how they estimate deletion error, but share a common restriction: candidates are evaluated with the retained cache held fixed. Our work starts from the same output-reconstruction objective as CAOTE, ReST-KV, and OBCache but changes how it is used for selection. Instead of scoring one deletion against a fixed cache, we derive a quadratic surrogate of the output error over arbitrary deletions and reweightings of the retained entries, aggregated over many calibration queries, and let the retained entries compensate during greedy deletion of cache entries. 
+
+# 3 KV-S URGEON 
+
+In this section, we present our method for offline KV-cache compaction, KV-S URGEON . It compacts each attention head independently by selecting which original cache entries to delete, accounting for how the remaining entries can compensate for deleted ones, and then refits the retained entries to preserve the behavior of the original cache. 3.1 PROBLEM FORMULATION 
+
+We consider one layer and one attention head with T cache entries. Cache entry j consists of a key 
+
+kj ∈ Rdk and a value vj ∈ Rdv . We describe the behavior of the head on N calibration queries 
+
+q1, . . . , q N ∈ Rdk recorded from the model itself as described in Section 4.1. For query i and cache entry j, the corresponding logit is Zij ≜ q⊤ 
+
+> i
+
+kj /√dk. The attention weight and output are 
+
+Pij ≜ eZij 
+
+PTℓ=1 eZiℓ 
+
+, oi ≜
+
+> T
+
+X
+
+> j=1
+
+Pij vj . (1) Let V ∈ RT ×dv collect the values as rows and P ∈ RN ×T the attention weights. The corresponding output matrix is then O = P V ∈ RN ×dv .
+
+Compacted cache. Given a budget t < T , which is allocated per head, we retain t cache entries corresponding to some index set S ⊆ { 1, . . . , T } with |S| = t, which we call the support . Each retained entry j ∈ S keeps its original key kj and is assigned an adapted value bvj ∈ Rdv and a positive attention multiplier wj > 0, which rescales the contribution of its entry before the softmax normalization. Together, the remaining keys kj , adapted values bvj , and attention multipliers wj form the compacted cache . For query i and entry j, the attention weights and output of the compacted cache are given by 
+
+bPij ≜ wj eZij 
+
+P 
+
+> ℓ∈S
+
+wℓeZiℓ 
+
+= wj Pij 
+
+P 
+
+> ℓ∈S
+
+wℓPiℓ 
+
+= wj Pij 
+
+μi
+
+, boi ≜ X
+
+> j∈S
+
+bPij bvj = 1
+
+μi
+
+X
+
+> j∈S
+
+Pij wj bvj . (2) Here, 
+
+μi ≜ X
+
+> j∈S
+
+Pij wj =
+
+P 
+
+> j∈S
+
+wj eZij 
+
+PTℓ=1 eZiℓ 
+
+(3) is the ratio between the compacted and original attention normalization terms. Let PS ∈ RN ×| S|
+
+contain the columns of P indexed by S, let w ∈ R|S| collect the multipliers, and let bV ∈ R|S|× dv
+
+collect the new values as rows. The vector of the normalization ratios is then μ ≜ (μ1, . . . , μ N )⊤ =
+
+PS w and the output of the compacted cache is bO = diag( PS w)−1PS diag( w) bV .
+
+Compaction objective. Our goal is for the compacted cache to preserve two properties of the original cache. First, its attention outputs bO should be close to the outputs O of the original, uncom-pacted cache. We measure the output error by 
+
+L(S, w, bV ) ≜ ∥ bO − O∥2 
+
+> F
+
+. (4) 4Preprint. Under review. Second, when combined with other context, such as a question, a system prompt, or other compacted chunks, its entries should collectively receive approximately the same share of attention as the orig-inal cache entries, i.e., P 
+
+> j∈S
+
+wj eZij ≈ PTj=1 eZij . Output preservation alone does not ensure this: scaling all wj by the same constant leaves bO unchanged but changes this sum. For a more detailed discussion, see Appendix H. On the calibration queries, we express these two goals as follows, using the ratio μ of the compacted and original normalization terms defined in (3) 
+
+bO ≈ O, μ = PS w ≈ 1. (5) 3.2 TRACTABLE SURROGATE 
+
+Choosing the optimal support S is difficult even if we consider only output preservation. For a fixed support S, the output error L(S, w, bV ) depends on how well the multipliers w and values bV can be adjusted, so evaluating all  Tt
+
+ possible supports is infeasible. In order to approximate this objective, we start from a larger support and sequentially delete entries. However, even assessing the cost of deleting one entry j ∈ S requires re-optimizing w and bV on S \ { j}. Doing that for every candidate deletion at every step is still prohibitively expensive. We therefore seek a surrogate objective that makes it inexpensive to compare candidate deletions while accounting for how the remaining entries can compensate. After removing an entry, we also want to reuse previous computations to evaluate the next deletions efficiently. Starting from (5), we derive a quadratic surrogate with these properties. 
+
+Attention as a ratio of two linear terms. We introduce the variable U ≜ diag( w) bV ∈ R|S|× dv ,whose row corresponding to entry j ∈ S is u⊤ 
+
+> j
+
+= wj bv⊤ 
+
+> j
+
+and which absorbs the attention multipliers 
+
+w into the values bV . This is an exact change of variables: since wj > 0, we can recover the original values as bvj = uj /w j . Substituting into (2), the output of the compacted cache can be written as the ratio 
+
+boi = ni
+
+μi
+
+, ni ≜ X
+
+> j∈S
+
+Pij uj ∈ Rdv , μi = X
+
+> j∈S
+
+Pij wj ∈ R. (6) The numerator ni and the denominator μi are linear in U and w, respectively. For the original cache, the numerator is PTj=1 Pij vj = oi and the denominator is PTj=1 Pij = 1 ,since every row of P sums to one. Instead of searching for an boi matching this ratio, we ask the compacted cache to reproduce numerator and denominator separately, ni ≈ oi and μi ≈ 1. The second condition is the mass requirement of (5), and together they imply boi ≈ oi. Define the residuals ri ≜ ni − oi and εi ≜ μi − 1,
+
+boi − oi = ni − μioi
+
+μi
+
+= ri − εi oi
+
+μi
+
+, hence ∥boi − oi∥2 ≤ ∥ri∥2 + |εi| ∥ oi∥2
+
+μi
+
+. (7) The output error is thus small whenever both residuals are small: a small εi also keeps μi close to one. 
+
+Quadratic surrogate. We construct a surrogate of (4) by summing the squared residuals from (7) over all queries. In matrix form, the ri are the rows of PS U − O ∈ RN ×dv , and the εi are the entries of μ − 1 = PS w − 1 ∈ RN . A weight γ2 > 0 controls the relative importance of mass preservation (see Appendix A.3), giving 
+
+∥O − PS U ∥2 
+
+> F
+
++ γ2∥1 − PS w∥22 = ∥[O γ1] − PS [U γw ]∥2 
+
+> F
+
+. (8) The original loss (4) couples w and bV through their products and the division by μi, whereas for a fixed support S, the quadratic surrogate separates the optimization of U and w into two linear least-squares problems with the same design matrix PS ∈ RN ×| S|. The right-hand side stacks the targets into [ O γ1 ] ∈ RN ×(dv +1) and the coefficients into [ U γw ] ∈ R|S|× (dv +1) , yielding a single linear least-squares problem with dv + 1 target columns. 5Preprint. Under review. 
+
+Support-selection score. In (8), U is unconstrained, since any U is attained by bV = diag( w)−1U ,but the last column of [ U γw ] is constrained by w > 0. To obtain an unconstrained quadratic problem, we remove this constraint and replace [ U γw ] with a free matrix B ∈ R|S|× (dv +1) . Each row of B corresponds to a retained cache entry j: its first dv coefficients replace the weighted value 
+
+wj bvj , and its last coefficient replaces the scaled attention multiplier γw j . These coefficients need not correspond to a valid compacted cache because the last coefficient can be negative. In practice, fewer than half a percent of the retained entries end with a negative coefficient in the last column (Appendix I), and valid multipliers are restored by the final refit (Section 3.4). Finally, we add a small ridge penalty so that the regression has a unique solution for every support. With Y ≜ [ O γ 1 ] ∈ RN ×(dv +1) , we define the support score 
+
+F(S) ≜ min  
+
+> B
+
+∥Y − PS B∥2 
+
+> F
+
++ λ∥B∥2 
+
+> F
+
+, λ > 0. (9) 
+
+Y and λ stay fixed during support selection: Y depends only on the original cache, and λ is set once per head (Appendix B). For a fixed support S, F(S) is the minimum value of this quadratic objective after optimizing all coefficients in B. Changing S changes the available columns of PS
+
+and therefore also the optimal coefficients: removing an entry requires the remaining coefficients to compensate for its absence. 3.3 GREEDY ELIMINATION WITH CLOSED -FORM COMPENSATION 
+
+With the support score F(S) in place, we now develop a greedy elimination algorithm that uses it to choose which cache entries to retain. Starting from a support larger than the target budget t,we repeatedly remove the entry whose deletion causes the smallest increase in F(S), allowing the remaining coefficients to compensate at each step. The quadratic structure of (9) lets us compute both these loss increases and the compensating updates in closed form, using an approach developed in the pruning literature (Hassibi & Stork, 1993; Frantar & Alistarh, 2023). We first describe the optimal coefficients on the current support, then show how to evaluate and apply a deletion. 
+
+Optimal coefficients on the current support. Each column of B contains the coefficients used to reconstruct one target column of Y : either an output coordinate or the attention mass. In (9), these linear least-squares problems all have the same Hessian 2( P ⊤ 
+
+> S
+
+PS + λI ) (see Appendix A.2). A single |S| × | S| inverse G therefore suffices for all columns. Writing B and G for the optimal coefficients and shared inverse on the current support S, we have 
+
+B = G P ⊤ 
+
+> S
+
+Y ∈ R|S|× (dv +1) , G ≜  P ⊤ 
+
+> S
+
+PS + λI −1 ∈ R|S|×| S|. (10) The current B and G suffice to evaluate every candidate deletion and obtain the optimal coefficients afterward, without solving another regression problem. For an entry j ∈ S, we define its saliency sj
+
+as the increase in the optimal surrogate objective when that entry is removed: 
+
+sj ≜ F(S \ { j}) − F (S) = ∥Bj, :∥22
+
+Gjj 
+
+. (11) The saliency sj measures the surrogate loss increase after the remaining coefficients have been re-optimized. An entry can make a large contribution to the original outputs yet have low saliency if other retained entries can compensate for its removal. Once an entry j is selected for removal, we obtain the optimal coefficients and inverse for the reduced support directly from the current matrices. Writing −j for the indices in S \ { j}, the updates are 
+
+B ← B−j, : − G−j,j Bj, :
+
+Gjj 
+
+, G ← G−j, −j − G−j,j Gj, −j
+
+Gjj 
+
+. (12) The updated B is the exact minimizer of (9) on S \ { j}, and G is the corresponding inverse Gram matrix. We repeatedly remove the entry with the smallest current saliency, update B and G, and recompute the remaining saliencies until |S| = t, without solving another regression problem from scratch. A detailed derivation is given in Appendix A.4. 6Preprint. Under review. 3.4 IMPLEMENTATION DETAILS 
+
+KV-S URGEON builds on the greedy elimination process described above, with a few practical addi-tions. To reduce computational cost, we restrict the initial set of candidates, delete entries in blocks, and use a cheaper selection rule for heads that retain a relatively large fraction of their original cache entries. After selecting the support, we refit the attention multipliers w and values bV to obtain a valid compacted cache. Algorithm 1 summarizes the complete method. We describe these additions below, with further implementation details in Appendix B and ablations in Appendix E.3. 
+
+Algorithm 1 KV-S URGEON for one attention head 
+
+Require: keys K ∈ RT ×dk , values V ∈ RT ×dv , calibration queries Q ∈ RN ×dk , cache budget t,pool factor c, block size nb, relative ridge λ0, mass weight γ0, fallback threshold τ , multiplier bound β
+
+1: P ← softmax( QK ⊤/√dk) row-wise, O ← P V 
+
+2: sLOO  
+
+> j
+
+← PNi=1    
+
+> P2
+> ij
+> (1 −Pij )2
+
+∥vj − oi∥22 for j = 1 , . . . , T 
+
+3: if t > τ T then ▷ mild-compaction fallback 
+
+4: S ← indices of the t largest sLOO 
+
+> j
+
+5: return S, w = 1, bV = VS, :
+
+6: end if 
+
+7: m ← min {T, ⌈ct ⌉} , S ← indices of the m largest sLOO  
+
+> j
+
+▷ select candidate pool 
+
+8: γ ← γ0 RMS i∥oi∥2, Y ← [ O γ 1 ]
+
+9: λ ← λ0 tr( P ⊤ 
+
+> S
+
+PS )/m 
+
+10: G ← (P ⊤ 
+
+> S
+
+PS + λI )−1, B ← GP ⊤ 
+
+> S
+
+Y
+
+11: while |S| > t do ▷ greedy elimination 
+
+12: sj ← ∥ Bj, :∥22/G jj for j ∈ S
+
+13: J ← the min {nb, |S| − t} entries of S with the smallest sj
+
+14: R ← S \ J
+
+15: B ← BR, : − GR,J G−1 
+
+> J,J
+
+BJ, :
+
+16: G ← GR,R − GR,J G−1 
+
+> J,J
+
+GJ,R 
+
+17: S ← R
+
+18: end while 
+
+19: w ← arg min e−β ≤wj ≤eβ ∥1 − PS w∥22 ▷ final refit of attention multipliers 
+
+20: bP ← diag( PS w)−1PS diag( w)
+
+21: bV ← arg min bV ∥ bP bV − O∥2 
+
+> F
+
+▷ final refit of values 
+
+22: return S, w, bV
+
+Candidate pool. To limit the size of G and the number of deletion steps, we first rank entries by a leave-one-out (LOO) score. We obtain it by removing entry j in (2), keeping unit multipliers and the remaining values unchanged, and evaluating the output-preservation loss (4): 
+
+sLOO  
+
+> j
+
+≜
+
+> N
+
+X
+
+> i=1
+
+P 2
+
+> ij
+
+(1 − Pij )2 ∥vj − oi∥22. (13) LOO measures the exact output error on the original cache without adjusting the remaining entries, whereas the saliency in (11) measures the surrogate loss increase accounting for compensation. We keep the m = min {T, ⌈ct ⌉} entries with the largest sLOO  
+
+> j
+
+and perform greedy elimination only on this pool, using c = 4 . We also use (13) directly as the score of the LOO baseline (Section 4.1). The score derivation and pool-size ablation are given in Appendix A.5 and Appendix E.3, respectively. 
+
+Block deletion. We select a block J ⊂ S containing the entries with the smallest current saliencies. Analogously to (12), the optimal coefficients and inverse for the reduced support R = S \ J are obtained by 
+
+B ← BR, : − GR,J G−1 
+
+> J,J
+
+BJ, :, G ← GR,R − GR,J G−1 
+
+> J,J
+
+GJ,R , R ≜ S \ J. (14) For any selected block J, these updates give the exact minimizer of the surrogate on S \ J. Selecting 
+
+J by individual saliencies, however, need not minimize the joint deletion cost. Empirically, deleting 7Preprint. Under review.      
+
+> 100 ×50 ×20 ×10 ×5×−8
+> −6
+> −4
+> −20KV-S URGEON
+> Compaction ratio Gap to KV-S URGEON  (points)
+> AM-HAK AM-HAK-fast AM-OMP AM-OMP-CS OBCache
+
+Figure 2: Mean accuracy over the eight pairs of Table 1 relative to KV-S URGEON . Error bars are one standard error of the difference. AM-OMP and AM-OMP-CS are shown only at the ratios their solver reaches on every model and benchmark. multiple entries at once improves efficiency without hurting performance. Further implementation details are given in Appendix B. 
+
+Final refit. The support-selection procedure determines which entries to retain, but the uncon-strained coefficients B need not represent a valid compacted cache. We therefore discard B and G
+
+and refit the multipliers w and values bV on the selected support S. Following Zweiger et al. (2026), we first minimize ∥1 − PS w∥22 subject to box constraints on w, obtaining positive multipliers that preserve the original attention mass as closely as possible. We then fix w and optimize bV to min-imize the output-preservation loss (4). The resulting cache retains the original keys with refitted multipliers and values. See Appendix B for further details. 
+
+Mild-compaction fallback. For heads that retain a relatively large fraction of their original cache entries, we skip greedy elimination and the final refit, retaining the t entries with the largest LOO scores, their original values, and unit multipliers. Since these heads undergo little compaction, this simpler procedure reduces computation with negligible accuracy loss. Further implementation details are given in Appendix B and the corresponding ablation in Appendix E.3. 
+
+# 4 EXPERIMENTS 
+
+We compare KV-S URGEON to existing methods and show that it improves the cost–accuracy fron-tier across different models, benchmarks, and compaction ratios. We then analyze which part of the algorithm is the source of this improvement through controlled ablations. Finally, we study how much of the gain is retained when self-study calibration is replaced by a single repeat pass. Our code is available at github.com/ZIB-IOL/KV-Surgeon. 4.1 EXPERIMENTAL SETUP 
+
+Benchmarks and models. We evaluate offline KV-cache compaction on long-context multiple-choice question-answering tasks from QuALITY (Pang et al., 2022) and LongHealth (Adams et al., 2024), and code completion tasks from Long Code Arena (Bogomolov et al., 2024), where each compacted context is reused across many questions. We evaluate five models, Qwen3-4B, Qwen3-4B-Instruct-2507, Llama-3.1-8B-Instruct, Gemma-3-12B, and Qwen3-30B-A3B (Yang et al., 2025; Grattafiori et al., 2024; Team et al., 2025), spanning three model families, dense and mixture-of-experts architectures, and different attention variants. Qwen3-4B-Instruct-2507 replaces Qwen3-4B on LongHealth and Long Code Arena because it supports longer contexts. We consider 
+
+{100 ×, 50 ×, 20 ×, 10 ×, 5×} compaction, with 50 × as the primary operating point. Dataset con-struction and evaluation details are given in Appendix C. 
+
+Protocol. All accuracies are means over five random seeds, with one standard error reported in the tables. All methods shown in the main comparison, except LLM summarization, use heterogeneous allocation of the global cache budget across heads. The allocation is computed once per model on 8Preprint. Under review. Table 1: Accuracy (%) at 50 × compaction. Entries are means over five seeds with standard error over seeds in grey. Within each group and column, bold denotes the highest mean and underlining denotes results that trail the highest mean by at most two standard errors of the difference. The Qwen3-4B column uses Qwen3-4B on QuALITY and Qwen3-4B-Instruct-2507 on LongHealth. Summarization uses the prompt whose summary length is closest to 50 × compaction (Appendix D). The Mean column contains the means over the eight model–benchmark pairs, and Time is the geo-metric mean of pipeline time per context in seconds.                                                                                                                                                                                                                                
+
+> Method Time (s) Qwen3-4B Llama-3.1-8B Gemma-3-12B Qwen3-30B Mean QuAL. LongH. QuAL. LongH. QuAL. LongH. QuAL. LongH.
+> Repeat-pass
+> KV-S URGEON -fast (ours) 54 65.9 ±0.4 66.9 ±0.5 61.0 ±0.4 61.5 ±0.6 68.1 ±0.5 52.1 ±0.4 71.4 ±0.3 64.1 ±0.2 63.9 ±0.15
+> OBCache (adapted) 58 62.4 ±0.7 62.8 ±0.9 59.8 ±0.3 52.4 ±0.2 66.6 ±0.4 50.2 ±0.8 67.3 ±0.4 62.8 ±0.4 60.5 ±0.20
+> AM-HAK-fast 54 58.1 ±0.5 53.5 ±1.3 58.7 ±0.6 53.5 ±1.1 62.2 ±0.4 45.6 ±1.2 65.8 ±0.5 59.8 ±0.6 57.1 ±0.30
+> Self-study
+> KV-S URGEON (ours) 145 66.8 ±0.3 67.8 ±0.8 62.3 ±0.5 62.1 ±0.3 67.5 ±0.7 56.4 ±0.7 72.5 ±0.6 65.2 ±0.4 65.1 ±0.20
+> LOO 139 65.6 ±0.2 64.2 ±1.2 61.2 ±0.7 59.1 ±0.6 65.1 ±0.5 49.6 ±0.7 69.6 ±0.3 62.3 ±0.7 62.1 ±0.24
+> AM-HAK 138 64.1 ±0.9 65.0 ±0.8 60.4 ±0.5 58.2 ±0.5 65.1 ±0.3 52.7 ±1.4 69.5 ±0.3 61.4 ±0.4 62.0 ±0.26
+> AM-OMP-CS 266 65.7 ±0.4 65.9 ±1.1 60.6 ±0.8 55.8 ±0.9 67.2 ±0.2 50.9 ±0.8 69.7 ±0.5 63.1 ±0.2 62.4 ±0.24
+> AM-OMP 763 66.4 ±0.2 65.5 ±0.6 61.3 ±0.6 57.3 ±0.9 67.7 ±0.3 54.5 ±0.9 69.2 ±0.4 63.9 ±0.6 63.2 ±0.22
+> Q-Filters (query-free) 1.6 52.4 ±0.5 43.6 ±0.4 47.7 ±0.8 36.1 ±1.1 55.9 ±0.3 39.0 ±0.7 50.9 ±0.3 43.2 ±0.5 46.1 ±0.22
+> Summarization 5.1 51.2 ±0.5 28.0 ±0.7 46.7 ±0.3 31.5 ±0.7 50.2 ±0.4 39.4 ±0.4 54.2 ±0.6 47.2 ±0.6 43.6 ±0.19
+> Full context –72.1 ±0.3 80.5 ±0.8 62.7 ±0.5 73.0 ±0.8 70.6 ±0.4 74.5 ±0.4 80.7 ±0.4 78.3 ±0.5 74.0 ±0.19
+
+data disjoint from the evaluation benchmarks following Zweiger et al. (2026) and kept fixed between methods. All methods using calibration additionally share the attention-multiplier parameterization and final cache refit of Section 3, so their comparisons isolate differences in support selection. KV-SURGEON hyperparameters are fixed once on Qwen3-4B with QuALITY at 50 × compaction and reused for all other models, benchmarks, and compaction ratios, i.e., KV-S URGEON does not require per-model or per-benchmark tuning. 
+
+Calibration and cost. To collect calibration queries, we use two different approaches. Cheap calibration queries are obtained by a repeat pass , which concatenates the context with a “repeat verbatim” prompt and another copy of the context (Kim et al., 2026). For self-study , the more ex-pensive approach, we prompt the model to discuss the context multiple times and record the queries produced during answer generation (Eyuboglu et al., 2026). The suffix -fast denotes repeat-pass calibration for KV-S URGEON and AM-HAK. AM-OMP-CS is the cheap-solver setting of Zweiger et al. (2026), named AM-OMP-fast in the original work, and uses self-study queries. Pipeline time covers calibration-query generation and compaction, but excludes the context prefill shared by all methods and preprocessing performed once per model. Further timing and calibration details are given in Appendix C. 
+
+Baselines. Our main prior baseline is attention matching (Zweiger et al., 2026), for which we eval-uate both AM-HighestAttentionKeys (AM-HAK) and AM-OMP using the authors’ implementation and hyperparameters. We also adapt several serving-time eviction methods to the offline setting (Appendix G) and include our adaptation of OBCache in the main experiments. LOO ranks entries by the exact single-deletion score of (13) and shares KV-S URGEON ’s calibration queries, head-budget allocation, and final refit, providing a controlled comparison to independent selection. We additionally include LLM summarization and query-free baselines (Appendix D). 4.2 KV-S URGEON IMPROVES THE COST –ACCURACY FRONTIER 
+
+At 50 × compaction, both KV-S URGEON and KV-S URGEON -fast exceed the prior state of the art (Table 1). KV-S URGEON -fast reaches 63 .9% mean accuracy in 54 seconds per context, compared with 63 .2% for AM-OMP in 763 seconds, a 14 .1× reduction in pipeline time. Self-study calibration improves KV-S URGEON further to 65 .1% in 145 seconds, 1.9 percentage points above AM-OMP at 
+
+5.3× lower time. At comparable cost, KV-S URGEON -fast is 3.3 percentage points ahead of adapted OBCache, while KV-S URGEON is 3.0 points ahead of AM-HAK. 9Preprint. Under review. Table 2: Qwen3-4B on QuALITY (first 25 articles) at 50 × compaction. We compare the impact of compensation during selection. We vary the selection rule, i.e., the saliency by which entries are ranked for deletion, and whether the surviving entries are updated after each deletion.              
+
+> Method Selection rule Compensation Accuracy (%) KV-S URGEON Equation (11) ✓66.9
+> KV-S URGEON w/o compensation Equation (11) ✗63.9 LOO Equation (13) ✗64.7
+
+These gains are consistent across models and benchmarks. For both calibration methods, KV-SURGEON is best or tied for best within uncertainty on all eight model–benchmark pairs, while KV-S URGEON -fast is ahead of every other repeat-pass method beyond uncertainty. Thus, the more expensive AM-OMP variants no longer lie on the cost–accuracy frontier at our primary operating point (Figure 1). The advantage of KV-S URGEON also persists across compaction ratios. Figure 2 shows mean ac-curacy over the eight model–benchmark pairs relative to KV-S URGEON . All prior methods are worse by more than two standard errors at every compaction ratio. The gap is largest between 100 ×
+
+and 20 × compaction and narrows at 10 × and 5×, where all methods approach the performance of the full-context ceiling. We therefore focus the analysis below on large compaction ratios, where support selection has the largest effect. The same compute-time advantage transfers to project-level code completion on Long Code Arena (Table 12, Appendix D.1). At 50 ×, KV-S URGEON and KV-S URGEON -fast match AM-OMP within uncertainty while using 9.7 and 21 .5 times less compute time, respectively. At 20 ×, KV-S URGEON 
+
+has the highest point estimate, with AM-OMP-CS the only prior method within uncertainty at 6.7
+
+times higher cost. 4.3 SOURCES OF THE PERFORMANCE GAIN 
+
+The gain over independent selection comes from compensating the surviving cache entries as the support changes. To isolate this effect, we keep the surrogate, candidate pool, calibration queries, and final refit fixed and disable only the compensating update: we delete entries based on the saliency (11) but do not apply the update (12) to the remaining entries, so the saliencies stay fixed and the elimination reduces to a single ranking of the candidate pool. At 50 × compaction on Qwen3-4B with QuALITY, this reduces accuracy from 66 .9% to 63 .9% (Table 2). KV-S URGEON without com-pensation also performs similarly to LOO, which uses the different deletion rule (13) and does not adapt the remaining entries at all. Replacing the saliency score alone does not explain the improve-ment. Rather, the gain comes from updating the remaining entries during selection. Additional controls that remove the opportunity for iterative compensation lead to the same conclusion (Ap-pendices E and F). The improvement is also not an artifact of the optimized allocation of the global cache budget across heads inherited from Zweiger et al. (2026). Under uniform allocation, KV-S URGEON remains 3.0
+
+accuracy points ahead of AM-HAK (Appendix E). Compensation-aware support selection therefore provides an improvement that is orthogonal to that of the offline-compaction pipeline proposed by Zweiger et al. (2026). 4.4 CHEAP CALIBRATION PRESERVES MOST OF THE GAIN 
+
+KV-S URGEON is comparatively insensitive to how calibration queries are collected. Replacing self-study with a single repeat pass reduces pipeline time from 145 to 54 seconds per context at 50 ×
+
+compaction while reducing mean accuracy by only 1.2 points. The same change is substantially more costly for AM-HAK, which loses 4.9 points (Table 1). This makes KV-S URGEON -fast not only cheaper, but sufficient to outperform all prior methods at the primary operating point. This robustness persists across compaction ratios. Replacing self-study with repeat-pass calibra-tion costs KV-S URGEON at most 1.2 points of mean accuracy at any compaction ratio, with the 10 Preprint. Under review. gap shrinking as more cache entries are retained. Detailed results across ratios are reported in Ap-pendix D; Appendix F offers a hypothesis for this robustness. 
+
+# 5 CONCLUSION 
+
+Prior offline KV-cache compaction methods first deleted cache entries and then adapted the remain-ing ones. We showed that deletion and adaptation can be coupled efficiently, and that doing so improves accuracy. We derived a quadratic surrogate of the attention-output error that allows for an efficient greedy algorithm with compensation-aware selection: every candidate deletion is scored af-ter the retained entries have compensated for it. The resulting method, KV-S URGEON , improves the cost–accuracy frontier at every compaction ratio on QuALITY, LongHealth, and Long Code Arena with models from 4B to 30B parameters, and its fast variant exceeds all prior methods at two fifths of the cost of the strongest baseline. A controlled comparison attributes the gain over independent selection to compensation during selection, not to the surrogate. 
+
+# ACKNOWLEDGMENT 
+
+This research was partially supported by the DFG Cluster of Excellence MATH+ (EXC-2046/2, project id 390685689) funded by the Deutsche Forschungsgemeinschaft (DFG) as well as by the German Federal Ministry of Research, Technology and Space (research campus Modal, fund num-ber 05M14ZAM, 05M20ZBM) and the VDI/VDE Innovation + Technik GmbH (fund number 16IS23025B). We would also like to thank the Speinshart Scientific Center for AI and SuperTech, where part of this work was conducted, for providing such a stimulating research environment. 
+
+# REFERENCES 
+
+Lisa Adams, Felix Busch, Tianyu Han, Jean-Baptiste Excoffier, Matthieu Ortala, Alexander L¨ oser, Hugo JWL. Aerts, Jakob Nikolas Kather, Daniel Truhn, and Keno Bressem. Longhealth: A question answering benchmark with long clinical documents, 2024. URL https://arxiv. org/abs/2401.14490 .Yongqi An, Chang Lu, Kuan Zhu, Tao Yu, Chaoyang Zhao, Hong Wu, Ming Tang, and Jinqiao Wang. Rest-kv: Robust kv cache eviction with layer-wise output reconstruction and spatial-temporal smoothing. In C. Vondrick, B. Hariharan, C. Raffel, L. Pinto, D. Yang, and A. Faust (eds.), International Conference on Learning Representations , volume 2026, pp. 86943–86967, 2026. URL https://proceedings.iclr.cc/paper_files/paper/2026/file/ 8be9c134bb193d8bd3827d4df8488228-Paper-Conference.pdf .Egor Bogomolov, Aleksandra Eliseeva, Timur Galimzyanov, Evgeniy Glukhov, Anton Shap-kin, Maria Tigina, Yaroslav Golubev, Alexander Kovrigin, Arie Van Deursen, Maliheh Izadi, et al. Long code arena: a set of benchmarks for long-context code models. arXiv preprint arXiv:2406.11612 , 2024. URL https://arxiv.org/pdf/2406.11612 .Chi-Chih Chang, Wei-Cheng Lin, Chien-Yu Lin, Chong-Yan Chen, Yu-Fang Hu, Pei-Shuo Wang, Ning-Chi Huang, Luis Ceze, Mohamed Abdelfattah, and Kai-Chiang Wu. Palu: Kv-cache compression with low-rank projection. In International Conference on Learning Representations , volume 2025, pp. 50222–50249, 2025. URL https://proceedings.iclr.cc/paper_files/paper/2025/file/ 7da6e0e00702c60607a6ae05c802ef85-Paper-Conference.pdf .Alessio Devoto, Yu Zhao, Simone Scardapane, and Pasquale Minervini. A simple and effective l 2 norm-based strategy for kv cache compression. In Proceedings of the 2024 Conference on Empirical Methods in Natural Language Processing , pp. 18476–18499, 2024. URL https: //aclanthology.org/2024.emnlp-main.1027.pdf .Sabri Eyuboglu, Ryan Ehrlich, Simran Arora, Neel Guha, Dylan Zinsley, Emily Liu, Atri Rudra, James Y Zou, Azalia Mirhoseini, and Christopher Re. Cartridges: 11 Preprint. Under review. Lightweight and general-purpose long context representations via self-study. In In-ternational Conference on Learning Representations , volume 2026, pp. 42642–42687, 2026. URL https://proceedings.iclr.cc/paper_files/paper/2026/file/ 4681359a7b1e94571598ad1adda35e6e-Paper-Conference.pdf .Yuan Feng, Junlin Lv, Haoyu Guo, Yukun Cao, S Kevin Zhou, and Xike Xie. Criticalkv: Op-timizing kv cache eviction from an output perturbation perspective, 2026. URL https: //openreview.net/pdf?id=vMwlcLyI4b .Elias Frantar and Dan Alistarh. Sparsegpt: Massive language models can be accurately pruned in one-shot. In International Conference on Machine Learning , pp. 10323–10337. PMLR, 2023. URL https://proceedings.mlr.press/v202/frantar23a .Nathan Godey, Alessio Devoto, Yu Zhao, Simone Scardapane, Pasquale Minervini, ´ Eric de la Clerg-erie, and Benoˆ ıt Sagot. Q-filters: Leveraging qk geometry for efficient kv cache compression. 
+
+arXiv preprint arXiv:2503.02812 , 2025. URL https://arxiv.org/pdf/2503.02812 .Raghavv Goel, Junyoung Park, Mukul Gagrani, Dalton Jones, Matthew J Morse, Matthew Harper Langston, Christopher Lott, and Mingu Lee. Caote: Optimizing kv cache memory through at-tention output error-based token eviction. In ICLR 2026 Workshop on Memory for LLM-Based Agentic Systems , 2026. URL https://openreview.net/pdf?id=yolbP0NoZv .Aaron Grattafiori, Abhimanyu Dubey, Abhinav Jauhri, Abhinav Pandey, Abhishek Kadian, Ahmad Al-Dahle, Aiesha Letman, Akhil Mathur, Alan Schelten, Alex Vaughan, Amy Yang, Angela Fan, Anirudh Goyal, Anthony Hartshorn, Aobo Yang, Archi Mitra, Archie Sravankumar, Artem Ko-renev, Arthur Hinsvark, Arun Rao, Aston Zhang, Aurelien Rodriguez, Austen Gregerson, Ava Spataru, Baptiste Roziere, Bethany Biron, Binh Tang, Bobbie Chern, Charlotte Caucheteux, Chaya Nayak, Chloe Bi, Chris Marra, Chris McConnell, Christian Keller, Christophe Touret, Chunyang Wu, Corinne Wong, Cristian Canton Ferrer, Cyrus Nikolaidis, Damien Allonsius, Daniel Song, Danielle Pintz, Danny Livshits, Danny Wyatt, David Esiobu, Dhruv Choudhary, Dhruv Mahajan, Diego Garcia-Olano, Diego Perino, Dieuwke Hupkes, Egor Lakomkin, Ehab AlBadawy, Elina Lobanova, Emily Dinan, Eric Michael Smith, Filip Radenovic, Francisco Guzm´ an, Frank Zhang, Gabriel Synnaeve, Gabrielle Lee, Georgia Lewis Anderson, Govind That-tai, Graeme Nail, Gregoire Mialon, Guan Pang, Guillem Cucurell, Hailey Nguyen, Hannah Kore-vaar, Hu Xu, Hugo Touvron, Iliyan Zarov, Imanol Arrieta Ibarra, Isabel Kloumann, Ishan Misra, Ivan Evtimov, Jack Zhang, Jade Copet, Jaewon Lee, Jan Geffert, Jana Vranes, Jason Park, Jay Ma-hadeokar, Jeet Shah, Jelmer van der Linde, Jennifer Billock, Jenny Hong, Jenya Lee, Jeremy Fu, Jianfeng Chi, Jianyu Huang, Jiawen Liu, Jie Wang, Jiecao Yu, Joanna Bitton, Joe Spisak, Jong-soo Park, Joseph Rocca, Joshua Johnstun, Joshua Saxe, Junteng Jia, Kalyan Vasuden Alwala, Karthik Prasad, Kartikeya Upasani, Kate Plawiak, Ke Li, Kenneth Heafield, Kevin Stone, Khalid El-Arini, Krithika Iyer, Kshitiz Malik, Kuenley Chiu, Kunal Bhalla, Kushal Lakhotia, Lauren Rantala-Yeary, Laurens van der Maaten, Lawrence Chen, Liang Tan, Liz Jenkins, Louis Martin, Lovish Madaan, Lubo Malo, Lukas Blecher, Lukas Landzaat, Luke de Oliveira, Madeline Muzzi, Mahesh Pasupuleti, Mannat Singh, Manohar Paluri, Marcin Kardas, Maria Tsimpoukelli, Mathew Oldham, Mathieu Rita, Maya Pavlova, Melanie Kambadur, Mike Lewis, Min Si, Mitesh Ku-mar Singh, Mona Hassan, Naman Goyal, Narjes Torabi, Nikolay Bashlykov, Nikolay Bogoy-chev, Niladri Chatterji, Ning Zhang, Olivier Duchenne, Onur C ¸ elebi, Patrick Alrassy, Pengchuan Zhang, Pengwei Li, Petar Vasic, Peter Weng, Prajjwal Bhargava, Pratik Dubal, Praveen Krishnan, Punit Singh Koura, Puxin Xu, Qing He, Qingxiao Dong, Ragavan Srinivasan, Raj Ganapathy, Ra-mon Calderer, Ricardo Silveira Cabral, Robert Stojnic, Roberta Raileanu, Rohan Maheswari, Ro-hit Girdhar, Rohit Patel, Romain Sauvestre, Ronnie Polidoro, Roshan Sumbaly, Ross Taylor, Ruan Silva, Rui Hou, Rui Wang, Saghar Hosseini, Sahana Chennabasappa, Sanjay Singh, Sean Bell, Seohyun Sonia Kim, Sergey Edunov, Shaoliang Nie, Sharan Narang, Sharath Raparthy, Sheng Shen, Shengye Wan, Shruti Bhosale, Shun Zhang, Simon Vandenhende, Soumya Batra, Spencer Whitman, Sten Sootla, Stephane Collot, Suchin Gururangan, Sydney Borodinsky, Tamar Herman, Tara Fowler, Tarek Sheasha, Thomas Georgiou, Thomas Scialom, Tobias Speckbacher, Todor Mi-haylov, Tong Xiao, Ujjwal Karn, Vedanuj Goswami, Vibhor Gupta, Vignesh Ramanathan, Viktor Kerkez, Vincent Gonguet, Virginie Do, Vish Vogeti, V´ ıtor Albiero, Vladan Petrovic, Weiwei Chu, Wenhan Xiong, Wenyin Fu, Whitney Meers, Xavier Martinet, Xiaodong Wang, Xiaofang Wang, Xiaoqing Ellen Tan, Xide Xia, Xinfeng Xie, Xuchao Jia, Xuewei Wang, Yaelle Gold-schlag, Yashesh Gaur, Yasmine Babaei, Yi Wen, Yiwen Song, Yuchen Zhang, Yue Li, Yuning 12 Preprint. Under review. Mao, Zacharie Delpierre Coudert, Zheng Yan, Zhengxing Chen, Zoe Papakipos, Aaditya Singh, Aayushi Srivastava, Abha Jain, Adam Kelsey, Adam Shajnfeld, Adithya Gangidi, Adolfo Victoria, Ahuva Goldstand, Ajay Menon, Ajay Sharma, Alex Boesenberg, Alexei Baevski, Allie Feinstein, Amanda Kallet, Amit Sangani, Amos Teo, Anam Yunus, Andrei Lupu, Andres Alvarado, An-drew Caples, Andrew Gu, Andrew Ho, Andrew Poulton, Andrew Ryan, Ankit Ramchandani, An-nie Dong, Annie Franco, Anuj Goyal, Aparajita Saraf, Arkabandhu Chowdhury, Ashley Gabriel, Ashwin Bharambe, Assaf Eisenman, Azadeh Yazdan, Beau James, Ben Maurer, Benjamin Leon-hardi, Bernie Huang, Beth Loyd, Beto De Paola, Bhargavi Paranjape, Bing Liu, Bo Wu, Boyu Ni, Braden Hancock, Bram Wasti, Brandon Spence, Brani Stojkovic, Brian Gamido, Britt Mon-talvo, Carl Parker, Carly Burton, Catalina Mejia, Ce Liu, Changhan Wang, Changkyu Kim, Chao Zhou, Chester Hu, Ching-Hsiang Chu, Chris Cai, Chris Tindal, Christoph Feichtenhofer, Cynthia Gao, Damon Civin, Dana Beaty, Daniel Kreymer, Daniel Li, David Adkins, David Xu, Davide Testuggine, Delia David, Devi Parikh, Diana Liskovich, Didem Foss, Dingkang Wang, Duc Le, Dustin Holland, Edward Dowling, Eissa Jamil, Elaine Montgomery, Eleonora Presani, Emily Hahn, Emily Wood, Eric-Tuan Le, Erik Brinkman, Esteban Arcaute, Evan Dunbar, Evan Smoth-ers, Fei Sun, Felix Kreuk, Feng Tian, Filippos Kokkinos, Firat Ozgenel, Francesco Caggioni, Frank Kanayet, Frank Seide, Gabriela Medina Florez, Gabriella Schwarz, Gada Badeer, Georgia Swee, Gil Halpern, Grant Herman, Grigory Sizov, Guangyi, Zhang, Guna Lakshminarayanan, Hakan Inan, Hamid Shojanazeri, Han Zou, Hannah Wang, Hanwen Zha, Haroun Habeeb, Harri-son Rudolph, Helen Suk, Henry Aspegren, Hunter Goldman, Hongyuan Zhan, Ibrahim Damlaj, Igor Molybog, Igor Tufanov, Ilias Leontiadis, Irina-Elena Veliche, Itai Gat, Jake Weissman, James Geboski, James Kohli, Janice Lam, Japhet Asher, Jean-Baptiste Gaya, Jeff Marcus, Jeff Tang, Jen-nifer Chan, Jenny Zhen, Jeremy Reizenstein, Jeremy Teboul, Jessica Zhong, Jian Jin, Jingyi Yang, Joe Cummings, Jon Carvill, Jon Shepard, Jonathan McPhie, Jonathan Torres, Josh Ginsburg, Jun-jie Wang, Kai Wu, Kam Hou U, Karan Saxena, Kartikay Khandelwal, Katayoun Zand, Kathy Matosich, Kaushik Veeraraghavan, Kelly Michelena, Keqian Li, Kiran Jagadeesh, Kun Huang, Kunal Chawla, Kyle Huang, Lailin Chen, Lakshya Garg, Lavender A, Leandro Silva, Lee Bell, Lei Zhang, Liangpeng Guo, Licheng Yu, Liron Moshkovich, Luca Wehrstedt, Madian Khabsa, Manav Avalani, Manish Bhatt, Martynas Mankus, Matan Hasson, Matthew Lennie, Matthias Reso, Maxim Groshev, Maxim Naumov, Maya Lathi, Meghan Keneally, Miao Liu, Michael L. Seltzer, Michal Valko, Michelle Restrepo, Mihir Patel, Mik Vyatskov, Mikayel Samvelyan, Mike Clark, Mike Macey, Mike Wang, Miquel Jubert Hermoso, Mo Metanat, Mohammad Rastegari, Munish Bansal, Nandhini Santhanam, Natascha Parks, Natasha White, Navyata Bawa, Nayan Singhal, Nick Egebo, Nicolas Usunier, Nikhil Mehta, Nikolay Pavlovich Laptev, Ning Dong, Norman Cheng, Oleg Chernoguz, Olivia Hart, Omkar Salpekar, Ozlem Kalinli, Parkin Kent, Parth Parekh, Paul Saab, Pavan Balaji, Pedro Rittner, Philip Bontrager, Pierre Roux, Piotr Dollar, Polina Zvyagina, Prashant Ratanchandani, Pritish Yuvraj, Qian Liang, Rachad Alao, Rachel Ro-driguez, Rafi Ayub, Raghotham Murthy, Raghu Nayani, Rahul Mitra, Rangaprabhu Parthasarathy, Raymond Li, Rebekkah Hogan, Robin Battey, Rocky Wang, Russ Howes, Ruty Rinott, Sachin Mehta, Sachin Siby, Sai Jayesh Bondu, Samyak Datta, Sara Chugh, Sara Hunt, Sargun Dhillon, Sasha Sidorov, Satadru Pan, Saurabh Mahajan, Saurabh Verma, Seiji Yamamoto, Sharadh Ra-maswamy, Shaun Lindsay, Shaun Lindsay, Sheng Feng, Shenghao Lin, Shengxin Cindy Zha, Shishir Patil, Shiva Shankar, Shuqiang Zhang, Shuqiang Zhang, Sinong Wang, Sneha Agarwal, Soji Sajuyigbe, Soumith Chintala, Stephanie Max, Stephen Chen, Steve Kehoe, Steve Satter-field, Sudarshan Govindaprasad, Sumit Gupta, Summer Deng, Sungmin Cho, Sunny Virk, Suraj Subramanian, Sy Choudhury, Sydney Goldman, Tal Remez, Tamar Glaser, Tamara Best, Thilo Koehler, Thomas Robinson, Tianhe Li, Tianjun Zhang, Tim Matthews, Timothy Chou, Tzook Shaked, Varun Vontimitta, Victoria Ajayi, Victoria Montanez, Vijai Mohan, Vinay Satish Kumar, Vishal Mangla, Vlad Ionescu, Vlad Poenaru, Vlad Tiberiu Mihailescu, Vladimir Ivanov, Wei Li, Wenchen Wang, Wenwen Jiang, Wes Bouaziz, Will Constable, Xiaocheng Tang, Xiaojian Wu, Xiaolan Wang, Xilun Wu, Xinbo Gao, Yaniv Kleinman, Yanjun Chen, Ye Hu, Ye Jia, Ye Qi, Yenda Li, Yilin Zhang, Ying Zhang, Yossi Adi, Youngjin Nam, Yu, Wang, Yu Zhao, Yuchen Hao, Yundi Qian, Yunlu Li, Yuzi He, Zach Rait, Zachary DeVito, Zef Rosnbrick, Zhaoduo Wen, Zhenyu Yang, Zhiwei Zhao, and Zhiyu Ma. The llama 3 herd of models. July 2024. URL 
+
+https://arxiv.org/abs/2407.21783 .Yuzhe Gu, Xiyu Liang, Jiaojiao Zhao, and Enmao Diao. Obcache: Optimal brain kv cache pruning for efficient long-context llm inference. 2026. URL https://openreview.net/pdf?id= f58VZpG6ls .13 Preprint. Under review. Zhiyu Guo, Hidetaka Kamigaito, and Taro Watanabe. Attention score is not all you need for token importance indicator in kv cache reduction: Value also matters. In Proceedings of the 2024 Conference on Empirical Methods in Natural Language Processing , pp. 21158–21166, 2024. URL https://aclanthology.org/2024.emnlp-main.1178.pdf .Babak Hassibi and David Stork. Second order derivatives for network pruning: Optimal brain surgeon. In S. Hanson, J. Cowan, and C. Giles (eds.), Advances in Neural Information Processing Systems , volume 5. Morgan-Kaufmann, 1993. URL https://proceedings.neurips. cc/paper/1992/file/303ed4c69846ab36c2904d3ba8573050-Paper.pdf .Coleman Hooper, Sehoon Kim, Hiva Mohammadzadeh, Michael W Mahoney, Yakun S Shao, Kurt Keutzer, and Amir Gholami. Kvquant: Towards 10 million context length llm inference with kv cache quantization. Advances in Neural Information Processing Systems , 37:1270–1303, 2024. URL https://proceedings.neurips.cc/paper_files/paper/2024/ file/028fcbcf85435d39a40c4d61b42c99a4-Paper-Conference.pdf .Jang-Hyun Kim, Jinuk Kim, Sangwoo Kwon, Jae W Lee, Sangdoo Yun, and Hyun Oh Song. Kvzip: Query-agnostic kv cache compression with context reconstruction. Ad-vances in Neural Information Processing Systems , 38:167563–167591, 2026. URL 
+
+https://proceedings.neurips.cc/paper_files/paper/2025/file/ f4eaa4b8f2d08edb3f0af990d56134ea-Paper-Conference.pdf .Yann LeCun, John S. Denker, and Sara A. Solla. Optimal brain damage. In David S. Touretzky (ed.), Advances in Neural Information Processing Systems 2, [NIPS Confer-ence, Denver, Colorado, USA, November 27-30, 1989] , pp. 598–605. Morgan Kauf-mann, 1989. URL https://proceedings.neurips.cc/paper/1989/hash/ 6c9882bbac1c7093bd25041881277658-Abstract.html .Yuhong Li, Yingbing Huang, Bowen Yang, Bharat Venkitesh, Acyr Locatelli, Hanchen Ye, Tianle Cai, Patrick Lewis, and Deming Chen. Snapkv: Llm knows what you are look-ing for before generation. Advances in Neural Information Processing Systems , 37:22947– 22970, 2024. URL https://proceedings.neurips.cc/paper_files/paper/ 2024/file/28ab418242603e0f7323e54185d19bde-Paper-Conference.pdf .Manlai Liang, JiaMing Zhang, Xiong Li, and Jinlong Li. Lagkv: Lag-relative information of the kv cache tells which tokens are important. arXiv preprint arXiv:2504.04704 , 2025. URL https: //arxiv.org/pdf/2504.04704 .Zichang Liu, Aditya Desai, Fangshuo Liao, Weitao Wang, Victor Xie, Zhaozhuo Xu, Anastasios Kyrillidis, and Anshumali Shrivastava. Scissorhands: Exploiting the per-sistence of importance hypothesis for llm kv cache compression at test time. Ad-vances in Neural Information Processing Systems , 36:52342–52364, 2023. URL 
+
+https://proceedings.neurips.cc/paper_files/paper/2023/file/ a452a7c6c463e4ae8fbdc614c6e983e6-Paper-Conference.pdf .Zirui Liu, Jiayi Yuan, Hongye Jin, Shaochen Zhong, Zhaozhuo Xu, Vladimir Braverman, Beidi Chen, and Xia Hu. KIVI: A tuning-free asymmetric 2bit quantization for KV cache. In Rus-lan Salakhutdinov, Zico Kolter, Katherine Heller, Adrian Weller, Nuria Oliver, Jonathan Scar-lett, and Felix Berkenkamp (eds.), Proceedings of the 41st International Conference on Machine Learning , volume 235 of Proceedings of Machine Learning Research , pp. 32332–32344. PMLR, 21–27 Jul 2024. URL https://raw.githubusercontent.com/mlresearch/v235/ main/assets/liu24bz/liu24bz.pdf .Piotr Nawrot, Adrian Ła´ ncucki, Marcin Chochowski, David Tarjan, and Edoardo Ponti. Dy-namic memory compression: Retrofitting LLMs for accelerated inference. In Ruslan Salakhut-dinov, Zico Kolter, Katherine Heller, Adrian Weller, Nuria Oliver, Jonathan Scarlett, and Felix Berkenkamp (eds.), Proceedings of the 41st International Conference on Machine Learning , vol-ume 235 of Proceedings of Machine Learning Research , pp. 37396–37412. PMLR, 21–27 Jul 2024. URL https://raw.githubusercontent.com/mlresearch/v235/main/ assets/nawrot24a/nawrot24a.pdf .14 Preprint. Under review. Matanel Oren, Michael Hassid, Nir Yarden, Yossi Adi, and Roy Schwartz. Transformers are multi-state rnns. In Proceedings of the 2024 Conference on Empirical Methods in Natural Lan-guage Processing , pp. 18724–18741, 2024. URL https://aclanthology.org/2024. emnlp-main.1043.pdf .Richard Yuanzhe Pang, Alicia Parrish, Nitish Joshi, Nikita Nangia, Jason Phang, Angelica Chen, Vishakh Padmakumar, Johnny Ma, Jana Thompson, He He, and Samuel R. Bowman. Quality: Question answering with long input texts, yes!, 2022. URL https://arxiv.org/abs/ 2112.08608 .Utkarsh Saxena, Gobinda Saha, Sakshi Choudhary, and Kaushik Roy. Eigen attention: Attention in low-rank space for kv cache compression. In Findings of the Association for Computational Linguistics: EMNLP 2024 , pp. 15332–15344, 2024. URL https://aclanthology.org/ 2024.findings-emnlp.899.pdf .Gemma Team, Aishwarya Kamath, Johan Ferret, Shreya Pathak, Nino Vieillard, Ramona Merhej, Sarah Perrin, Tatiana Matejovicova, Alexandre Ram´ e, Morgane Rivi` ere, et al. Gemma 3 technical report. arXiv preprint arXiv:2503.19786 , 2025. Zhongwei Wan, Xinjian Wu, Yu Zhang, Yi Xin, Chaofan Tao, Zhihong Zhu, Xin Wang, Siqi Luo, Jing Xiong, Longyue Wang, et al. D2o: Dynamic discriminative operations for efficient long-context inference of large language models. arXiv preprint arXiv:2406.13035 , 2024. URL 
+
+https://arxiv.org/pdf/2406.13035 .Zheng Wang, Boxiao Jin, Zhongzhi Yu, and Minjia Zhang. Model tells you where to merge: Adap-tive kv cache merging for llms on long-context tasks. arXiv preprint arXiv:2407.08454 , 2024. URL https://arxiv.org/pdf/2407.08454 .Guangxuan Xiao, Yuandong Tian, Beidi Chen, Song Han, and Mike Lewis. Ef-ficient streaming language models with attention sinks. In International Confer-ence on Learning Representations , volume 2024, pp. 21875–21895, 2024. URL 
+
+https://proceedings.iclr.cc/paper_files/paper/2024/file/ 5e5fd18f863cbe6d8ae392a93fd271c9-Paper-Conference.pdf .An Yang, Anfeng Li, Baosong Yang, Beichen Zhang, Binyuan Hui, Bo Zheng, Bowen Yu, Chang Gao, Chengen Huang, Chenxu Lv, et al. Qwen3 technical report. arXiv preprint arXiv:2505.09388 , 2025. URL https://arxiv.org/pdf/2505.09388 .Yuxin Zhang, Yuxuan Du, Gen Luo, Yunshan Zhong, Zhenyu Zhang, Shiwei Liu, and Ron-grong Ji. CaM: Cache merging for memory-efficient LLMs inference. In Ruslan Salakhutdi-nov, Zico Kolter, Katherine Heller, Adrian Weller, Nuria Oliver, Jonathan Scarlett, and Felix Berkenkamp (eds.), Proceedings of the 41st International Conference on Machine Learning , vol-ume 235 of Proceedings of Machine Learning Research , pp. 58840–58850. PMLR, 21–27 Jul 2024. URL https://raw.githubusercontent.com/mlresearch/v235/main/ assets/zhang24n/zhang24n.pdf .Zhenyu Zhang, Ying Sheng, Tianyi Zhou, Tianlong Chen, Lianmin Zheng, Ruisi Cai, Zhao Song, Yuandong Tian, Christopher R´ e, Clark Barrett, et al. H2o: Heavy-hitter oracle for efficient generative inference of large language models. Ad-vances in Neural Information Processing Systems , 36:34661–34710, 2023. URL 
+
+https://proceedings.neurips.cc/paper_files/paper/2023/file/ 6ceefa7b15572587b78ecfcebb2827f8-Paper-Conference.pdf .Adam Zweiger, Xinghong Fu, Han Guo, and Yoon Kim. Fast kv compaction via attention matching. 306, 2026. URL https://openreview.net/pdf?id=t01SKTj8pP .15 Preprint. Under review. 
+
+# A DERIVATIONS 
+
+A.1 THE SURROGATE AS A SECOND -ORDER TAYLOR EXPANSION 
+
+An alternative route to the same surrogate starts with the exact output loss after substituting U =diag( w) bV :
+
+L(S, w, bV ) = 
+
+> N
+
+X
+
+> i=1
+
+1
+
+μ2
+
+> i
+
+X
+
+> j∈S
+
+Pij uj − oi
+
+ + (1 − μi)oi
+
+> 22
+
+. (15) Replacing μ−2 
+
+> i
+
+by its value of one at the original cache gives the quadratic 
+
+Q(S, w, U ) ≜
+
+> N
+
+X
+
+> i=1
+
+X
+
+> j∈S
+
+Pij uj − μioi
+
+> 22
+
+. (16) Dropping the cross term between the output and mass residuals separates the two terms: 
+
+∥O − PS U ∥2 
+
+> F
+
++
+
+> N
+
+X
+
+> i=1
+
+ ∥oi∥2(1 − (PS w)i)2. (17) Replacing the query-dependent weights ∥oi∥2 by the shared γ then gives (8). The quadratic Q in (16) is the second-order Taylor expansion of L around the original cache. This supplies an alternative derivation of the surrogate in Section 3.2. The method represents a deletion by removing an index from S, and a support S and the original cache have parameters of different sizes. To place them in a common coordinate system we use, in this proof only, a full-length multiplier vector m ∈ RT with 
+
+mj = wj for j ∈ S and mj = 0 otherwise, and eU ∈ RT ×dv with rows mj bvj , which vanish outside 
+
+S. Then P 
+
+> j∈S
+
+Pij u⊤ 
+
+> j
+
+= Pi eU and μi = Pim, where Pi is row i of P , so that 
+
+L =
+
+> N
+
+X
+
+> i=1
+
+Pi eU − (Pim) oi
+
+> 22
+
+(Pim)2 , Q =
+
+> N
+
+X
+
+> i=1
+
+Pi eU − (Pim) oi
+
+> 22
+
+are functions of ( eU , m ) ∈ RT ×dv × RT whose domain contains the original cache ( eU , m ) = ( V, 1).There the vector inside the norms is PiV − (Pi1) oi = oi − oi = 0 for every query, because 
+
+PiV = oi by the definition of O and Pi1 = 1 since every row of P is a softmax; hence L and Q
+
+vanish together with their gradients. Write ( eU , m ) = ( V + ∆ U , 1 + ∆ m). Substituting, the vector inside the norms becomes Pi(V + ∆ U ) −  Pi(1 + ∆ m) oi = ( PiV − oi) + Pi∆U − (Pi∆m) oi =
+
+Pi∆U − (Pi∆m) oi, again by PiV = oi and Pi1 = 1 . This is linear in (∆ U , ∆m), so its squared norm is a homogeneous quadratic in the perturbation, while (Pim)−2 = 1 − 2Pi∆m + O(∥∆m∥22).Hence L = Q + O(∥(∆ U , ∆m)∥3), and Q, itself a quadratic, is the second-order Taylor polynomial of L at the original cache. As in OBS (Hassibi & Stork, 1993), the expansion is then used at deletions, which move mj from one to zero and row j of eU from vj to zero and are not small perturbations. For unchanged values, eU = diag( m)V , the two terms inside the norms are Pi diag( m)V =P 
+
+> j
+
+mj Pij vj and (Pim) oi = P 
+
+> j
+
+mj Pij oi, so the vector inside the norms is P 
+
+> j
+
+mj Pij (vj − oi)
+
+and the frozen quadratic is the quadratic form 
+
+Q = m⊤Hm, Hjk ≜
+
+> N
+
+X
+
+> i=1
+
+Pij Pik (vj − oi)⊤(vk − oi).
+
+Its off-diagonal entries record whether the errors of deleting j and k reinforce or cancel. Its diagonal 
+
+Hjj = P 
+
+> i
+
+P 2 
+
+> ij
+
+∥vj −oi∥22 is the second-order truncation of the exact single-deletion loss, the score of (13) without the factor (1 −Pij )−2 (Appendix A.5). Finally, H1 = 0 because P 
+
+> k
+
+Pik (vk −oi) = 0 .This is the null direction of the Hessian along uniform scalings of all weights, which leave the ratio of (2) unchanged; the frozen quadratic alone therefore does not determine the scale of the multipliers, and the mass term of (8) does (Appendices A.3 and H.1). 16 Preprint. Under review. A.2 HESSIAN STRUCTURE OF THE SURROGATE 
+
+We compare the quadratic objectives of Section 3.2 through their Hessians in the unknowns (U, w ).Stack the unknowns as x ≜ (U:,1, . . . , U :,d v , w ) ∈ R|S|(dv +1) , where U:,c is column c of U , and write O:,c for column c of O.
+
+After freezing the normalization. The frozen objective (16) is ∥PS U − diag( PS w)O∥2 
+
+> F
+
+. Column 
+
+c of diag( PS w)O is diag( O:,c )PS w, so 
+
+> N
+
+X
+
+> i=1
+
+ X 
+
+> j∈S
+
+Pij uj − oi
+
+
+
++ (1 − μi)oi
+
+> 22
+
+=
+
+> dv
+
+X
+
+> c=1
+
+PS U:,c − diag( O:,c )PS w 22.
+
+This is a quadratic in x. Its Hessian has the diagonal blocks 2P ⊤ 
+
+> S
+
+PS for each column U:,c , the diago-nal block 2P ⊤ 
+
+> S
+
+diag( ∥o1∥22, . . . , ∥oN ∥22)PS for w, and the off-diagonal blocks −2P ⊤ 
+
+> S
+
+diag( O:,c )PS
+
+between U:,c and w. The off-diagonal blocks are the Hessian of the cross term in (16): ex-panding the square gives 2 P
+
+> i
+
+⟨P 
+
+> j
+
+Pij uj − oi, (1 − μi)oi⟩, whose bilinear part in (U, w ) is 
+
+−2 P 
+
+> c
+
+U ⊤
+
+> :,c
+
+P ⊤ 
+
+> S
+
+diag( O:,c )PS w. Because of these blocks, the columns of U and the multipliers are not separate regressions on PS . Scoring a deletion, or computing the coefficients after one, re-quires the inverse of the full Hessian of dimension |S|(dv + 1) instead of an |S| × | S| matrix, which multiplies the memory by (dv + 1) 2 and the cost of every update by at least the same factor. 
+
+After dropping the cross term. The objective (17) is a function of U plus a function of w,so its Hessian is block diagonal, with the blocks 2P ⊤ 
+
+> S
+
+PS for the columns of U and the block 
+
+2P ⊤ 
+
+> S
+
+diag( ∥o1∥22, . . . , ∥oN ∥22)PS for w. Every column can be optimized on its own. The multi-pliers, however, have a different Gram matrix from the values, so greedy elimination would carry two inverses and update both after every deletion. 
+
+After replacing the weights by γ. In (8) the mass term is γ2∥1 − PS w∥22 = ∥γ1 − PS (γw )∥22, a regression of the column γ1 on PS in the unknown γw , with Gram matrix P ⊤ 
+
+> S
+
+PS . All dv +1 diagonal blocks of the Hessian are now 2P ⊤ 
+
+> S
+
+PS and there are no off-diagonal blocks. The ridge in (9) adds 
+
+2λI to each block, so the Hessian of (9) in B consists of dv + 1 identical blocks 2( P ⊤ 
+
+> S
+
+PS + λI ).
+
+Closed form. Expanding (9) gives 
+
+∥Y − PS B∥2 
+
+> F
+
++ λ∥B∥2 
+
+> F
+
+= tr( Y ⊤Y ) − 2 tr( B⊤P ⊤ 
+
+> S
+
+Y ) + tr  B⊤(P ⊤ 
+
+> S
+
+PS + λI )B.
+
+The matrix P ⊤ 
+
+> S
+
+PS +λI is positive definite for λ > 0, since x⊤(P ⊤ 
+
+> S
+
+PS +λI )x = ∥PS x∥22 +λ∥x∥22 >
+
+0 for x̸ = 0 . The objective is therefore strictly convex in B, and its unique minimizer is the stationary point (P ⊤ 
+
+> S
+
+PS + λI )B = P ⊤ 
+
+> S
+
+Y , that is, B = GP ⊤ 
+
+> S
+
+Y with G = ( P ⊤ 
+
+> S
+
+PS + λI )−1, which is (10). Column c of B is GP ⊤ 
+
+> S
+
+Y:,c , so one inverse serves all columns. Inserting the minimizer and using 
+
+(P ⊤ 
+
+> S
+
+PS + λI )B = P ⊤ 
+
+> S
+
+Y for the first equality and G(P ⊤ 
+
+> S
+
+PS + λI )G = G for the second, 
+
+F(S) = tr( Y ⊤Y ) − tr  B⊤(P ⊤ 
+
+> S
+
+PS + λI )B = tr( Y ⊤Y ) − tr  Y ⊤PS GP ⊤ 
+
+> S
+
+Y . (18) A.3 SCALE OF THE MASS TERM 
+
+In (17) the mass error of query i is weighted by ∥oi∥22: a query with a large output is hurt more by a given relative mass deficit. These weights depend neither on w nor on S, so the mass term of (17) could be minimized as it stands, with the Gram matrix P ⊤ 
+
+> S
+
+diag( ∥o1∥22, . . . , ∥oN ∥22)PS . Carrying it through the elimination would require a second inverse next to G, updated after every deletion. Replacing ∥oi∥2 by one common scalar γ gives the mass term the Gram matrix P ⊤ 
+
+> S
+
+PS of the output term, so that one inverse serves all dv + 1 columns (Appendix A.2). We set γ ≜ γ0 RMS i∥oi∥2 = γ0 (N −1 P
+
+> i
+
+∥oi∥22)1/2 with a dimensionless γ0 > 0. The RMS keeps the mass column of Y on the scale of the output columns: for a uniform relative mass deficit 
+
+1 − μi ≡ ϵ, the mass term of (17) is ϵ2 P
+
+> i
+
+∥oi∥22 and that of (8) is N γ 2ϵ2, and the two agree for every ϵ if and only if γ0 = 1 . The factor γ0 therefore sets the weight of the mass term relative to the output term, with γ0 = 1 matching the cost that a uniform deficit has under (17). We use γ0 = 1 
+
+throughout (Appendix C). Setting γ0 = 0 removes the mass term from the surrogate and changes accuracy within one standard error (Appendix E.3). 17 Preprint. Under review. A.4 DELETION SALIENCIES AND COMPENSATION 
+
+We derive the saliency (11) and the updates (12) and (14) from the block structure of the inverse G.Throughout, S is the current support, A ≜ P ⊤ 
+
+> S
+
+PS + λI , G = A−1, and B = GP ⊤ 
+
+> S
+
+Y as in (10). Rows and columns of A, G, and B are indexed by the elements of S, so that an entry keeps its index when other entries are deleted. For j ∈ S, −j denotes the index set S \ { j}: G−j, −j is G without row and column j, G−j,j is column j of G without its j-th entry, and B−j, : is B without row j. We write pj ∈ RN for column j of P , the attention weights of all queries on entry j.
+
+Deleting an entry removes a row and a column of A. Entry (k, l ) of P ⊤ 
+
+> S
+
+PS is p⊤ 
+
+> k
+
+pl and involves only the columns k and l. Removing column j from PS removes row and column j from P ⊤ 
+
+> S
+
+PS and changes no other entry, and λI loses the same row and column. The Gram matrix of the reduced support is therefore the principal submatrix 
+
+P ⊤
+
+> S\{ j}
+
+PS\{ j} + λI = A−j, −j . (19) This requires the same λ on both supports: a ridge that changes with S would change the remaining entries as well. 
+
+Block inverse. The block equations of AG = I for the partition ({j}, −j) are 
+
+Ajj Gjj +Aj, −j G−j,j = 1 , A−j,j Gjj +A−j, −j G−j,j = 0 , A−j,j Gj, −j +A−j, −j G−j, −j = I. A−j, −j is invertible as a principal submatrix of a positive definite matrix, and Gjj = e⊤ 
+
+> j
+
+A−1ej > 0.The second equation gives A−j,j = −A−j, −j G−j,j /G jj , and substituting this into the third gives 
+
+A−j, −j
+
+ G−j, −j − G−j,j Gj, −j /G jj 
+
+ = I. Hence 
+
+(A−j, −j )−1 = G−j, −j − G−j,j Gj, −j
+
+Gjj 
+
+, 1
+
+Gjj 
+
+= Ajj − Aj, −j (A−j, −j )−1A−j,j , (20) where the second identity follows from the first block equation after inserting (A−j, −j )−1A−j,j =
+
+−G−j,j /G jj . Equivalently, the matrix Mj ≜ G − G:,j Gj, :/G jj has zero row j and zero column j,and its remaining block is (A−j, −j )−1.
+
+The update of G. By (19), the inverse Gram matrix of S \ { j} is (A−j, −j )−1, which by (20) is the second update in (12). 
+
+The update of B. Since Gj, :P ⊤ 
+
+> S
+
+Y = Bj, :,
+
+Mj P ⊤ 
+
+> S
+
+Y = B − G:,j Bj, :
+
+Gjj 
+
+.
+
+Row j of this matrix is zero because row j of Mj is zero. Because column j of Mj is zero as well, the rows −j of Mj P ⊤ 
+
+> S
+
+Y equal (Mj )−j, −j P ⊤
+
+> S\{ j}
+
+Y = ( A−j, −j )−1P ⊤
+
+> S\{ j}
+
+Y , which by (19) is the minimizer (10) on the reduced support. These rows are B−j, : − G−j,j Bj, :/G jj , the first update in (12). The updated coefficients are thus the exact minimizer of (9) on S \ { j}, not an approximation to it. 
+
+The saliency. Applying (18) on both supports, the term tr( Y ⊤Y ) cancels in F(S \ { j}) − F (S).Since Mj vanishes on row and column j, PS\{ j}(A−j, −j )−1P ⊤ 
+
+> S\{ j}
+
+= PS Mj P ⊤ 
+
+> S
+
+, and therefore 
+
+sj = F(S \ { j}) − F (S) = tr  Y ⊤PS (G − Mj )P ⊤ 
+
+> S
+
+Y  = tr  Y ⊤PS G:,j Gj, :P ⊤ 
+
+> S
+
+Y 
+
+Gjj 
+
+= ∥Gj, :P ⊤ 
+
+> S
+
+Y ∥22
+
+Gjj 
+
+= ∥Bj, :∥22
+
+Gjj 
+
+,
+
+which is (11). 
+
+Interpretation. A coefficient matrix with B′ 
+
+> j, :
+
+= 0 has the same objective value on S as its rows 
+
+−j have on S \ { j}, since row j multiplies column j of PS and contributes nothing to the ridge penalty, and every coefficient matrix on S \ { j} arises in this way. Hence F(S \ { j}) = min {∥ Y −
+
+PS B′∥2 
+
+> F
+
++ λ∥B′∥2 
+
+> F
+
+: B′ 
+
+> j, :
+
+= 0 } ≥ F (S), and sj is the smallest increase of the objective over 18 Preprint. Under review. all coefficient matrices with zero row j. The objective is a quadratic in B with Hessian 2A and zero gradient at the minimizer, so ∥Y − PS (B + ∆) ∥2 
+
+> F
+
++ λ∥B + ∆ ∥2 
+
+> F
+
+= F(S) + tr(∆ ⊤A∆) 
+
+for every ∆. Setting row j to zero without changing the other rows, ∆ = −ej Bj, :, increases the objective by Ajj ∥Bj, :∥22. Since Ajj Gjj ≥ 1 for positive definite A (Cauchy–Schwarz in the inner product defined by A: 1 = ( e⊤ 
+
+> j
+
+ej )2 ≤ (e⊤ 
+
+> j
+
+Ae j )( e⊤ 
+
+> j
+
+A−1ej )), the compensated cost sj is at most the uncompensated one, with equality if and only if pj is orthogonal to all other retained columns. By (20) and (18) with the target pj ,
+
+1
+
+Gjj 
+
+= λ+∥pj ∥22 −p⊤ 
+
+> j
+
+PS\{ j}
+
+ P ⊤
+
+> S\{ j}
+
+PS\{ j} +λI −1P ⊤
+
+> S\{ j}
+
+pj = λ+min  
+
+> c
+
+∥pj −PS\{ j}c∥22 +λ∥c∥22,
+
+the ridge-regularized residual of regressing the attention column of entry j on the attention columns of the other retained entries. The saliency is therefore the squared coefficient magnitude of entry 
+
+j times the part of its attention column that the other retained columns do not reproduce, plus the ridge. An entry with a large coefficient is cheap to delete when its attention column lies close to the span of the other columns, and an entry with a small coefficient is expensive to delete when its attention column lies far from that span. 
+
+Deleting a block. Let J ⊆ S and R ≜ S \J. The block equations of AG = I on the partition (J, R )
+
+read AR,J GJ,J + AR,R GR,J = 0 and AR,J GJ,R + AR,R GR,R = I, and GJ,J is positive definite as a principal submatrix of G. Eliminating AR,J = −AR,R GR,J G−1 
+
+> J,J
+
+from the second equation gives AR,R 
+
+ GR,R − GR,J G−1 
+
+> J,J
+
+GJ,R 
+
+ = I, so (AR,R )−1 = GR,R − GR,J G−1 
+
+> J,J
+
+GJ,R , and the matrix 
+
+MJ ≜ G − G:,J G−1 
+
+> J,J
+
+GJ, : vanishes on the rows and columns in J. The argument for one entry applies verbatim with GJ, :P ⊤ 
+
+> S
+
+Y = BJ, :: the rows R of MJ P ⊤ 
+
+> S
+
+Y , which are BR, : − GR,J G−1 
+
+> J,J
+
+BJ, :,are the minimizer of (9) on R, and (AR,R )−1 is its inverse Gram matrix, which is (14). The exact cost of the joint deletion is 
+
+F(S \ J) − F (S) = tr  Y ⊤PS (G − MJ )P ⊤ 
+
+> S
+
+Y  = tr  B⊤
+
+> J, :
+
+G−1 
+
+> J,J
+
+BJ, :
+
+. (21) Since the minimizer on R does not depend on the order in which R is reached, (14) gives the same coefficients and inverse as |J| successive single deletions of the elements of J. The block cost (21) equals P 
+
+> j∈J
+
+sj when GJ,J is diagonal and differs from it otherwise: it is the sum of the sequential saliencies, each evaluated after the preceding deletions. KV-S URGEON selects J by the individual saliencies, computed before any entry of J is removed. This choice of J is the only approximation of the block step; the updates (14) are exact for the surrogate. A.5 THE SINGLE -DELETION SCORE 
+
+The score of (13) is the one case in which the exact loss of (4) has a closed form: a single deletion with every other cache parameter at its original value, S = {1, . . . , T } \ { j}, w = 1, and bvk = vk
+
+for k ∈ S. Then U = VS , μi = 1 − Pij , and P 
+
+> k∈S
+
+Pik vk − μioi = ( oi − Pij vj ) − (1 − Pij ) oi =
+
+−Pij (vj − oi), so (2) and (4) give 
+
+boi − oi = − Pij 
+
+1 − Pij 
+
+(vj − oi), L =
+
+> N
+
+X
+
+> i=1
+
+P 2
+
+> ij
+
+(1 − Pij )2 ∥vj − oi∥22 = sLOO  
+
+> j
+
+.
+
+Goel et al. (2026) and An et al. (2026) derive the per-query error for serving-time eviction, with queries read from the prompt suffix; summing its squared norm over the calibration queries carries it to the offline setting. The error is the product of two factors. The renormalization factor Pij /(1 −Pij )
+
+is large for a heavy hitter (Zhang et al., 2023) with Pij near one, because the mass of the deleted entry is redistributed over retained entries that hold little mass themselves. The value novelty vj − oi
+
+is small when the entry carries what the head already retrieves, so even a heavily attended entry can be deleted at no cost if its value is close to the current output. KV-S URGEON uses the score in three roles: as the prefilter that forms the candidate pool, as the selection rule of the mild-compaction fallback, and, followed by the same final refit, as the controlled baseline LOO of Section 4.3. Its second-order truncation, the diagonal Hjj of Appendix A.1, drops the factor (1 − Pij )−2.19 Preprint. Under review. 
+
+# B ALGORITHM AND IMPLEMENTATION 
+
+Algorithm 1 in Section 3.4 gives the complete procedure for one attention head. This section pro-vides the hyperparameters, solvers, and computational details. 
+
+Multipliers as logit biases. For every retained entry j ∈ S, the compacted cache stores the original key kj , the refit value bvj , and the logarithm log wj of its multiplier. At inference, log wj is added to the logit of entry j before the softmax, so that the entry contributes eZij +log wj = wj eZij to the unnormalized attention of query i, which is (2). The bound e−β ≤ wj ≤ eβ of the final refit is the bound |log wj | ≤ β on the logit bias of any single entry; it bounds the shift that compaction introduces and leaves the original logit Zij unchanged. Mass preservation, μi ≈ 1, keeps the total unnormalized attention of the compacted cache at that of the original cache, so that the compacted cache draws the same share of attention when it is served next to other tokens (Appendix H). 
+
+Candidate pool and ridge. The pool consists of the m = min {T, ⌈ct ⌉} entries with the largest scores (13), with c = 4 . The score is evaluated with a floor, P 2 
+
+> ij
+
+/((1 − Pij )2 + 10 −3), which bounds the weight of entries that receive almost all attention of a query; the LOO baseline uses the same evaluation. The minimum matters for heads with T /c < t ≤ τ T , whose pool is the whole cache. The ridge is set relative to the scale of the Gram matrix on the pool, λ = λ0 tr( P ⊤ 
+
+> S
+
+PS )/m with 
+
+λ0 = 0 .01 , computed once when the pool is formed and kept fixed for all later supports. A fixed λ is required for the updates (12) and (14) to be exact, because the Gram matrix of a reduced support is a principal submatrix of the current one only if both carry the same ridge (Appendix A.4). Since m
+
+can exceed N , P ⊤ 
+
+> S
+
+PS is singular on the pool in general, and the ridge is what makes G well defined there. The inverse G and the coefficients B = GP ⊤ 
+
+> S
+
+Y are computed explicitly once, on the pool, from a Cholesky factorization of P ⊤ 
+
+> S
+
+PS + λI ; if the factorization fails, λ is increased tenfold, at most three times. 
+
+Block deletions. Each elimination step deletes the nb = 32 entries with the smallest saliencies; the last step deletes min {nb, |S| − t} entries, so that the loop ends at |S| = t exactly. The updates (14) require solving linear systems with the nb × nb matrix GJ,J , which is positive definite as a principal submatrix of G. Compared with single deletions, the block step computes the saliencies once per block rather than once per deletion and runs the updates as matrix products with nb columns; the arithmetic count is the same. 
+
+Final refit. After the elimination, B and G are discarded, and the multipliers and values are solved on S in two ordered steps, following the refit of attention matching (Zweiger et al., 2026). The multipliers solve the box-constrained least-squares problem 
+
+w ≜ arg min   
+
+> e−β≤wj≤eβ
+
+∥1 − PS w∥22, β = 3 . (22) The box restores the positivity dropped in Section 3.2 and bounds the logit bias of every entry. The solver is that of Zweiger et al. (2026) and solves (22) approximately. It works with the unnormalized attention E = exp( QK ⊤/√dk − max) , the row maximum of the logits subtracted, and its row sums s, so that P = diag( s)−1E, and minimizes ∥ES w − s∥22, which is (22) with row i scaled by 
+
+si. The unconstrained least-squares solution is computed by a QR solve, clamped to the box, and then refined by two projected gradient steps with step size 1/∥ES ∥22, clamping after each step; the spectral norm is estimated by three power iterations. With w fixed, the normalized attention matrix of the compacted cache is bP ≜ diag( PS w)−1PS diag( w), cf. (2), and the values solve the linear least-squares problem 
+
+bV ≜ arg min 
+
+> bV
+
+∥ bP bV − O∥2 
+
+> F
+
+, (23) which is min bV L(S, w, bV ), the exact output-preservation loss (4) for the chosen support and multi-pliers. All dv columns of bV share the Gram matrix bP ⊤ bP and are solved at once. They are computed by a least-squares solve; if the solve fails numerically, the normal equations ( bP ⊤ bP + 10 −6¯aI ) bV =
+
+bP ⊤O are solved by a Cholesky factorization instead, where ¯a is the mean diagonal of bP ⊤ bP . The order of the two solves is forced: bP depends on w through diag( w) and through PS w, so the values have to be solved after the multipliers. The minimizer of (23) is unique if and only if PS has full column rank, which cannot hold for t > N .20 Preprint. Under review. 
+
+Mild-compaction fallback. Heads whose budget exceeds the fraction τ = 0 .3 of their cache, 
+
+t > τ T , skip the pool, the elimination, and the final refit: they retain the t entries with the largest scores (13), their original values, and unit multipliers. Eviction is near-lossless at such mild com-paction, the O(t3) solves are largest for exactly these heads, and for t > N the value solve (23) is underdetermined. Disabling the fallback leaves accuracy unchanged and adds 37% to pipeline time (Appendix E.3). 
+
+Complexity. Forming the Gram matrix of a pool of m candidates costs O(N m 2) and its inverse 
+
+O(m3); the right-hand side P ⊤ 
+
+> S
+
+Y costs O(N md v ) and the initial coefficients B = GP ⊤ 
+
+> S
+
+Y cost 
+
+O(m2dv ). In each elimination step, the saliencies cost O(|S|(dv + 1)) given B and the diagonal of 
+
+G, the update of B costs O(|S|nb(dv + 1) + n3 
+
+> b
+
+), and the update of G costs O(|S|2nb). Summed over the (m − t)/n b steps, the loop costs O(m3 + m2dv ), the same count as m − t single deletions. The elimination on a pool of m entries thus costs O(N m 2 + m3 + N md v + m2dv ) per head, and its memory is dominated by the m × m matrix G. The pool bounds m by ct , so these costs grow with the budget t and not with the cache size T ; eliminating from the full cache instead changes accuracy within noise at 3.8× the compaction time (Appendix E.3). The fallback removes the O(t3) terms for the heads with the largest budgets. 
+
+Hyperparameters. All hyperparameters were fixed once on Qwen3-4B with QuALITY at 50 ×
+
+and reused unchanged for every other model, benchmark, and ratio (Appendix C): the mass weight 
+
+γ0 = 1 (Appendix A.3), the relative ridge λ0 = 0 .01 , the pool factor c = 4 , the block size nb = 32 ,the fallback threshold τ = 0 .3, and the multiplier bound β = 3 . Appendix E.3 varies γ0, c, and τ .
+
+# C EXPERIMENTAL DETAILS 
+
+This section records what is needed to reproduce and read the experiments; Section 4.1 gives the summary. Appendix C.1 states the protocol and conventions and Appendix C.2 breaks down where the pipeline time goes. C.1 PROTOCOL AND CONVENTIONS 
+
+Task and benchmarks. The model reads a context once, the resulting cache is compacted once by a target factor between 5× and 100 ×, and all benchmark questions about that context are answered from the compacted cache, so calibration and compaction are one-time costs per context. QuALITY uses the dev split, articles 0–49, with n = 894 multiple-choice questions; one article is one con-text. LongHealth consists of 20 fictional patient records, grouped into four contexts of five patients with roughly 60k tokens each; each record is compacted as its own chunk at the same ratio and the compacted chunks are concatenated (Appendix H), and all n = 400 multiple-choice questions are evaluated against their contexts. Accuracy is the percentage of correctly answered questions. Answers are extracted from the generated text, and questions whose answer cannot be parsed count as incorrect; parse rates are checked per run and are uniformly high in the reported cells, so parsing does not drive the reported differences. All eight model and benchmark combinations are reported. 
+
+Compaction ratio and per-head budgets. The compaction factor, 5× to 100 ×, is the nominal ratio of the original cache size to the compacted one. Cache-side methods are reported at the nominal ratio because measured effective ratios agree with it to within one percent. Heads differ widely in how much compaction they tolerate, so the compaction factor is a global budget rather than a per-head prescription. Head (ℓ, h ) receives its own retained fraction rℓh , subject to the constraint that mean ℓh rℓh equals the reciprocal of the compaction factor; each head is additionally capped at 
+
+rℓh ≤ 0.75 , and the budget a capped head cannot use is redistributed to the other heads in proportion to their shares, so the global ratio is preserved. The allocation is computed once per model on contexts disjoint from the benchmark contexts, following the procedure introduced by Zweiger et al. (2026). We measure per head how the log-perplexity of model-generated reference answers degrades as that head alone is compressed, and we allocate the budget along these influence curves. The solver is ratio-agnostic: it finds one set of per-head proportions that works across all target ratios, and this single allocation is rescaled to each compaction factor. Every method in a table consumes the same allocation, so differences between rows are attributable to selection and refit alone; the published configuration of KVzip, reported only in Table 16, is the deliberate exception. Uniform per-head budgets serve as an ablation (Appendix E). 21 Preprint. Under review. 
+
+Calibration tiers. All implemented methods score positions against calibration queries recorded from the model itself and, except AM-OMP, come in two tiers that differ mainly in how these queries are generated. The fast tier prompts the model to reproduce the context and records the query vectors of that single pass. The self-study tier additionally generates self-study conversations about the context, which cost more time but match the future workload better. AM-HAK-fast and KV-SURGEON -fast are the fast variants of AM-HAK and KV-S URGEON . AM-OMP, AM-OMP-CS, and KV-S URGEON are self-study methods; AM-OMP-CS is the cheap-solver setting of Zweiger et al. (2026), named AM-OMP-fast there, which selects several keys per greedy step and refits less often. After selecting which positions to keep, every calibrated method applies the same support-fixed refit of the retained multipliers and values (Section 3.4), so accuracy differences between them reflect the selection rule. AM-OMP is evaluated only at the most aggressive ratios because its runtime grows steeply with the retention budget. 
+
+Calibration queries. Self-study generates five conversations per context with vLLM: a verbatim repetition of the context, a summary, an aggregation of key facts, a JSON structuring of the context, and three self-written questions with answers. The repetition is teacher-forced, with the context itself as the answer; the summary, aggregation, and JSON conversations are answered without thinking (at most 2048 tokens, temperature 0.7, top-p 0.8, top-k 20 ); the question conversation uses thinking for both writing and answering the questions (at most 8192 and 4096 tokens, temperature 0.6, top-p
+
+0.95 , top-k 20 ). The calibration queries are the query vectors of the answer tokens, capped at 50 ,000 
+
+per attention head by random subsampling. The repeat pass is the repetition conversation alone, that is, a single forward pass over the context, the repeat prompt, and a second copy of the context, without any generation. Queries are extracted on-policy, following Zweiger et al. (2026): layer 0 is compacted with the original queries, and for each later layer the same sequences are run through the model with the already compacted earlier layers in place, so every layer is compacted against the queries it receives at inference. 
+
+Replication and uncertainty. Each cell is the mean over five replicate runs with explicit seeds, and the grey number is the standard error over these runs; a single run is noisy to about ±1.5 points at n = 894 and ±2.0 at n = 400 , comparable to many method gaps, so we only trust orderings that survive the seed error bars. These standard errors measure generation noise under fixed contexts and questions, not uncertainty over the population of contexts, and LongHealth contributes only four composite contexts; generalization rests on the spread of the margins across the eight combinations in Appendix D. Full-context ceilings come from seed-replicated runs without compaction under the same protocol. 
+
+Timing conventions. Pipeline time is the average wall-clock per context spent on calibration query generation plus compaction, in seconds. It excludes prefilling the context to extract its cache, answer generation, and answer extraction, all of which are common to all methods. Query-free methods therefore report compaction time alone. All runs are single-job SLURM runs on machines with H200 GPUs, launched with the same tooling, so times are comparable within a table; comparisons across models should be treated as indicative. Every table splits calibrated methods by calibration tier, repeat-pass above self-study; AM-OMP-CS uses self-study queries and sits in the self-study group. 
+
+Defaults. The method defaults were fixed once on Qwen3-4B with QuALITY at 50 × and reused unchanged for every other model, benchmark, and ratio: the mass-term scale γ0 = 1 , so that γ is the RMS norm of the full-cache outputs; the ridge λ0 = 0 .01 , applied relative to the mean diagonal of P ⊤ 
+
+> S
+
+PS on the candidate pool rather than as an absolute penalty; the block size nb = 32 deletions per elimination step; the candidate pool of m = min {T, ⌈4t⌉} entries; the threshold τ = 0 .3 on the retained fraction t/T above which a head is left to plain eviction; and, in the final refit, the bound | log wj | ≤ β = 3 on the served logit biases, that is, wj ∈ [e−3, e 3], the interval that Table 18 refers to. Appendix E varies γ0, the pool, and the threshold; Appendix B describes how each hyperparameter enters the algorithm. 22 Preprint. Under review. C.2 WHERE THE TIME GOES 
+
+Query generation sets the cost of the self-study tier. Self-study query generation is a sampled generation pass over the context and costs the same whichever method consumes the queries: 29 to 
+
+33 seconds per QuALITY article and 193 to 341 per LongHealth context on the dense models, 3.4 to 
+
+5.8 ms per token, and 162 and 1062 seconds on Qwen3-30B-A3B, whose mixture-of-experts decod-ing runs four to five times slower per token under vLLM. A repeat pass, including re-extraction of its query vectors, costs 5 to 160 seconds at 50 × on the dense models and on Qwen3-30B-A3B with QuALITY, and about 300 seconds on Qwen3-30B-A3B with LongHealth; the query-free methods need no pass at all. Table 3 splits the self-study pipeline for LOO, KV-S URGEON , and AM-HAK, which consume the same queries. At 50 ×, compaction is 3 to 25% of the pipeline for all three, so the spread of their pipeline times in Appendix D, 2 to 12% , comes entirely from the compaction step, while the order-of-magnitude gaps are between tiers. 
+
+Compaction grows with the retained fraction. The compaction step of KV-S URGEON costs 
+
+1.4× that of LOO at 50 × and 1.8 to 2.3× at 5×, because the block solve grows with the candidate pool: the log-log slope of compaction time against the retained fraction is 0.45 to 0.6 for LOO and AM-HAK and 0.65 to 0.95 for KV-S URGEON , and since query generation does not depend on the compaction factor, the compaction share rises from about 20% to 50 –60% across the grid on the dense models. Gemma-3-12B’s compaction is small because five of every six layers use sliding-window attention and only the global layers are compacted.                                              
+
+> Query gen. LOO KV-S URGEON AM-HAK Model, benchmark (s) 50 ×5×50 ×5×50 ×5×
+> Qwen3-4B, QuALITY 33 7.7 29 10.5 53 7.0 28 Llama-3.1-8B, LongHealth 274 66 284 93 578 57 277 Gemma-3-12B, QuALITY 29 1.2 4.8 1.7 11 1.1 4.8 Qwen3-30B-A3B, QuALITY 162 5.5 20 ––4.6 20 Qwen3-30B-A3B, LongHealth 1062 47 –65 –––
+
+Table 3: Where self-study pipeline time goes. Query generation is the sampled self-study pass, in seconds per context; it does not depend on the method or on the compaction factor. The remaining columns are the compaction step alone, in seconds per context, at 50 × and 5× for the three methods that consume the same queries. Means over all seeded runs; the sums of query generation and compaction differ from the pipeline times of Appendix D by up to 15% , which is run-to-run timing variation. ‘–’ marks cells not measured. 
+
+# D FULL RESULTS 
+
+The tables that follow cover one model and benchmark combination each and report QA accuracy and pipeline time for every method at all five compaction ratios, under the protocol of Appendix C. The conventions are the same throughout and are stated once here. Rows are grouped as in Table 1, query-free, repeat-pass, and self-study, separated by midrules, and the best accuracy per ratio within each group is bold; an entry is underlined when it trails the bold entry by at most two standard errors of the difference, computed from the two seed standard errors, so that bold without any underlined entry in the same group and column marks a separation beyond seed noise. Time is pipeline time per context in seconds; LongHealth contexts are about eight times longer than QuALITY articles, so every method costs roughly an order of magnitude more there. ‘–’ marks ratios a method does not reach: AM-OMP and AM-OMP-CS are capped because their solver cost grows with the retention budget. Summarization replaces the context by a model-generated summary of it. We use three prompts that lead to summaries of different lengths; the summary length is not a size parameter, so summarization has no table row, and Table 1 and Figure 1 report the prompt whose resulting cache size was closest to 50 × compaction. 
+
+Observations across the grids. Three regularities are not visible in Table 1. First, mild com-paction saturates: averaged over the eight combinations, the self-study methods span 54 .7 to 59 .3
+
+23 Preprint. Under review. points at 100 × but only 72 .9 to 73 .7 at 5× against a ceiling of 74 .0, and Llama-3.1-8B on QuAL-ITY reaches its ceiling of 62 .7% at 20 ×, so that combination is informative only at 50 × and 100 ×.Second, KV-S URGEON is never behind beyond noise at the cell level: it is bold in 32 of the 40 
+
+self-study cells and within noise of the best in the other eight, and its largest deficit anywhere is 1.3
+
+points, to an AM-OMP variant costing far more. Third, KV-S URGEON -fast is bold or within noise in 37 of the 40 repeat-pass cells and separated from every other repeat-pass method in all 16 cells at 
+
+50 × and 100 ×; its three losses beyond noise are all at 10 × and 5× and at most 1.8 points. 
+
+Query-free baselines. Q-Filters, StreamingLLM, and the L2 key-norm heuristic use the same optimized per-head budgets as every other method and need no calibration pass. Q-Filters is the best of them at every ratio, with a mean of 46 .5% at 50 × over the seven combinations that report all three, where KV-S URGEON -fast reaches 63 .8% on the same seven for about forty more seconds per context, so at this compaction, calibration is necessary. D.1 LONG CODE ARENA 
+
+Table 12 reports project-level code completion on Long Code Arena (Bogomolov et al., 2024) with Qwen3-4B-Instruct-2507, the experiment behind the last paragraph of Section 4.2. The benchmark is the large context configuration of its project-level code completion task: each datapoint is a repository snapshot at a fixed commit, one held-out completion file, and a list of target lines in that file. 
+
+Contexts and questions. We walk the test split in order and keep the first snapshot of each not-yet-seen repository whose Python files plus completion file fit 120 ,000 Gemma-3 tokens, until 20 
+
+repositories are collected; the dataset order and commit hashes are recorded, so the selection is deterministic. The context of a repository is the concatenation of its non-empty .py files in snapshot order, each preceded by a header with its path; the completion file itself is not part of the context. The median context is 73 ,298 Qwen tokens (range about 45 k to 95 k). Every listed target line with non-blank content is one question, n = 650 in total. A question shows the path of the completion file and its prefix, all lines before the target, in a code fence, and asks for exactly the next line; prefixes longer than 16 ,000 characters are truncated to their tail at a line boundary, which affects two questions. The prefix is part of the question, not of the compacted context, so compaction is tested through the repository context alone. The answer is generated inside an open code fence with at most 64 new tokens. 
+
+Compaction and scoring. As for LongHealth (Appendix H), each repository is compacted in chunks: consecutive files are packed into chunks of at most 10 ,000 tokens without crossing file boundaries, about nine per repository, each chunk is compacted at the target ratio, and the com-pacted chunks are concatenated. Head budgets, calibration, final refit, method configurations, and the five-seed protocol are identical to the LongHealth cells; seeds affect calibration-query sampling and generation, not the fixed set of repositories and questions. A completion is correct when its first generated code line, after dropping empty lines and fence lines and stripping surrounding whites-pace, matches the reference line exactly; accuracy is the mean over the 650 questions. Time is query generation plus compaction per repository. The full-context ceiling under the same questions and scorer is 40 .6% , and the query-free baselines reach 22 to 23% from the file prefix alone, so the effective range of the benchmark is about 22 to 41 points. 
+
+Results. At 100 × no calibrated method is more than 0.4 points above the best query-free baseline, so the budget rather than the selection rule limits accuracy there. From 50 × on, the calibrated methods separate. KV-S URGEON and KV-S URGEON -fast match AM-OMP within uncertainty at 
+
+50 × with 9.7× and 21 .5× less pipeline time, KV-S URGEON has the highest point estimate at 20 ×
+
+and 10 ×, and at 5× every calibrated method except KVzip and KVMerger is within 1.8 points of the ceiling. OBCache is again the strongest ported method, and AM-OMP-CS is the only prior method within uncertainty of KV-S URGEON at 20 ×, at 6.7× its cost. 24 Preprint. Under review. 
+
+Accuracy (%) Pipeline time (s) Method 100 × 50 × 20 × 10 × 5× 100 × 50 × 20 × 10 × 5×
+
+L2 key-norm 37.0 ±0.3 37.9 ±0.4 41.2 ±0.6 51.1 ±0.3 64.2 ±0.3 0.7 0.6 0.5 0.6 0.6 Q-Filters 47.1 ±0.7 52.4 ±0.5 62.0 ±0.2 66.5 ±0.3 69.9 ±0.2 0.5 0.6 0.5 0.5 0.6 StreamingLLM 40.4 ±0.6 44.7 ±0.4 52.0 ±0.4 58.4 ±0.4 64.2 ±0.2 0.7 0.5 0.5 0.8 0.7 KVzip 48.0 ±0.4 49.8 ±0.4 61.6 ±0.4 69.1 ±0.5 70.5 ±0.2 16 17 21 26 40 H2O 60.0 ±0.5 62.3 ±0.4 68.2 ±0.4 70.3 ±0.4 71.3 ±0.2 16 17 20 27 40 OBCache 60.1 ±0.3 62.4 ±0.7 68.3 ±0.6 70.2 ±0.3 71.3 ±0.1 16 17 22 27 41 KVMerger 53.7 ±0.4 57.2 ±0.5 63.7 ±0.4 68.6 ±0.1 70.3 ±0.2 36 42 55 76 106 AM-HAK-fast 56.7 ±0.3 58.1 ±0.5 66.5 ±0.3 70.8 ±0.5 71.9 ±0.1 15 17 20 28 38 KV-S URGEON -fast 62.4 ±0.1 65.9 ±0.4 68.9 ±0.3 71.3 ±0.5 71.9 ±0.2 14 16 22 27 28 AM-HAK 59.9 ±0.2 64.1 ±0.9 69.0 ±0.2 71.5 ±0.2 71.7 ±0.4 35 37 41 61 65 AM-OMP-CS 62.2 ±0.6 65.7 ±0.4 70.6 ±0.2 71.8 ±0.3 – 51 84 277 919 –AM-OMP 62.4 ±0.4 66.4 ±0.2 70.1 ±0.2 – – 117 314 1700 – –LOO 61.5 ±0.5 65.6 ±0.2 70.2 ±0.2 71.4 ±0.2 72.3 ±0.3 37 38 43 61 66 KV-S URGEON 63.4 ±0.4 66.8 ±0.3 70.2 ±0.2 71.6 ±0.5 72.3 ±0.5 37 41 50 68 91 
+
+Table 4: QuALITY with Qwen3-4B. Full-context ceiling 72 .1 ± 0.3% .
+
+Accuracy (%) Pipeline time (s) Method 100 × 50 × 20 × 10 × 5× 100 × 50 × 20 × 10 × 5×
+
+L2 key-norm 38.2 ±0.8 37.5 ±0.4 36.0 ±0.6 51.8 ±0.5 64.8 ±0.8 7.0 4.9 4.9 6.0 5.3 Q-Filters 37.6 ±0.4 43.6 ±0.4 56.2 ±0.6 69.1 ±0.5 76.5 ±0.4 4.8 4.8 5.1 5.4 5.2 StreamingLLM 34.6 ±0.5 39.4 ±0.7 42.9 ±0.8 55.4 ±0.3 64.2 ±0.4 5.3 5.6 5.2 4.6 5.6 KVzip 31.8 ±1.0 39.9 ±0.8 64.6 ±0.6 75.9 ±0.3 77.7 ±0.4 206 222 278 363 530 H2O 49.6 ±0.6 58.4 ±0.4 71.2 ±0.4 76.2 ±0.9 78.5 ±0.2 203 222 277 370 529 OBCache 52.8 ±0.6 62.8 ±0.9 71.2 ±0.4 76.2 ±0.4 77.9 ±1.0 222 233 277 371 555 KVMerger 35.2 ±0.4 45.5 ±0.4 65.6 ±0.8 76.2 ±0.6 78.1 ±0.8 406 461 598 772 1122 AM-HAK-fast 43.5 ±0.9 53.5 ±1.3 73.0 ±0.8 78.5 ±0.4 79.3 ±0.5 204 215 263 357 530 KV-S URGEON -fast 57.5 ±0.8 66.9 ±0.5 72.5 ±0.6 76.7 ±0.6 78.8 ±0.5 193 220 297 415 628 AM-HAK 53.7 ±0.4 65.0 ±0.8 73.7 ±0.8 77.2 ±0.5 78.3 ±0.4 331 349 409 512 696 AM-OMP-CS 57.8 ±1.0 65.9 ±1.1 74.5 ±0.9 79.1 ±0.5 – 586 1091 4518 16653 –AM-OMP 59.3 ±0.3 65.5 ±0.6 76.0 ±0.5 – – 1678 4884 29489 – –LOO 53.6 ±0.4 64.2 ±1.2 74.2 ±0.5 77.5 ±0.5 78.5 ±0.5 353 359 426 551 701 KV-S URGEON 59.1 ±0.5 67.8 ±0.8 74.8 ±0.7 77.8 ±0.7 78.8 ±0.4 359 387 523 749 1227 
+
+Table 5: LongHealth with Qwen3-4B-Instruct-2507. Full-context ceiling 80 .5 ± 0.8% .
+
+Accuracy (%) Pipeline time (s) Method 100 × 50 × 20 × 10 × 5× 100 × 50 × 20 × 10 × 5×
+
+L2 key-norm 38.0 ±0.4 40.2 ±0.5 48.1 ±0.5 56.4 ±0.5 60.6 ±0.1 0.5 0.5 0.5 0.5 0.6 Q-Filters 40.8 ±0.3 47.7 ±0.8 56.7 ±1.0 60.9 ±0.4 62.5 ±0.3 0.6 0.6 0.6 0.6 0.6 StreamingLLM 38.7 ±0.5 43.2 ±0.4 49.0 ±0.7 54.1 ±0.4 59.2 ±0.2 0.5 0.5 0.6 0.6 0.6 KVzip 46.0 ±0.6 50.5 ±0.6 58.9 ±0.1 64.1 ±0.6 63.4 ±0.5 14 15 18 24 34 H2O 55.7 ±0.5 59.1 ±0.4 63.1 ±0.3 65.5 ±0.3 64.2 ±0.4 14 15 18 25 34 OBCache 56.9 ±0.4 59.8 ±0.3 63.2 ±0.4 63.7 ±0.1 64.1 ±0.7 15 16 19 25 35 KVMerger 49.4 ±0.6 54.0 ±0.7 59.6 ±0.4 62.4 ±0.3 63.4 ±0.5 32 37 48 62 92 AM-HAK-fast 54.9 ±0.7 58.7 ±0.6 63.0 ±0.4 63.8 ±0.3 64.5 ±0.4 14 15 18 24 34 KV-S URGEON -fast 58.5 ±0.6 61.0 ±0.4 63.4 ±0.6 63.8 ±0.6 64.3 ±0.8 13 15 20 22 29 AM-HAK 57.0 ±0.7 60.4 ±0.5 63.2 ±0.4 63.9 ±0.2 63.8 ±0.2 28 29 33 40 53 AM-OMP-CS 57.1 ±0.6 60.6 ±0.8 62.8 ±0.9 64.6 ±0.4 – 42 74 283 934 –AM-OMP 58.6 ±0.5 61.3 ±0.6 63.1 ±0.7 – – 101 288 1573 – –LOO 58.0 ±0.4 61.2 ±0.7 63.1 ±0.3 63.1 ±0.4 63.2 ±0.3 27 28 32 39 51 KV-S URGEON 60.3 ±0.7 62.3 ±0.5 63.2 ±0.6 63.9 ±0.3 63.5 ±0.5 28 31 39 50 68 
+
+Table 6: QuALITY with Llama-3.1-8B-Instruct. Full-context ceiling 62 .7 ± 0.5% .25 Preprint. Under review. 
+
+Accuracy (%) Pipeline time (s) Method 100 × 50 × 20 × 10 × 5× 100 × 50 × 20 × 10 × 5×
+
+L2 key-norm 33.0 ±1.2 34.1 ±1.6 37.6 ±0.7 50.5 ±0.3 62.5 ±0.6 5.6 5.9 5.6 5.6 6.2 Q-Filters 36.0 ±0.8 36.1 ±1.1 39.9 ±0.6 49.5 ±0.8 61.4 ±0.2 7.0 5.7 6.0 6.6 5.7 StreamingLLM 37.1 ±1.1 37.2 ±0.8 42.2 ±1.1 45.4 ±0.5 56.3 ±0.8 5.9 5.2 5.7 5.6 5.7 KVzip 23.3 ±1.1 41.0 ±1.4 63.5 ±0.7 71.3 ±0.4 72.7 ±0.5 173 179 229 302 437 H2O 43.5 ±0.7 50.6 ±0.9 66.2 ±0.6 70.2 ±0.5 73.2 ±0.6 173 189 220 307 437 OBCache 44.7 ±0.9 52.4 ±0.2 66.6 ±0.4 71.5 ±1.0 73.2 ±0.5 193 202 232 326 457 KVMerger 34.5 ±0.8 42.8 ±0.6 57.3 ±0.2 67.8 ±0.6 72.5 ±0.5 337 397 505 643 929 AM-HAK-fast 44.4 ±1.2 53.5 ±1.1 68.0 ±0.5 73.5 ±1.4 74.3 ±0.3 165 180 221 303 447 KV-S URGEON -fast 53.9 ±1.0 61.5 ±0.6 68.8 ±0.4 71.4 ±0.5 73.0 ±0.5 153 181 262 287 403 AM-HAK 48.4 ±1.1 58.2 ±0.5 70.2 ±0.7 72.8 ±0.3 70.5 ±1.0 291 311 350 456 614 AM-OMP-CS 47.9 ±0.5 55.8 ±0.9 66.1 ±0.5 – – 564 1209 5867 – –AM-OMP 49.2 ±0.6 57.3 ±0.9 69.0 ±0.6 – – 1650 5292 35590 – –LOO 44.5 ±1.7 59.1 ±0.6 66.8 ±0.7 70.8 ±0.9 73.4 ±0.6 295 323 360 453 620 KV-S URGEON 54.0 ±0.8 62.1 ±0.3 71.5 ±1.2 73.2 ±0.5 74.1 ±0.8 313 349 487 654 908 
+
+Table 7: LongHealth with Llama-3.1-8B-Instruct. Full-context ceiling 73 .0 ± 0.8% .
+
+Accuracy (%) Pipeline time (s) Method 100 × 50 × 20 × 10 × 5× 100 × 50 × 20 × 10 × 5×
+
+L2 key-norm 41.3 ±0.4 42.5 ±0.6 45.9 ±0.4 52.4 ±0.2 68.3 ±0.3 0.3 0.3 0.3 0.3 0.4 Q-Filters 46.3 ±0.6 50.9 ±0.3 59.9 ±0.7 70.6 ±0.4 77.3 ±0.1 0.3 0.4 0.4 0.4 0.3 StreamingLLM 44.7 ±0.5 47.5 ±0.3 53.8 ±0.1 60.9 ±0.4 70.2 ±0.3 0.3 0.3 0.3 0.3 0.3 KVzip 48.3 ±0.2 53.0 ±0.4 60.4 ±0.3 70.3 ±0.7 78.7 ±0.2 56 63 66 96 78 H2O 60.6 ±0.4 66.5 ±0.3 73.7 ±0.7 78.3 ±0.2 80.5 ±0.4 53 53 59 64 76 OBCache 61.7 ±0.2 67.3 ±0.4 73.1 ±0.5 78.4 ±0.3 80.0 ±0.3 62 63 61 67 88 KVMerger 58.2 ±0.6 63.9 ±0.6 72.2 ±0.2 75.1 ±0.3 79.2 ±0.1 76 82 94 100 122 AM-HAK-fast 60.3 ±0.3 65.8 ±0.5 71.2 ±0.3 77.3 ±0.4 79.5 ±0.3 51 52 56 63 77 KV-S URGEON -fast 66.5 ±0.2 71.4 ±0.3 76.5 ±0.2 78.4 ±0.4 80.2 ±0.3 53 54 61 65 76 AM-HAK 63.5 ±0.5 69.5 ±0.3 74.0 ±0.3 78.2 ±0.3 80.3 ±0.4 156 162 168 172 194 AM-OMP-CS 63.5 ±0.6 69.7 ±0.5 75.2 ±0.4 78.5 ±0.4 – 165 183 283 616 –AM-OMP 63.6 ±0.6 69.2 ±0.4 75.5 ±0.2 – – 199 300 996 – –LOO 64.7 ±0.3 69.6 ±0.3 74.9 ±0.3 78.3 ±0.7 79.8 ±0.1 163 165 170 173 214 KV-S URGEON 67.6 ±0.4 72.5 ±0.6 77.4 ±0.3 79.2 ±0.2 80.5 ±0.3 164 159 166 181 198 
+
+Table 8: QuALITY with Qwen3-30B-A3B. Full-context ceiling 80 .7 ± 0.4% .
+
+Accuracy (%) Pipeline time (s) Method 100 × 50 × 20 × 10 × 5× 100 × 50 × 20 × 10 × 5×
+
+Q-Filters – 43.2 ±0.5 – – – – – – – –OBCache 52.7 ±0.4 62.8 ±0.4 68.6 ±0.5 74.4 ±0.1 76.7 ±0.3 391 395 402 409 424 AM-HAK-fast 50.4 ±1.1 59.8 ±0.6 66.9 ±0.4 74.3 ±0.5 77.2 ±0.2 358 361 362 372 389 KV-S URGEON -fast 54.7 ±0.3 64.1 ±0.2 70.2 ±0.5 75.0 ±0.3 77.1 ±0.2 363 366 373 386 413 AM-HAK 51.4 ±0.4 61.4 ±0.4 69.8 ±0.5 73.7 ±0.1 76.8 ±0.3 1121 1129 1130 1159 1162 AM-OMP-CS 52.6 ±0.5 63.1 ±0.2 70.0 ±0.3 – – 1271 1569 3521 – –AM-OMP 53.3 ±0.2 63.9 ±0.6 – – – 2147 4011 – – –LOO 52.1 ±0.3 62.3 ±0.7 69.3 ±0.4 74.2 ±1.2 77.0 ±0.3 1109 1112 1131 1143 1159 KV-S URGEON 55.9 ±0.3 65.2 ±0.4 71.4 ±0.4 75.8 ±0.6 77.6 ±0.3 1124 1135 1149 1177 1211 
+
+Table 9: LongHealth with Qwen3-30B-A3B. Full-context ceiling 78 .3 ± 0.5% . Of the query-free methods, only Q-Filters at 50 × was run on this combination; KVzip, H2O, and KVMerger were not run. 26 Preprint. Under review. 
+
+Accuracy (%) Pipeline time (s) Method 100 × 50 × 20 × 10 × 5× 100 × 50 × 20 × 10 × 5×
+
+L2 key-norm 47.4 ±0.5 48.5 ±0.3 49.3 ±0.2 50.8 ±0.1 55.3 ±0.5 0.3 0.3 0.3 0.3 0.3 Q-Filters 53.2 ±0.5 55.9 ±0.3 61.7 ±0.4 65.4 ±0.4 68.2 ±0.4 0.3 0.3 0.3 0.3 0.3 StreamingLLM 49.3 ±0.6 50.2 ±0.3 52.4 ±0.5 55.7 ±0.3 61.4 ±0.4 0.3 0.3 0.3 0.3 0.3 KVzip 56.0 ±0.2 57.6 ±0.8 63.1 ±0.4 67.2 ±0.5 69.1 ±0.4 6.0 6.2 6.7 7.4 9.1 H2O 61.5 ±0.3 66.2 ±0.2 68.1 ±0.2 71.1 ±0.4 71.3 ±0.4 6.0 6.1 6.6 7.4 9.0 OBCache 62.7 ±0.3 66.6 ±0.4 68.0 ±0.1 70.5 ±0.4 71.2 ±0.2 6.19 6.47 6.84 7.54 9.39 KVMerger 56.5 ±0.2 61.1 ±0.2 64.8 ±0.4 67.6 ±0.3 69.3 ±0.2 12 12 15 19 25 AM-HAK-fast 59.5 ±0.2 62.2 ±0.4 66.8 ±0.5 69.3 ±0.4 69.5 ±0.3 6.1 6.2 6.7 7.4 8.9 KV-S URGEON -fast 65.2 ±0.3 68.1 ±0.5 70.4 ±0.8 71.0 ±0.6 70.6 ±0.2 6.0 6.5 7.4 8.8 11 AM-HAK 61.5 ±0.6 65.1 ±0.3 68.8 ±0.3 70.0 ±0.3 70.9 ±0.4 29 30 30 31 34 AM-OMP-CS 64.2 ±0.3 67.2 ±0.2 69.2 ±0.3 70.3 ±0.3 – 32 37 56 125 –AM-OMP 64.7 ±0.4 67.7 ±0.3 69.8 ±0.4 – – 38 59 180 – –LOO 60.5 ±0.3 65.1 ±0.5 68.6 ±0.3 70.5 ±0.4 70.4 ±0.4 29 29 30 31 33 KV-S URGEON 65.5 ±0.2 67.5 ±0.7 70.0 ±0.4 70.9 ±0.4 71.1 ±0.2 30 31 33 35 39 
+
+Table 10: QuALITY with Gemma-3-12B-it. Full-context ceiling 70 .6 ± 0.4% .
+
+Accuracy (%) Pipeline time (s) Method 100 × 50 × 20 × 10 × 5× 100 × 50 × 20 × 10 × 5×
+
+L2 key-norm 37.6 ±0.5 38.9 ±1.2 37.8 ±0.6 40.4 ±0.4 41.0 ±0.6 6.2 6.2 6.3 6.1 6.0 Q-Filters 38.4 ±0.2 39.0 ±0.7 39.4 ±0.9 44.5 ±0.8 53.9 ±0.7 6.0 6.1 6.3 6.1 6.1 StreamingLLM 40.9 ±0.3 39.5 ±0.9 39.3 ±0.6 42.0 ±0.3 44.4 ±0.6 6.1 5.9 6.0 6.1 6.3 KVzip 38.1 ±0.5 39.8 ±0.7 44.5 ±0.6 52.9 ±0.8 60.7 ±0.6 55 59 64 74 95 H2O 38.5 ±0.6 47.3 ±0.5 55.1 ±0.2 63.5 ±0.6 68.8 ±0.7 54 60 64 74 91 OBCache 41.3 ±0.5 50.2 ±0.8 56.1 ±0.4 64.0 ±0.8 69.7 ±0.5 59.2 59.9 66.4 75.1 95.3 KVMerger 33.7 ±0.6 36.1 ±0.8 42.5 ±0.6 50.1 ±0.9 59.2 ±0.6 97 106 140 170 239 AM-HAK-fast 41.5 ±1.0 45.6 ±1.2 54.6 ±0.8 61.8 ±0.6 66.0 ±0.7 57 59 80 73 96 KV-S URGEON -fast 45.6 ±0.6 52.1 ±0.4 61.1 ±0.3 66.5 ±0.7 71.2 ±1.1 53 59 71 97 138 AM-HAK 44.7 ±0.7 52.7 ±1.4 62.5 ±0.6 67.2 ±0.2 71.0 ±0.5 198 207 210 227 291 AM-OMP-CS 43.6 ±0.9 50.9 ±0.8 61.2 ±0.9 66.2 ±0.7 – 225 287 624 2048 –AM-OMP 45.5 ±1.2 54.5 ±0.9 61.9 ±1.0 – – 353 689 2831 – –LOO 42.5 ±0.7 49.6 ±0.7 60.6 ±0.6 67.2 ±0.7 69.8 ±0.7 206 205 213 218 249 KV-S URGEON 48.4 ±1.1 56.4 ±0.7 63.0 ±0.7 68.8 ±0.8 71.8 ±0.5 194 201 224 263 346 
+
+Table 11: LongHealth with Gemma-3-12B-it. Full-context ceiling 74 .5 ± 0.4% .27 Preprint. Under review. Table 12: Code completion accuracy (%) and pipeline time vs. compaction ratio on Long Code Arena project-level code completion with Qwen3-4B-Instruct-2507 (20 Python repository snap-shots, n = 650 next-line completions, exact match of the first generated line). Each entry is the mean over five seeds; the grey number is the standard error over seeds. Time is average query-generation plus compaction wall-clock per repository, in seconds. Full-context ceiling: 40 .6% . The best accuracy per ratio is bold; underlined entries are within 2pse 2 + se 2best of the best. ‘–’ marks ratios the AM-OMP solvers do not reach. 
+
+Accuracy (%) Time (s) Method 100 × 50 × 20 × 10 × 5× 100 × 50 × 20 × 10 × 5×
+
+StreamingLLM 22.6 ±0.2 23.3 ±0.2 22.0 ±0.1 24.5 ±0.1 32.5 ±0.1 7.62 8.07 7.78 8.18 8.39 
+
+L2 key-norm 23.2 ±0.1 23.4 ±0.1 23.4 ±0.2 23.4 ±0.1 27.6 ±0.2 7.45 8.55 8.77 7.70 8.12 Q-Filters 22.8 ±0.1 22.4 ±0.2 23.8 ±0.1 27.4 ±0.1 34.7 ±0.2 7.11 7.41 7.50 8.02 7.82 KVzip 20.5 ±0.2 22.4 ±0.2 28.6 ±0.4 36.2 ±0.5 38.3 ±0.2 217 232 292 379 596 H2O 22.5 ±0.1 24.1 ±0.3 30.9 ±0.2 36.4 ±0.2 39.4 ±0.2 221 230 307 385 572 KVMerger 13.5 ±0.2 15.1 ±0.2 24.4 ±0.1 31.7 ±0.2 35.9 ±0.2 490 554 688 962 1293 OBCache 22.0 ±0.2 25.4 ±0.3 32.7 ±0.2 37.2 ±0.2 39.2 ±0.3 235 243 309 391 554 AM-HAK-fast 22.2 ±0.4 23.7 ±0.3 32.4 ±0.1 37.4 ±0.1 39.1 ±0.3 222 245 287 384 536 AM-HAK 22.7 ±0.3 24.6 ±0.5 31.0 ±0.2 37.2 ±0.3 39.1 ±0.2 437 448 505 628 846 AM-OMP-CS 23.1 ±0.4 25.5 ±0.3 33.3 ±0.3 – – 649 1110 5128 – –AM-OMP 23.5 ±0.3 27.0 ±0.4 – – – 1646 5037 – – –LOO 22.6 ±0.3 25.3 ±0.2 32.5 ±0.2 37.2 ±0.2 38.8 ±0.4 444 469 534 661 872 KV-S URGEON -fast 22.8 ±0.2 26.5 ±0.2 33.1 ±0.3 36.9 ±0.2 39.8 ±0.1 204 234 297 407 542 KV-S URGEON 23.6 ±0.3 26.8 ±0.4 33.9 ±0.2 38.1 ±0.3 39.7 ±0.2 474 519 771 875 1322 
+
+28 Preprint. Under review. 
+
+# E COMPONENT ABLATIONS 
+
+This section holds every ablation of the shared pipeline and of KV-S URGEON behind Section 4.3 and Table 2: the shared pipeline components in Appendix E.1, compensation in Appendix E.2, and the efficiency and design choices in Appendix E.3. Every ablation runs on Qwen3-4B with QuALITY at 50 ×, changes one component of the pipeline of Section 3 at a time, and reports the mean over five seeds with one standard error over seeds. Two protocols are used and must not be mixed. The 50 -article protocol (Tables 13 and 15) is that of the main tables, 894 questions; its self-study controls are the KV-S URGEON , LOO, and AM-HAK entries of Table 1, and its time is pipeline time, calibration-query generation plus compaction. The 25 -article protocol (Table 14) uses the first 25 articles, so its accuracies are compared only against the reference row of the same panel and never against the main-table numbers, and its time is compaction only, because query generation is identical across arms. The fast-tier row of Table 13 was run with the fast configuration in use at the time of the ablation, whose reference values ( 65 .5% , 5.4 s) differ from the KV-S URGEON -fast entry of Table 1; it too is read only against its own control. Defaults are those of Appendix C. E.1 SHARED PIPELINE COMPONENTS : HEAD BUDGETS AND FINAL REFIT 
+
+Both components are inherited from attention matching (Zweiger et al., 2026) and applied to every calibrated method, so their effect is measured per method. Table 15 switches them independently for our methods and the attention-matching baselines; the ported eviction methods are walked through the same switches in Table 16. 
+
+Head budgets. The ablation replaces the optimized per-head budgets of Appendix C by uniform per-layer budgets at the same global ratio. It is the largest single lever, and it is not specific to KV-S URGEON : with the refit in place, KV-S URGEON loses 6.6 points, AM-HAK 6.9, and LOO 
+
+7.8. Under uniform budgets KV-S URGEON remains 2.4 points ahead of LOO and 3.0 ahead of AM-HAK, so the selection-rule margins of Section 4.3 do not depend on the optimized budgets. KVzip, the one baseline that sets its own head allocation from a global attention threshold, leads to the same conclusion: ported with the shared budgets and refit, it collapses under strong compaction, a median of 15 .3 points below KV-S URGEON -fast at 50 × and 100 ×, yet sits a median of 1.6 points below the ceiling at 5× (Appendix D); the deficit tracks how hard the compaction is, not how good the score is. 
+
+Final refit. The refit is ablated on the LOO support, where it can be switched off without touching selection (Table 13). Serving the selected keys with their original multipliers and values, which is plain eviction on the score of (13), costs 5.4 points against LOO with the refit. Across methods the two switches compound: the budgets are the larger lever, worth +4 to +8 points on top of the refit, and the refit adds +1 to +7 on top of raw compaction (Tables 15 and 16). The improvements are not the same for all methods, but KV-S URGEON is ahead in all three settings. Panel (c) of Table 14 decomposes the refit into its two solves on the KV-S URGEON support; it is kept as supporting evidence for Appendix H.1 and is not built on elsewhere. E.2 KV-S URGEON -SPECIFIC COMPONENT : COMPENSATION 
+
+Panel (b) of Table 14 isolates compensation. The surrogate, the 4t candidate pool, and the final refit are held fixed and only the compensating update of (12) is disabled, so that elimination proceeds greedily on the same surrogate saliencies. This costs 2.9 ± 0.8 points (seed-paired; 3.0 between the seed means of Table 2), and leaves greedy elimination no better than LOO selection on the same articles ( 64 .7% ). Two controls show that the gain is not a better standalone objective. Greedy elimination on the exact set loss of (4) instead of the surrogate reaches 65 .8% , 1.1 ± 1.3 below KV-SURGEON and too noisy on 25 articles to separate from either side. Shrinking the candidate pool to the support itself (pool factor 1 in panel (a)), which leaves the elimination nothing to eliminate or compensate, costs the same 2.9 points. The loss-level counterpart, that the compensated support moves toward an exact-refit oracle and that the compensation generalizes to held-out queries, is in Appendix F. 29 Preprint. Under review. E.3 EFFICIENCY AND DESIGN CHOICES 
+
+The remaining choices change accuracy by at most one standard error at their defaults and mainly control cost. 
+
+Mass term. Setting γ0 = 0 removes the mass term from the surrogate (Table 13). Accuracy moves by +0 .2 points, within one standard error, at 2 s more pipeline time. 
+
+Candidate pool. The elimination runs on the min {T, ⌈4t⌉} best entries per head by the score of (13) (panel (a) of Table 14). Widening the pool to the full cache changes accuracy by 0.2 points (66 .9 against 66 .7) and multiplies compaction time by 3.8 (10 against 38 s); halving it to 2t costs 
+
+1.0 point. 
+
+Mild-compaction fallback. Heads whose budget t exceeds 30% of their cache are served by plain eviction on the score of (13), without pool, elimination, or final refit: eviction is near-lossless there, the O(t3) value solve is the dominant cost and is largest exactly for these heads, and for t > N the value solve of (23) is underdetermined. Raising the threshold to 1.0 disables the fallback (Table 13). The accuracy of KV-S URGEON -fast is unchanged to the reported precision, and its pipeline time rises from 5.4 to 7.4 s, so the fallback saves 27% of the pipeline. The fallback was not ablated on the self-study tier. 
+
+Surrogate refresh. The frozen surrogate can be re-solved at the current normalization ratios μ every 
+
+256 or 64 eliminations, either reweighting the residuals of (17) (panel (a) of Table 14) or consistently, holding that mass fixed so that the refreshed objective agrees with the served output (panel (b)). At the default pool the reweighted refresh costs 1.6 and 1.9 points at 1.3× and 2.2× the compaction time, and the consistent refresh costs 1.3 ± 0.7 and 0.7 ± 0.2 points. Across the pool sweep the refreshed arm is never better than the frozen one beyond one standard error of the difference (the largest apparent gain is +1 .0 at pool factor 1, with standard errors of 1.0 and 0.7), while its cost grows to 11 × at the full cache. At the loss level, measured as in Appendix F, the refresh changes which positions survive, Jaccard 0.55 to 0.85 against the frozen support, without changing the exact loss after the final refit on calibration or held-out queries (within ±2% on every head where a refresh occurs). Freezing is therefore kept for cost, not because it regularizes. 30 Preprint. Under review. 
+
+Default Ablated Ablation Method Acc. (%) Time (s) Acc. (%) Time (s) 
+
+Final refit off (plain eviction on the selected support) 
+
+LOO 65.6 ±0.2 38 60.2 ±0.4 35 
+
+Mass term off ( γ0 = 0 )
+
+KV-S URGEON 66.8 ±0.3 41 67.0 ±0.4 43 
+
+Mild-compaction fallback off (threshold 0.3 → 1.0)
+
+KV-S URGEON -fast 65.5 ±0.2 5.4 65.5 ±0.2 7.4 
+
+Table 13: One-component ablations on Qwen3-4B with QuALITY at 50 ×, all 50 articles, five seeds, one standard error over seeds. Time is pipeline time per context (calibration-query generation plus compaction). The self-study controls are the runs of Table 1; the fast-tier control is the fast configuration in use at the time of the ablation and is read only against its own row. The head-budget ablation is in Table 15. 
+
+(a) Candidate-pool width and reweighted surrogate refresh ( KV-S URGEON )
+
+Refresh off Refresh every 256 Refresh every 64 Pool factor Acc. (%) s Acc. (%) s Acc. (%) s
+
+1 (LOO selection) 64.0 ±1.0 7.9 65.0 ±0.7 7.8 64.1 ±0.6 8.0 
+
+2 65.9 ±1.0 8.7 66.0 ±0.5 9.2 65.8 ±0.7 10 
+
+4 (default) 66.9 ±0.3 10 65.3 ±0.3 13 65.0 ±0.5 22 
+
+8 66.5 ±0.7 15 65.5 ±0.4 28 66.0 ±0.3 74 
+
+16 66.8 ±0.4 22 66.0 ±0.7 59 64.5 ±0.5 181 
+
+50 (full cache) 66.7 ±0.5 38 65.9 ±0.4 126 66.7 ±0.5 416 
+
+(b) Selection objective at pool factor 4, refresh off, same final refit 
+
+Variant Acc. (%) ∆ vs. KV-S URGEON 
+
+surrogate with compensation (KV-S URGEON ) 66.9 ±0.6 —surrogate, greedy, no compensation 63.9 ±1.6 −2.9 ±0.8 
+
+exact loss (4), greedy, no compensation 65.8 ±2.8 −1.1 ±1.3 
+
+LOO selection (same articles) 64.7 ±0.9 −2.1 ±0.4 
+
+consistent refresh every 256 65.6 ±1.5 −1.3 ±0.7 
+
+consistent refresh every 64 66.1 ±0.4 −0.7 ±0.2 
+
+(c) What the final refit re-solves on the KV-S URGEON support, pool factor 4
+
+Refresh off Refresh every 256 Final refit re-solves Acc. (%) s Acc. (%) svalues and multipliers (default) 66.9 ±0.3 10 65.3 ±0.3 13 values only, multipliers from the elimination 65.5 ±0.5 9.7 64.2 ±0.5 12 multipliers only, values from the elimination 52.7 ±0.8 12 42.7 ±1.6 12 none, both from the elimination 64.7 ±1.1 8.5 60.9 ±0.5 11 
+
+Table 14: Ablations under the 25 -article protocol on Qwen3-4B with QuALITY at 50 ×, five seeds, one standard error over seeds; accuracies are compared only within this table. The three panels are separate runs, so the same configuration can appear in more than one panel with slightly different numbers. Time is compaction only. (a) The pool holds the ⌈pool factor × t⌉ best entries per head by the score of (13); pool factor 1 is LOO selection with the shared final refit and 50 saturates at the full cache. The reweighted refresh re-solves the surrogate at the current normalization ratios μ every 
+
+256 or 64 eliminations. (b) Greedy rows eliminate on the stated objective without the compensating update of (12); the exact-loss row evaluates (4) on the current support at every step; the consistent refresh re-solves the surrogate at the current normalization ratios μ while holding that mass fixed, so that the refreshed objective agrees with the served output. Differences are seed-paired; run times were not recorded for this panel. (c) Whatever the final refit does not re-solve is kept from the coefficients B that the elimination itself leaves on the final support. 31 Preprint. Under review. Table 15: The two shared pipeline components switched independently, at 50 × on Qwen3-4B / QuALITY, 50 articles, five seeds: the support-fixed refit (values and multipliers) and the optimized per-head budgets. All methods use our calibration queries; the AM-OMP value reconstruction can-not be disabled. LOO with optimized budgets and no refit is the plain-eviction row of Table 13; the ported eviction methods are in Table 16. 
+
+uniform budgets optimized budgets Method Queries no refit refit + refit AM-HAK self-study 54 .1 ± 0.2 57 .2 ± 0.5 64 .1 ± 0.9
+
+LOO self-study 53 .2 ± 0.5 57 .8 ± 0.6 65 .6 ± 0.2
+
+KV-S URGEON self-study 58 .2 ± 0.4 60 .2 ± 0.3 66 .8 ± 0.3
+
+AM-OMP self-study – 59 .0 ± 0.5 66 .4 ± 0.2
+
+AM-HAK-fast repeat 48 .1 ± 0.5 53 .2 ± 0.3 58 .1 ± 0.5
+
+KV-S URGEON -fast repeat 56 .3 ± 0.5 58 .6 ± 0.5 65 .9 ± 0.4
+
+AM-OMP-CS self-study – 58 .1 ± 0.4 65 .7 ± 0.4
+
+32 Preprint. Under review. 
+
+# F COMPENSATION AT THE LOSS LEVEL AND CALIBRATION ROBUSTNESS 
+
+This section measures compensation directly on the attention-output loss rather than through ac-curacy, and then asks why repeat-pass calibration costs KV-S URGEON less than it costs the exact single-deletion score; Sections 4.3 and 4.4 cite the results. All measurements use Qwen3-4B and Llama-3.1-8B, five QuALITY articles, and every head, that is, 1440 head–article pairs on Qwen3-4B and 1280 on Llama-3.1-8B. Scores are computed from the self-study calibration queries, and the exact loss of (4) is evaluated on held-out benchmark questions the scores never saw; where the same measurement on the calibration queries differs, it is given in parentheses. 
+
+Compensation moves the support toward the oracle and generalizes. Against an oracle that runs the same greedy backward elimination but scores every candidate deletion by the exact loss (4) after refitting the remaining entries, on the 546 heads where this is affordable ( t ≤ 57 , Qwen3-4B), LOO selection sits 46% above the oracle’s loss and KV-S URGEON 25% (median relative loss 0.213 ,
+
+0.183 , and 0.146 ; random selection 0.243 ), closing 45% of the gap, and on the typical head the closed fraction is 39% ; the oracle is itself greedy, so these gaps are to exact-loss greedy elimination rather than to the optimal support. KV-S URGEON beats LOO on 84% of heads and still shares only 
+
+44% of its keys with the oracle set, because many near-equivalent supports exist. On the supports KV-S URGEON selects at 50 ×, the final refit leaves 25% of the raw-eviction loss on Qwen and 7.5% 
+
+on Llama on held-out questions, against 25% and 7.7% on the calibration queries: no head overfits, and on no head is the stored cache worse than eviction. On Llama raw eviction at 50 × leaves a loss larger than the output itself, so the final refit, which every calibrated method shares, removes most of the loss there, and selection decides the remainder. The coefficients the elimination itself produces already achieve most of this ( 31% and 8% ), but they cannot be served raw: on 1% of Qwen heads and 5% of Llama heads they exceed the eviction loss, and the final refit never does, which is the loss-level counterpart of the final-refit ablation of Appendix E.1. 
+
+Why repeat-pass calibration costs KV-S URGEON less than the exact score. Averaged over the eight combinations at 50 ×, replacing self-study queries with a single repeat pass costs KV-SURGEON 1.2 points (Table 1); the drop is 4.3 points on LongHealth with Gemma-3-12B and at most 1.3 elsewhere. At the level of rankings, recomputing the scores from a single repeat pass drops the Spearman correlation between the surrogate and the exact loss over random deletion sets, computed within one head and one set size, from 0.905 to 0.786 on Qwen and from 0.929 to 0.833 
+
+on Llama, and that of the score of (13) from 0.881 to 0.690 on both, so under cheap queries the surrogate loses about half the ranking fidelity the exact score loses. Cross-head comparability, which is what the per-head budget allocation consumes, is unaffected ( 0.81 and 0.91 at 98% deletion), so budget allocation does not need self-study queries. The surrogate is therefore less sensitive to the calibration queries than the exact score, not insensitive. 
+
+Hypothesis, not tested as a mechanism. The factor (1 − Pij )−2 in the exact deletion score amplifies exactly the queries a repeat pass gets wrong: a query for which one token receives unusually large attention contributes disproportionately to that token’s score, so an atypical repeat-pass attention pattern moves the exact ranking more than it moves the frozen surrogate, which contains no such amplification. This is consistent with the measurements above and is a candidate mechanism for the fast-tier robustness of Section 4.4, but it does not establish why AM-HAK degrades more strongly under the same change: AM-HAK ranks tokens by attention mass rather than by either of these objectives, so its larger calibration drop may have a different cause. 33 Preprint. Under review. 
+
+# G PORTED BASELINES : FROM THE PUBLISHED REGIME TO OURS 
+
+H2O, OBCache, KVMerger, and KVzip are serving-time or self-allocating methods; this section de-scribes how each is ported into the offline pipeline. Each port replaces the method’s own queries by the shared repeat-pass calibration queries, keeps its selection score, and serves the selected support with the shared per-head budgets and final refit of Section 3.4. For OBCache, the published observa-tion window of the last 64 prompt tokens is replaced by the calibration queries, and its second-order score is aggregated over them. Table 16 validates the port by walking each method from its pub-lished configuration to our pipeline one component at a time, at 50 × on Qwen3-4B with QuALITY under the 50 -article protocol of Appendix C. Table 16: Each external baseline from its published configuration to our pipeline, one component at a time, at 50 × on Qwen3-4B / QuALITY. As published: own queries (H2O and KVMerger use context prefill, OBCache its last-64 observation window, KVzip its repeat prompt with a global cross-head threshold), uniform or own head allocation, no refit. The remaining columns use repeat-pass calibration queries.                                                     
+
+> Method as published calib. queries + refit + budgets H2O 47 .4±0.548 .7±0.456 .1±0.462 .3±0.4
+> OBCache 43 .2±0.253 .0±0.458 .1±0.362 .4±0.7
+> KVMerger 47 .7±0.547 .6±0.251 .5±0.557 .2±0.5
+> KVzip 36 .4±0.342 .6±0.343 .5±0.649 .8±0.4
+
+The pipeline we use, inherited from Zweiger et al. (2026), is worth 9 to 19 points to each of the eviction methods we ported to the offline compaction regime; the budgets are the largest single step for KVMerger and KVzip, the refit for H2O, and the calibration queries for OBCache. Even with every component, the best ported rule, OBCache at 62 .4, stays 3.5 points below KV-S URGEON -fast (65 .9) at the same cost, and H2O at 62 .3 is within noise of OBCache. The two hybrid configurations with their own queries but our budgets (H2O 58 .7 ± 0.2, KVMerger 57 .5 ± 0.5) confirm that budgets alone do not close the gap. 34 Preprint. Under review. 
+
+# H CACHE CONSTRUCTION AND THE ROLE OF MASS MATCHING 
+
+Chunked contexts. Long structured contexts, for example records of several patients, are com-pacted one chunk at a time. At inference the compacted blocks sit side by side in one cache, and the softmax normalizes across all of them. Block b therefore competes for the attention of query 
+
+i through its total unnormalized mass mbi = P 
+
+> j∈Sb
+
+wj eZij . A compaction that shrinks a block’s mass re-routes attention away from that block and toward its neighbors, even when the reconstruc-tion within the block is perfect. In this setting the absolute mass of a block is meaningful, and it must be preserved alongside the outputs. Lemma 1 makes this precise, and Appendix H.1 discusses what mass matching can and cannot tell selection. 
+
+Lemma 1 (Serving next to other tokens) Suppose query i attends to the compacted cache together with further tokens whose unnormalized attention sums to ci
+
+PTℓ=1 eZiℓ for some ci ≥ 0 and whose output on their own is o′
+
+> i
+
+. Then the served output is 
+
+μi boi + ci o′
+
+> i
+
+μi + ci
+
+, compared with oi + ci o′
+
+> i
+
+1 + ci
+
+(24) 
+
+for the original cache. The two agree for every ci ≥ 0 and every o′ 
+
+> i
+
+if and only if boi = oi and μi = 1 .Proof. The softmax over all tokens has the denominator P 
+
+> j∈S
+
+wj eZij + ci
+
+P 
+
+> ℓ
+
+eZiℓ and the numer-ator P 
+
+> j∈S
+
+wj eZij bvj + cio′
+
+> i
+
+P 
+
+> ℓ
+
+eZiℓ . Dividing both by P 
+
+> ℓ
+
+eZiℓ and using P 
+
+> j∈S
+
+wj Pij = μi and 
+
+P 
+
+> j∈S
+
+wj Pij bvj = μiboi from (2) and (3) gives the first expression. The original cache is the case 
+
+S = {1, . . . , T }, w = 1, bV = V , for which μi = 1 and boi = oi. If boi = oi and μi = 1 , the two expressions coincide. Conversely, ci = 0 gives boi = oi; then both expressions are convex combina-tions of oi and o′ 
+
+> i
+
+with the weights μi/(μi + ci) and 1/(1 + ci) on oi, which agree for ci > 0 and 
+
+o′
+
+> i
+
+̸ = oi only if μi = 1 . □
+
+H.1 THE ROLE AND LIMITS OF MASS MATCHING 
+
+Attention matching (Zweiger et al., 2026), the strongest prior offline method, builds its selection and refit around reproducing each query’s attention mass on the compacted block. Two consequences of Section 3.2 matter here: for how the refit must be run, and for what mass matching can tell selection. 
+
+Per-position mass fitting is harmful alone and misleading as a selection signal. Non-uniform multipliers change the retained attention pattern, so the original values no longer reconstruct oi
+
+under the reweighted pattern. Fitting multipliers to mass targets without the subsequent value solve is therefore worse than no refit at all, which is why the refit of Section 3.4 applies the two solves only as an ordered unit. This is measured on the KV-S URGEON support: re-solving the multipliers alone scores 12 .0 points below serving the elimination’s own coefficients with no refit at all, and 
+
+14 .2 below the full final refit (panel (c) of Table 14). The mechanism is the reweighting rather than the mass objective in particular, so the ablation bounds what mass fitting costs when it is run alone and does not separate it from other multiplier objectives. Mass matching also misleads selection. Weighting the mass term heavily, formally γ → ∞ in (9), reduces the saliency (11) to its mass component, so that entries are ranked by their contribution to reproducing the attention mass alone, as in attention matching, and their values play no role in selection. This discards both factors that the exact loss (13) says matter, the value novelty ∥vj − oi∥2 and the heavy-hitter weight (1 − Pij )−2.At mild compaction the difference is small, because retained masses stay near one and all criteria agree. At aggressive compaction the two criteria part ways, and the exact loss sides with the output: replacing mass ranking by KV-S URGEON selection inside an otherwise identical pipeline is worth 
+
+1.3 points at 20 ×, 3.0 at 50 ×, and 4.3 at 100 × (Figure 2). None of this contradicts the published attention-matching results, because all of those results com-bine mass matching with a value refit. 
+
+Served multipliers in chunked caches. Lemma 1 says that a compacted block must preserve its attention mass when it is served next to other tokens. We test this on LongHealth with KV-SURGEON -fast on Qwen3-4B-Instruct-2507, where every context holds five patient records com-pacted as separate chunks. We vary only what multipliers the compacted entries are served with: the box-constrained refit of Section 3.4, the multipliers that the elimination itself leaves on the support, 35 Preprint. Under review. clamped to the same box, or unit multipliers. Values are refit in all three cases. Each setting is run in two regimes. In the first, all five records are compacted. In the second, two or three records are kept uncompacted next to the compacted ones; the two complementary masks {1, 3} and {0, 2, 4}
+
+are both run, so every record is served once compacted and once uncompacted, and accuracy is split by whether a question asks about a compacted or an uncompacted record. Table 17: Accuracy (%) by served multipliers, KV-S URGEON -fast on LongHealth with Qwen3-4B-Instruct-2507, five seeds, standard error over seeds in grey. All compacted : all five records compacted. Mixed : two or three records served uncompacted; accuracy on questions about the com-pacted and the uncompacted records is reported separately. Each column covers all 400 questions.                                                 
+
+> 100 ×50 ×
+> All Mixed Mixed All Mixed Mixed Multipliers compacted compacted uncompacted compacted compacted uncompacted Refit (default) 57.5 ±0.8 58.0 ±0.7 78.2 ±0.6 66.9 ±0.5 67.9 ±0.6 79.4 ±0.5
+> From the elimination 56.7 ±0.4 56.5 ±0.7 79.2 ±0.5 68.5 ±0.7 67.8 ±0.3 78.7 ±0.5
+> Unit 55.9 ±0.6 45.8 ±0.8 81.3 ±0.2 65.2 ±0.6 59.0 ±0.9 80.6 ±0.5
+
+Three things follow from Table 17. First, unit multipliers are harmless when everything is compacted the same but harmful when compacted cache chunks are served next to uncompacted ones. With all records compacted they cost 1.6 and 1.7 points. With uncompacted neighbors the same compacted records lose 12 .2 points at 100 × and 8.9 at 50 ×, while the uncompacted neighbors gain 1 to 3 points. This is the re-routing of Lemma 1: a block whose mass falls below the original hands attention to its neighbors. When every block is compacted, the deficits are similar and largely cancel. Second, mass-preserving multipliers make a block’s accuracy independent of its neighbors: for both fitted settings the compacted records score the same whether their neighbors are compacted or not. Third, the multipliers that the elimination leaves on the support, clamped to the box of (22), match the refit within seed noise, so the final multiplier solve can be skipped at no cost. Removing the mass term from the surrogate ( γ0 = 0 ) changes every cell within two standard errors, consistent with Appendix E.3: mass preservation is carried by the served multipliers, not by the selection. 
+
+# I MULTIPLIER DIAGNOSTICS FOR THE UNCONSTRAINED ELIMINATION 
+
+Table 18: Diagnostics of the unconstrained multiplier coefficients ˜w ≜ B:,d v +1 /γ that the elimina-tion leaves on the final support and of the served multipliers w after the box-constrained refit of (22), per ratio, on Qwen3-4B / QuALITY (seed 0, all 14,400 head instances; heads served by fallback or zero budget excluded). Columns: fraction of kept entries with ˜wj < 0 (pooled over heads, and the median head); fraction of heads with at least one negative coefficient; median per-head relative movement ∥w − ˜w∥2/∥ ˜w∥2 and correlation of w against ˜w; fraction of served multipliers pinned at the bounds e±β , β = 3 .                                               
+
+> Ratio ˜w < 0median head heads w/ any rel. move corr. at bounds
+> 100 ×0.42% 0.00% 13 .6% 0.81 0.39 1.3% /14 .7% 50 ×0.33% 0.00% 19 .4% 0.70 0.51 1.3% /9.4% 20 ×0.24% 0.00% 24 .6% 0.57 0.62 1.8% /5.9% 10 ×0.24% 0.00% 28 .0% 0.54 0.68 2.9% /5.5% 5×0.28% 0.00% 33 .0% 0.58 0.70 4.7% /4.1%
+
+Table 18 shows the impact of a relaxation that makes closed-form compensation possible, i.e., relax-ing the multiplier coefficients to real numbers instead of positive numbers. Fewer than half a percent of kept coefficients end negative at any ratio, the median head has no negative coefficients, and the numbers are unchanged between the repeat and self-study query tiers. The refit is calibration, not sign repair: it rescales substantially (median relative movement 0.5 to 0.8, correlation 0.4 to 0.7) and its pinning at the upper bound grows from 4% of multipliers at 5× to 15% at 100 ×, where restoring the attention mass requires the largest multipliers. Negative coefficients concentrate in early layers (1–6), and refit movement is largest in late layers (25–34). 36

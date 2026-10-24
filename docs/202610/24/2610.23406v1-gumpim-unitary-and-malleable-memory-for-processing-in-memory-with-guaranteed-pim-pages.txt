@@ -1,0 +1,1431 @@
+Title: GUMPIM: Unitary and Malleable Memory for Processing-in-Memory with Guaranteed PIM Pages
+
+URL Source: https://arxiv.org/pdf/2610.23406v1
+
+Published Time: Mon, 19 Oct 2026 01:15:14 GMT
+
+Number of Pages: 26
+
+Markdown Content:
+# GUMPIM: Unitary and Malleable Memory for Processing-in-Memory with Guaranteed PIM Pages ∗
+
+YILONG ZHAO, Shanghai Jiao Tong University, China and Shanghai Qi Zhi Institute, China 
+
+FANGXIN LIU †, Shanghai Jiao Tong University, China and Shanghai Qi Zhi Institute, China 
+
+YIWEI HU, Shanghai Jiao Tong University, China and Shanghai Qi Zhi Institute, China 
+
+ZONGWU WANG, Shanghai Jiao Tong University, China and Shanghai Qi Zhi Institute, China 
+
+MINGYU GAO, Tsinghua University, China and Shanghai Qi Zhi Institute, China 
+
+ONUR MUTLU, ETH Zurich, Switzerland 
+
+HE XIAN, Shanghai Qi Zhi Institute, China 
+
+HANLIN DONG, Shanghai Qi Zhi Institute, China 
+
+NAIFENG JING, Shanghai Jiao Tong University, China 
+
+XIAOYAO LIANG, Shanghai Jiao Tong University, China 
+
+HAIBING GUAN, Shanghai Jiao Tong University, China 
+
+QIANG XU, The Chinese University of Hong Kong, China 
+
+CHIXIAO CHEN, Fudan University, China 
+
+SHUXUE QUAN, Yizhu Technology Co., Ltd., China 
+
+TAO YANG, Huawei Technologies Co., Ltd., China, Shanghai Jiao Tong University, China, and Shanghai Qi Zhi Institute, China 
+
+LI JIANG †, Shanghai Jiao Tong University, China and Shanghai Qi Zhi Institute, China 
+
+> ∗
+
+Extension of Conference Paper [85], this submission adds 30% new material over the prior conference paper. This work was partially supported by the National Key Research and Development Program of China (No. 2024YFE0204300), the National Program for Support of Top-notch Young Professionals of China (No. 24Z130300727), National Natural Science Foundation of China (No. 62402311, 62072262, 61834006), Natural Science Foundation of Shanghai (No. 24ZR1433700), and Key Research and Development Program of Shanghai (No. 25LN3201200). 
+
+> †
+
+For correspondence, please contact Li Jiang and Fangxin Liu. Authors’ Contact Information: Yilong Zhao, sjtuzyl@sjtu.edu.cn, Shanghai Jiao Tong University, Shanghai, Shanghai, China and Shanghai Qi Zhi Institute, Shanghai, Shanghai, China; Fangxin Liu, liufangxin@sjtu.edu.cn, Shanghai Jiao Tong University, Shanghai, Shanghai, China and Shanghai Qi Zhi Institute, Shanghai, Shanghai, China; Yiwei Hu, arikara666@ sjtu.edu.cn, Shanghai Jiao Tong University, Shanghai, Shanghai, China and Shanghai Qi Zhi Institute, Shanghai, Shanghai, China; Zongwu Wang, wangzongwu@sjtu.edu.cn, Shanghai Jiao Tong University, Shanghai, Shanghai, China and Shanghai Qi Zhi Institute, Shanghai, Shanghai, China; Mingyu Gao, gaomy@tsinghua.edu.cn, Tsinghua University, Beijing, Beijing, China and Shanghai Qi Zhi Institute, Shanghai, Shanghai, China; Onur Mutlu, omutlu@gmail.com, ETH Zurich, Zurich, Zurich, Switzerland; He Xian, 51265900021@stu.ecnu.edu.cn, Shanghai Qi Zhi Institute, Shanghai, Shanghai, China; Hanlin Dong, 51265900020@stu.ecnu.edu.cn, Shanghai Qi Zhi Institute, Shanghai, Shanghai, China; Naifeng Jing, sjtuj@sjtu.edu.cn, Shanghai Jiao Tong University, Shanghai, Shanghai, China; Xiaoyao Liang, liang-xy@cs.sjtu.edu.cn, Shanghai Jiao Tong University, Shanghai, Shanghai, China; Haibing Guan, hbguan@sjtu.edu.cn, Shanghai Jiao Tong University, Shanghai, Shanghai, China; Qiang Xu, xuqiang@cuhk.edu.hk, The Chinese University of Hong Kong, Hong Kong, Hong Kong, China; Chixiao Chen, cxchen@fudan.edu.cn, Fudan University, Shanghai, Shanghai, China; Shuxue Quan, pine.quan@yizhu-tech.com, Yizhu Technology Co., Ltd., Suzhou, Jiangsu, China; Tao Yang, yt594584152@sjtu.edu.cn, Huawei Technologies Co., Ltd., Shenzhen, Guangdong, China and Shanghai Jiao Tong University, Shanghai, Shanghai, China and Shanghai Qi Zhi Institute, Shanghai, Shanghai, China; Li Jiang, ljiang_cs@sjtu.edu.cn, Shanghai Jiao Tong University, Shanghai, Shanghai, China and Shanghai Qi Zhi Institute, Shanghai, Shanghai, China. Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. Copyrights for components of this work owned by others than the author(s) must be honored. Abstracting with credit is permitted. To copy otherwise, or republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. Request permissions from permissions@acm.org. ACM Trans. Arch. Code Optim., Vol. 23, No. 3, Article 114. Publication date: September 2026. arXiv:2610.23406v1 [cs.AR] 16 Oct 2026 114:2 Zhao et al. 
+
+DRAM-based Processing-in-Memory (PIM) addresses the “memory wall” by executing computations directly inside main memory. However, memory interleaving and virtual memory limit contiguous data size visible to PIM units, constraining PIM task granularity. Fine-grained PIM tasks incur significant offloading overhead that negates PIM performance benefits. To mitigate this, existing PIM systems drastically isolate PIM memory or disable memory interleaving. These design choices, however, decrease the CPU memory bandwidth and introduce extra data transfer, leading to an additional “system memory wall” that degrades CPU performance and must be resolved to realize PIM’s full potential. In this work, we propose GUMPIM, a PIM system that allows interleaved CPU pages and non-interleaved PIM pages to coexist in a Unitary and Malleable memory space with Guaranteed PIM page allocation. GUMPIM enables zero-copy during PIM task offloading and maintains CPU memory bandwidth while ensuring low PIM offloading overhead. First, we propose a dual-track memory management mechanism consisting of independent page allocation and address translation for CPU and PIM pages. Second, we design GUMPIM interface hardware on PIM-enabled DRAMs to provide a dynamic address mapping for the different data layouts of CPU and PIM pages. Third, we propose a PIM-assisted page migration mechanism that transparently migrates pages while preserving CPU access bandwidth, thereby enabling guaranteed and accelerated PIM page allocation. GUMPIM requires no changes to commodity DRAM standards; all hardware modifications are limited to the DRAM side, ensuring full compatibility with existing CPUs and enabling immediate deployment on current HBMx- and LPDDRx-based PIM platforms. Our results show only <0.1% performance degradation for CPU workloads on GUMPIM, in contrast to the 25.8% degradation on PIM systems with memory interleaving turned off. For PIM workloads, GUMPIM reduces memory allocation and CPU-part computation times by 2.7× and 4.93×, respectively, yielding an end-to-end 2.3× speedup over a state-of-the-art baseline system. CCS Concepts: • Computer systems organization → Heterogeneous (hybrid) systems ; Multiple instruc-tion, multiple data ; • Software and its engineering → Memory management .Additional Key Words and Phrases: Processing in Memory (PIM), DRAM, Address Mapping, Page Migration 
+
+ACM Reference Format: 
+
+Yilong Zhao, Fangxin Liu, Yiwei Hu, Zongwu Wang, Mingyu Gao, Onur Mutlu, He Xian, Hanlin Dong, Naifeng Jing, Xiaoyao Liang, Haibing Guan, Qiang Xu, Chixiao Chen, Shuxue Quan, Tao Yang, and Li Jiang. 2026. GUMPIM: Unitary and Malleable Memory for Processing-in-Memory with Guaranteed PIM Pages. ACM Trans. Arch. Code Optim. 23, 3, Article 114 (September 2026), 26 pages. https://doi.org/10.1145/3833426 
+
+1 Introduction 
+
+DRAM-based Processing-in-Memory (PIM) is an emerging technology to overcome the “memory wall” [78] between processing units and main memory, by integrating computational components (PIM units) into DRAM. The PIM units are distributed in various levels of DRAM organization including arrays [16, 33, 51, 65, 71, 72, 81], banks [17, 19, 30–32, 48, 55] or ranks [8, 13, 56]. These PIM units can directly access data in their own memory device, bypassing the global memory bus and achieving much higher bandwidth than CPUs, making them suitable for memory-intensive operations. The PIM units are usually customized to accelerate specific memory-bottlenecked applications, such as graph computing, artificial intelligence, databases, genome analysis, and recommendation systems [1, 7, 9–11, 21, 24, 47, 49, 50, 53, 54]. General-purpose PIM systems emerge to support a broader range of workloads [2, 4, 6, 12, 17, 25, 26, 28, 29, 40, 56, 64, 70]. These systems allow memory-bound program segments to be offloaded to PIM units as PIM tasks while keeping compute-bound segments executed by CPUs. Therefore, the compatibility of these PIM systems with host CPUs becomes critical to ensure cooperation between CPUs and PIM units. Modern CPU-centric memory systems prevent PIM units from accessing large physically con-tiguous data due to two mechanisms: First, in virtual memory , the operating system (OS) maps 
+
+> © 2026 Copyright held by the owner/author(s). Publication rights licensed to ACM. ACM 1544-3973/2026/9-ART114 https://doi.org/10.1145/3833426 ACM Trans. Arch. Code Optim., Vol. 23, No. 3, Article 114. Publication date: September 2026.
+
+GUMPIM: Unitary and Malleable Memory for Processing-in-Memory with Guaranteed PIM Pages 114:3 
+
+contiguous virtual addresses to non-contiguous physical pages. Second, through memory in-terleaving , the system stripes consecutive cache lines across multiple channels, ranks, or banks (Fig. 1(b)), further limiting data contiguity for individual PIM units. Together, CPU-centric mech-anisms severely limit the effective granularity of PIM tasks. For example, PIM units in a DIMM DRAM bank cannot even access consecutive bytes within a data structure. D0  D1                                                
+
+> a[0] a[1]
+> D2 D3
+> a[2] a[3]
+> b[0] b[1] b[2] b[3]
+> c[0] c[1] c[2] c[3]
+> Element -wise OP
+> With Interleaving √
+> (c[:]=a[:]+b[:])
+> D0 D1
+> a[0] a[1]
+> D2 D3
+> a[2] a[3]
+> General -purpose OP
+> With Interleaving ×
+> (sum(a[:]))
+> D0 D1
+> a[0]
+> a[1]
+> D2 D3
+> a[2]
+> a[3]
+> Without Interleaving √
+> PIM0: sum(a[:])
+> PIM0: c[0]=a[0]+b[0]
+> PIM1: c[1]=a[1]+b[1]
+> PIM2: c[2]=a[2]+b[2]
+> PIM3: c[3]=a[3]+b[3]
+> PIM Memory Space
+> Main Memory
+> Current PIM System
+> (a)
+> D0 D1
+> 0x00 0x04
+> D2 D3
+> 0x08 0x0C
+> 0x01 0x05 0x09 0x0D
+> 0x02 0x06 0x0A 0x0E
+> 0x03 0x07 0x0B 0x0F
+> a0
+> a0
+> c0
+> a2
+> a1
+> a3
+> b
+> c2
+> c3
+> c0
+> c1
+> a1
+> c1
+> a2
+> c2
+> a3
+> c3
+> 2
+> 1
+> 3
+> 4
+> 5
+> PIM Page Data Layout
+> D0 D1
+> 0x00 0x01
+> D2 D3
+> 0x02 0x03
+> 0x04 0x05 0x06 0x07
+> 0x08 0x09 0x0A 0x0B
+> 0x0C 0x0D 0x0E 0x0F
+> CPU Page Data Layout
+> (b)
+> Unitary Memory Space
+> GUMPIM
+> b
+> 2
+> 1
+> 4
+> a0
+> c0
+> a1
+> c1
+> a2
+> c2
+> a3
+> c3
+> Legend :
+> CPU Compute
+> b=f 1(a) c=f 2(b)
+> CPU -PIM Move
+> PIM Compute a=f 3(c)
+> PIM -CPU Move
+> (c) (d)
+> 12
+> 3
+> 5
+> 4
+> D: Memory Device
+> Offload
+> (e)
+
+Fig. 1. (a) Data layout of PIM pages and (b) CPU pages. (c) Isolated memory space design in existing PIM systems. (d) Proposed unitary & malleable memory space. (e) Element-wise and general-purpose operations with/without memory interleaving. 
+
+When offloading PIM tasks, the CPU needs to take a series of actions, including context switching [77] and locking memory regions [75]. For certain general-purpose PIM systems, this offloading overhead is even more than 50 𝜇 s [17]. Such offloading overhead results in PIM units having to process more data at each offload to amortize the cost. This requires PIM units to have access to even larger contiguous regions of data (like in Fig. 1(a)), further contradicting the design of modern CPU-centric memory systems. To ensure PIM efficiency, existing systems resort to extreme measures that incur significant overhead or degrade CPU performance. (i) Isolated memory space. A dedicated PIM memory space is physically isolated from main memory, as shown in Fig. 1(c) [17, 18, 57]. The CPU accesses this space via physical addresses, enabling manual placement of data on specific memory modules. However, PIM task offloading requires explicit data transfers between the two spaces over the memory bus (Steps 3 and 5 ), introducing an additional “memory wall.” (ii) Software data re-layout. CPU software explicitly reorganizes data layout to place contiguous blocks within a single memory module [17, 18, 34, 50, 56]. This further increases the offloading overhead – over 90% on tasks with frequent, fine-grained data re-layout as in BFS and NW, as evaluated on a real PIM system [31]. (iii) Globally disabling memory interleaving. Disabling memory interleaving can reduce the data re-layout overhead at rank and channel levels [17, 20, 56]. However, doing so greatly degrades CPU memory bandwidth, aggravating the “memory wall” between CPU and DRAM. To truly break the “walls”, a unitary, malleable memory space is essential for general-purpose heterogeneous CPU-PIM systems, as depicted in Fig. 1(d). CPU and PIM pages, with different data layouts (Fig. 1(a, b)), coexist in the memory space. This memory management strategy fulfills the requirements of PIM units for contiguous data layout while avoiding the negative consequences of the above extreme measures. First, the memory space enables zero-copy by eliminating data transfers (no 3 and 5 in Fig. 1(d)) during offloading. Second, CPUs access PIM pages efficiently and transparently without requiring software-level address remapping and data re-layout. Third, CPU bandwidth is preserved as in CPU-centric systems because CPU pages can still leverage standard memory interleaving. To preserve compatibility with existing CPU hardware and OS, the following challenges should be addressed. (i) CPU and PIM page coexistence. A unitary memory space requires the PIM unit to share the CPU-managed virtual memory, necessitating that adjacent virtual PIM pages be kept 
+
+ACM Trans. Arch. Code Optim., Vol. 23, No. 3, Article 114. Publication date: September 2026. 114:4 Zhao et al. 
+
+locally in PIM memory. (ii) Different data layouts. An efficient address mapping is necessary to support CPU and PIM pages with different data layouts. (iii) CPU accessing PIM pages. Efforts should be made to alleviate the bank conflicts when the host CPU accesses the non-interleaved PIM pages, which potentially degrades CPU memory bandwidth. (iv) Compatibility. Hardware modifications should primarily focus on the DRAM side to maintain compatibility with existing CPUs and motherboards. In this work, we propose GUMPIM, a general-purpose PIM system with a unitary, malleable memory space and dual-track memory management for CPU and PIM pages. Existing memory allocation and address mapping mechanisms for CPU pages are kept unchanged to preserve compatibility. For PIM pages, we propose chunk-based memory management to enable locality for PIM pages and maintain low address translation overhead. We propose GUMPIM interface hardware for efficient address mapping and improve memory bandwidth available to the CPU when it accesses CPU and PIM pages. Additionally, chunk-based memory management requires allocating contiguous memory for PIM pages, which existing CPU systems lack because memory fragmentation leaves only scattered, non-contiguous free regions [22, 66, 84]. We propose a PIM-assisted page migration mechanism to enable contiguous memory allocation for PIM pages. All our hardware modifications are limited to the DRAM side. An earlier version of this work (UM-PIM) was published in the proceedings of ISCA 2024 [85]. This journal version significantly extends the previous work with the following new mechanisms and results: (1) A PIM-assisted page migration mechanism that enables successful allocation of PIM pages while maintaining full compatibility with existing CPU-side hardware, and significantly accelerates the page allocation (Section 6). (2) A generalized design for dual-track memory management extended beyond the original architecture to support diverse DRAM types, including LPDDRx and HBMx, with complete implementation details that were previously only discussed at a high level (Section 7). (3) Evaluation of the memory allocation speedup with the proposed PIM-assisted page migration mechanism, and demonstration of the effectiveness of the unitary memory design on LPDDRx- and HBMx-based DRAM PIM (Section 8.4-8.6). Consistent with the design principle of the original UM-PIM [85], these new techniques also confine hardware modifications strictly to the DRAM side and ensure compatibility with the CPU-side hardware and DRAM standard protocol. The main contributions of this paper are: 
+
+• We identify the root cause of excessive data orchestration overhead in existing processing-in-memory systems: the additional memory wall imposed by isolated PIM memory spaces that are not directly accessible by the host CPU. 
+
+• We propose GUMPIM, a general-purpose PIM system with a unitary and malleable memory space, which incorporates dual-track memory management along with dedicated hardware support. We demonstrate that this approach naturally extends to other DRAM standards, including HBMx and LPDDRx, without PIM-side modifications. 
+
+• We design a high-level programming interface with collective communication primitives inspired by NCCL [63]. By exploiting the shared address space and fine-grained inter-PIM connectivity of GUMPIM, these primitives dramatically reduce synchronization and data movement overhead across PIM units. 
+
+• We introduce a PIM-assisted transparent page migration mechanism that dynamically con-structs large contiguous physical memory regions for PIM workloads, eliminating host-side fragmentation and enabling efficient and correct huge-page allocation. Our comprehensive evaluation results show that the dual-track memory management of GUMPIM provides 1.96× speedup on PIM workloads with only <0.1% performance degradation for CPU 
+
+> ACM Trans. Arch. Code Optim., Vol. 23, No. 3, Article 114. Publication date: September 2026.
+
+GUMPIM: Unitary and Malleable Memory for Processing-in-Memory with Guaranteed PIM Pages 114:5 
+
+workloads, over a state-of-the-art baseline system. The PIM-assisted page migration further reduces the memory allocation overhead by 2.7×. 
+
+2 Background 2.1 Address Mapping and Memory Interleaving 
+
+In modern systems, the virtual address (VAddr) is mapped to the DRAM hardware location in two steps. First, the memory management unit (MMU) translates the virtual address to the physical address (PAddr). The virtual page number (VPN) is translated to the physical page number (PPN) by the OS-managed page table, while the page offset is kept unchanged. After that, the memory controller maps the physical address to the hardware address (HWAddr) using the address mapping rule saved in the BIOS-defined target address decoder (TAD) register, which is fixed after boot. Memory interleaving enhances memory bandwidth by mapping adjacent data across different DRAM devices for parallel access. For example, the DDR4 DRAM hierarchy levels, in descending order of switching overhead, are row, rank, bank, column, and channel [41]. The simplest inter-leaving scheme maps lower-order address bits to memory hierarchy levels with lower switching overhead, (Fig. 2(a)). At the device level, devices (i.e., chips) are grouped to expand data bus width [41]. Individual devices are not separately addressable and share common bank address signal lines within a rank [41]. Therefore, they must be accessed simultaneously, and device-level interleaving cannot be controlled via CPU-side address mapping. To accommodate various access patterns, practical memory interleaving strategies often employ sophisticated mapping [14, 37, 67, 76, 79]. Nevertheless, they all depend on the high-order bits of the physical address to select rows due to significant row-switching overhead. Additionally, they scatter contiguous data across different banks and devices, which goes directly against good data mapping for PIM systems. PPN  Offset                                    
+
+> Ch_
+> addr
+> 611 12 36 50
+> Col_
+> addr
+> Ba_
+> addr
+> Ra_
+> addr
+> Ro_
+> addr
+> Col_
+> addr
+> De_
+> addr
+> 02356815 916 18 19 20 21 36
+> VPN Offset
+> 611 12 47 50
+> 000000x0038
+> 010000x0200
+> 010000x0208
+> 70
+> 00
+> 10
+> 000000x0000
+> 000000x0008
+> 00
+> 10
+> 000000x0010 20
+> Burst
+> Ch_
+> addr
+> Ro_
+> addr
+> Ba_
+> addr
+> Ra_
+> addr
+> Col_
+> addr
+> De_
+> addr
+> 028 929 31 32 33 34 36
+> 0x03FF
+> 0x0400
+> 0x0401
+> 0x0000
+> 0x0001
+> 0x0002
+> …
+> 26 25 10
+> …
+> …(a) (b)
+> PPN Offset
+> 611 12 36 50
+> VPN Offset
+> 611 12 47 50
+> 000000
+> 000010
+> 000020
+> 00001023 0
+> 010000
+> 010010
+> …
+> Virtual Address
+> Physical Address
+> Hardware Address
+> Physical Address Layout
+> of a bank with
+> Ch/Ra/De/Ba_addr =0
+> (non -contiguous )
+> Virtual Address
+> Physical Address
+> Hardware Address
+> (VAddr)
+> (PAddr)
+> (HWAddr)
+> Physical Address Layout
+> of a bank with
+> Ch/Ra/De/Ba_addr =0
+> (contiguous )
+
+Fig. 2. Physical address layout inside one memory bank ( 𝐶ℎ /𝑅𝑎 /𝐵𝑎 /𝐷𝑒 _𝑎𝑑𝑑𝑟 =0) and memory mapping rule for (a) CPU systems with memory interleaving turned on (b) PIM systems with memory interleaving off. 
+
+In contrast with CPUs, general-purpose PIM units require the ability to access a contiguous block of data in their own memory. Therefore, the ideal PIM address mapping maps lower-level memory hierarchy addresses to lower-order bits, as shown in Fig. 2(b), ensuring contiguous physi-cal addresses to reside inside a DRAM device. This requirement contradicts the CPUs’ memory interleaving. Current general-purpose PIM systems adopt a software-only approach to emulate the address mapping for PIM units. They allocate or reserve a large block of contiguous physical addresses as PIM memory space and lay out the data in the PIM memory space with CPU software [17, 31, 50, 75]. IMPICA [39] proposes to use huge pages to reduce the address translation over-head in PIM memory space. However, due to the byte-level memory interleaving in DRAM, these software-only methods introduce significant data re-layout and address mapping overheads. 
+
+2.2 Data Transfer Overhead in DRAM-based PIM 
+
+As we mention in Section 1, disabling memory interleaving preserves data continuity at the rank and channel levels, thereby eliminating their corresponding re-layout overhead [17, 20, 56]. However, 
+
+ACM Trans. Arch. Code Optim., Vol. 23, No. 3, Article 114. Publication date: September 2026. 114:6 Zhao et al. 
+
+the memory interleaving of lower-level hierarchies (e.g., device level) cannot be disabled via BIOS, necessitating software to re-layout the data. Fig. 3(c) depicts the breakdown of the data transfer time measured on UPMEM [75], whose PIM units are at DDR4’s bank level. Even with channel-and rank-level interleaving disabled, address translation and data re-layout still account for nearly 70% of the total transfer time. UPMEM SDK [75] provides a multi-threaded API to accelerate the above data transfer. However, this introduces a fixed preparation time for each transfer and leads to a non-negligible impact when the length of a single transfer is short. As shown in Fig. 3(b), the transfer time plateaus when the length of a single transfer is less than 4kB. Fig. 3(a) depicts the total transfer size and the number of transfers of different applications. When the total amount of transferred data is similar, applications with more and shorter transfers, e.g. NW, BFS, and UNI, exhibit a more significant transfer time. This underscores the need for general-purpose PIM systems to eliminate data transfer between the two memory spaces (i.e. PIM and CPU), and accelerate address mapping and data re-layout. 1E -1                       
+
+> 1E0
+> 1E1
+> 1E2
+> 1E3
+> 864 512 4K 32K 256K
+> Transfer  Time(ms)
+> Transfer Length (Byte)
+> 23.7% 26.0%
+> 74.2% 69.7%
+> 2.1% 4.3%
+> 0%
+> 20%
+> 40%
+> 60%
+> 80%
+> 100%
+> PIM -CPU CPU -PIM
+> (b) (c)
+> Transfer  Time  Breakdown PIM -CPU CPU -PIM PIM -CPU CPU -PIM Other
+> Addr Translation &
+> Data Re -layout
+> Memcpy Other
+> Addr Translation &
+> Data Re -layout
+> Memcpy
+> MLP
+> BFS UNI
+> NW
+> GeMV
+> SCAN -RSS RED
+> HST -S
+> SEL
+> 0
+> 10
+> 20
+> 30
+> 40
+> 50
+> 1E0 1E1 1E2 1E3 1E4 1E5 1E6 1E7
+> Data Transfer Size
+> (GB)
+> Number of Transfer s
+> (a)
+> 2.41E5
+> 725
+> 6.48E3 1.35E4
+> 494
+> 275
+> 468
+> 54.4 1.33E4
+> Transfer
+> Time
+
+Fig. 3. (a) Transfer time of benchmarks. (b) Transfer time across different sizes of a single transfer (contiguous data). (c) Time breakdown of Data transfer (length = 256KB). Measured with UPMEM SDK [75]. 
+
+Li et al. [58] compare the address translation overhead of hardware and software methods, finding that the hardware approach reduces overhead by 4.5×. Therefore, a hardware solution is necessary to reduce the dynamic address mapping overhead in PIM systems. 
+
+2.3 Dynamic Memory Mapping 
+
+Dynamic address mapping is widely researched in CPU systems [23, 38, 59, 62, 83]. DReAM [23] and PAE [59] add hardware on the DRAM memory side to dynamically recognize the better-performing address mapping and transparently change the address mapping method. However, this transparency hides device physical addresses from the host, failing to guarantee the operand co-location required by PIM units. Multiple physical mappings [38] and software-defined address mapping [83] enables dynamic mapping by configuring memory controllers and adding CPU-side hardware, respectively. However, these methods limit interleaving control to levels above the bank level due to memory controller constraints. Moreover, the method in [83] modifies the memory management model, requiring changes to the system software as well as hardware. It is important to enable control over the interleaving of all DRAM hierarchy levels solely via DRAM-side hardware modifications, without requiring changes to system software. 
+
+3 Dual-Track Memory Management 
+
+GUMPIM’s dual-track memory management adopts separate management for CPU pages and PIM pages in the unitary, malleable memory space, allowing both to be optimized without compromising the other. Global memory interleaving is turned on to preserve CPU memory bandwidth. On top of this interleaved memory space, we keep the existing virtual page management and address mapping rules unchanged for CPU pages to preserve compatibility, while proposing chunk-based memory management for PIM pages to enable locality. This section presents our approach for 
+
+ACM Trans. Arch. Code Optim., Vol. 23, No. 3, Article 114. Publication date: September 2026. GUMPIM: Unitary and Malleable Memory for Processing-in-Memory with Guaranteed PIM Pages 114:7 
+
+bank-level DIMM DRAM PIM systems [17], focusing on the address layout and access rules of the chunk-based scheme. The hardware implementation of this layout is presented in Section 4. 
+
+3.1 Chunk-based Memory Management for PIM Pages 
+
+On the software side of the GUMPIM system, the key idea to prevent the OS from arbitrarily mapping PIM pages in an interleaved memory space is to enforce a uniform distribution of PIM pages across all PIM units’ local memory. We thereby present chunk-based address management for PIM pages. A chunk is a large virtual address block, which is mapped to a contiguous block of physical addresses. In Linux, the chunk can be allocated through the transparent huge page (THP) mechanism. As mentioned in Section 2.1, most interleaving strategies map the Row address to the highest-order bits of the physical address. Based on this observation, if the chunk size ( 𝑆 𝐶 ) is large enough ( 𝑆 𝐶 ≥
+
+#Channels × #Ranks × #Banks × #Devices × row buffer size), with the global memory interleaving turned on, the chunk is evenly distributed across all memory banks. For example, the memory system configuration shown in Fig. 2 comprises 8 channels, 4 ranks per channel, 8 banks, and 8 devices per rank. If the chunk size is set to 256 MB, each bank would contribute 𝑆 𝐵 = 𝑆 𝐶 /( 8 × 4 × 8 × 8) =128kB of data, i.e., the PIM page size. This means that when a PIM chunk is allocated, each PIM unit gets a 128kB PIM page in its PIM local memory. 
+
+3.2 CPU Addressing PIM Pages 
+
+A preferred address layout inside PIM chunks is shown in Fig. 4(b), where adjacent addresses are preferentially mapped to the same PIM unit. Fig. 4(a) shows its corresponding address mapping, including the composition of the virtual, physical, and hardware addresses and their translation and mapping. VAddr[47:28] serves as the virtual chunk number (VCN) to select the chunk and is translated to the physical chunk number (PCN) that is used for recognizing PIM pages. VAddr[27:0] is the chunk offset and is passed unchanged to PAddr[27:0] during address translation. PAddr[27:17] in the chunk offset are mapped sequentially to channel, rank, bank, and device, encoding the unique identifier of the target PIM unit ( PIM unit ID ) for software tracking. Finally, PAddr[16:0] are mapped to row and column inside the 128kB PIM pages, referred to as PIM offset .In practice, one 128kB PIM page for each PIM unit might not be enough for PIM tasks, so multiple chunks are allocated. The CPU host program records the virtual chunk numbers of these chunks in an array ( 𝑉𝐶𝑁𝑠 ). Given the above layout, when the host CPU needs to compute the virtual address of a data byte in a PIM unit’s local memory, it must derive the byte’s location within the chunk’s virtual address space. Using Fig. 4(a) as an example, two 256MB chunks ( 𝑆 𝐶 =256MB) are allocated. The two chunks (with VCN= 0x7f3 and 0x7fE ) are mapped to physical addresses with PAddr[36:28]= 0x2 and 0xB , respectively. Suppose the CPU host program needs to locate the 𝑘 th 
+
+byte (e.g., 𝑘 =0x20002 ) within the concatenated data of all the PIM pages in PIM unit 0 ( 𝑖 = 0); the CPU can first derive which chunk the address belongs to ( 𝑁 ) and the PIM offset ( 𝑜 𝑓 𝑓 ) by: 
+
+𝑁 = 𝑘 /𝑆 𝐵 = 1, 𝑜 𝑓 𝑓 = 𝑘 mod 𝑆 𝐵 = 2 (1) and then computes the virtual address of this byte by: 
+
+𝑉 𝐴𝑑𝑑𝑟 = 𝑉𝐶𝑁𝑠 [𝑁 ] << 28 + 𝑖 × 𝑆 𝐵 + 𝑜 𝑓 𝑓 = 0x7fE0000002 (2) This virtual address is further translated to the physical address 0xB0000002 by the MMU and mapped to the hardware address by address mapping modules. 
+
+3.3 PIM Units Addressing PIM Pages 
+
+For memory isolation and correctness, each PIM unit must access only its designated PIM pages and be prevented from accessing CPU pages. However, since GUMPIM relies on the host OS to 
+
+> ACM Trans. Arch. Code Optim., Vol. 23, No. 3, Article 114. Publication date: September 2026.
+
+114:8 Zhao et al. Physical Address Layout of PIM Unit 0   
+
+> PIM Unit 0
+> PIM Page 0
+> 0x20000000~
+> 0x2001FFFF
+> PIM Unit 1
+> PIM Page 1
+> 0x20020000~
+> 0x2003FFFF
+> PIM Page 1
+> 0xB0020000~
+> 0xB003FFFF
+> PIM Unit 2
+> PIM Page 2
+> 0x20040000~
+> 0x2005FFFF
+> PIM Page 2
+> 0xB0040000~
+> 0xB005FFFF
+> PCN
+> Ch/Ra/Ba/De_addr
+> 36
+> Ro_addr Ro/Col_addr
+> VCN PIM Unit ID
+> 47
+> 027 28
+> 27 28
+> PIM Offset
+
+(a)     
+
+> 17 16 0
+> 0~0x800 0x2 0~0x1FFFF
+> 0~0x800 0~0x1FFFF 0xB
+> Chunk 0 : VCN =0x7F3 PCN =0x2
+
+(b)            
+
+> Ro/Col_addr Ro_addr
+> 017 25 16
+> PCN PIM Offset
+> PIMCN
+> 47 17
+> PIM Offset
+> 16 0
+> CPU PIM Unit  Chunk 0
+> Vaddr k=
+> 0~
+> 0x2000 0
+> PIM Page 0
+> 0x040000~
+> 0x05FFFF
+> Chunk 1
+> Vaddr k=
+> 0x 2000 0~
+> 0x 4000 0
+> PIM Page 0
+> 0x160000~
+> 0x160002 ~
+> 0x17FFFF
+> VAddr
+> PAddr /
+> /
+> /
+> HWAddr
+> VAddr
+> PAddr
+> Chunk Offset
+> PIM Unit ID PIM Offset
+> Chunk 1 : VCN =0x7FE PCN =0xB
+> Chunk 0 (256MB)
+> Chunk 1 (256MB)
+> Physical Address Layout of DRAM
+> 128kB
+> (PAddr)
+> (PAddr)
+> PIM Page 0
+> 0xB0000000~
+> 0xB0000002 ~
+> 0xB001FFFF
+> HWAddr
+> 17 16
+> MMU
+> PCL
+> k=0x 2000 2
+> k=0x 2000 2
+
+Fig. 4. Chunk-based management for PIM pages. (a) Address mapping. (b) Data layout. 0         
+
+> 50
+> 100
+> 150
+> 200
+> 250
+> 300
+> 0
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> 0.5
+> 4M 8M 16M 32M 64M 128M 256M 512M 1G
+> Chunk List Area Normalized Migration Cost
+> Area (mm 2)
+> Normalized Cost
+> Chunk Size (B)
+
+Fig. 5. Page migration cost and chunk list area under different chunk sizes. 
+
+allocate PIM pages from the CPU side, the PIM units are inherently unaware of these physical addresses at runtime. To address this, we introduce a dedicated virtual address space for PIM units and synchronize the physical chunk number information from the host CPU. In our example (Fig. 4), the two allocated chunks provide a total capacity of 256kB (2 · 𝑆 𝐵 ) for each PIM unit’s virtual and physical address spaces. Fig. 4(a) depicts the correspondence between PIM’s virtual address and hardware address. Notably, unlike the CPU’s address mapping, a PIM unit’s address does not contain its own PIM unit ID. Instead, VAddr[47:17] indicates the PIM-side chunk number (PIMCN). Suppose PIM unit 𝑖 = 0 accesses the same byte (the 𝑘 th byte, 𝑘 =0x20002 ) as in our example in Section 3.2; it generates 𝑘 as the virtual address. Then the PIM chunk number is 𝑁 = 1. The PIM chunk number is translated to the physical chunk number by the address translation circuit, i.e., the PIM Chunk List (PCL), which is presented in Section 4.2. The physical chunk number of the PIM side is the same as that of the CPU side (= 0xB ). With the same address mapping rule, they point to the same hardware address. Bits 16-0 of both the virtual address and the physical address represent the PIM offset ( 𝑜 𝑓 𝑓 = 2), which equals that of the CPU side. Finally, the physical chunk number and PIM offset are combined into the physical address 0x160002 and mapped to the same hardware address as the CPU side. 
+
+3.4 Chunk Size Selection 
+
+Chunk size is a critical system parameter. Generally, allocating a huge page larger than 4MB may require page migration to accommodate it. A larger chunk size inherently encompasses more occupied pages, thereby increasing the number of pages that must be migrated. Conversely, a small chunk size necessitates allocating more chunks to satisfy PIM units’ capacity demands. This in turn requires a larger PIM Chunk List to store PIM chunk numbers, increasing storage overhead. Fig. 5 displays the migration overhead and PIM Chunk List area across varying chunk sizes. Critically, since PIM memory allocations are typically long-lived and reused throughout the application execution, multiple runtime allocations and releases of PIM chunks can be largely avoided. Therefore, we prioritize minimizing the PIM Chunk List area and select 256 MB as the chunk size. In practice, this size can be adapted to any standard huge page configuration supported by the host OS. 
+
+4 Hardware Support for Page Layouts 
+
+This section details GUMPIM’s hardware design supporting the chunk-based address layout pre-sented in Section 3, using DIMM DRAM [17], whose hardware architecture comprises three layers, 
+
+ACM Trans. Arch. Code Optim., Vol. 23, No. 3, Article 114. Publication date: September 2026. GUMPIM: Unitary and Malleable Memory for Processing-in-Memory with Guaranteed PIM Pages 114:9 
+
+as shown in Fig. 6(a). On the CPU side, we configure the memory controller to apply distinct address mappings for PIM and CPU pages at and above the bank level, requiring no hardware modification. In each DIMM, we insert the GUMPIM interface, which integrates hardware modules into the RCD and DIMM buffer chips [56] to handle address mapping below the bank level and data re-layout for PIM pages. Inside each bank, we introduce a hardware module for PIM-side address translation. The adaptation to other DRAM types (LPDDRx and HBMx) is presented in Section 7. DRAM Ranks                              
+
+> GUMPIM Interface
+> In RCD
+> In DIMM Buffer
+> Devices
+> Bank
+> CPU Host
+> MMU
+> MCtrl
+> PAddr
+> DQ Bank Bank
+> DRAM
+> Array
+> PIM Unit
+> PIM Chunk
+> List (PCL)
+> Computing Unit
+> PCN
+> CPU
+> VAddr
+> TAD0
+> TAD1
+> DRAM Interface
+> Offset
+> PAddr
+> PIMCN
+> Data Path Command Path Address Path
+> CMD
+> HW
+> Addr
+> Rank Chunk
+> List (RCL)
+> PCN
+> CMD_r
+> De_addr
+> Ba_addr
+> HIT?
+> Burst
+> HW
+> Addr_r
+> DQ_r
+> Row
+> Migration
+> Table (RMT)
+> VAddr
+> MMU
+> PAddr
+> RCL & ATM
+> HWAddr
+> VCN Offset
+> VAddr
+> PCL
+> MemCtrl ( TAD1 )
+> Mem
+> Bus
+> 47 28 27 0
+> PCN Offset 1
+> Ch_
+> addr
+> 37 36 28 27 0
+> Ra_
+> addr
+> 27 -25 24 -23 36 -28, 16 -10 19 -17,9 -3
+> Col_addr [9:7] Ro_addr [:] Col_addr [6:]
+> Offset PIMCN
+> 9-0
+> 25 17 16 0
+> 25 -17,16 -10
+> VPN Offset
+> 47 12 11 0
+> MemCtrl( TAD0 )
+> PPN Offset 0
+> Ch_
+> addr
+> 37 36 0
+> Ra_
+> addr
+> 8-620 -19 36 -21
+> MMU 12 11
+> 15 -9
+> Ro_
+> addr
+
+(b) PIM Pages Address Mapping  (c) CPU Pages Address Mapping  
+
+> Ro_
+> addr
+> 22 -20
+> Ba_
+> addr Ba_
+> addr
+> 18 -16
+> Col_
+> addr
+> Ba_addr [:]
+> Col_
+> addr_r
+> Ro_
+> addr_r
+> Ba_
+> addr
+> De_
+> addr
+> RCL & ATM
+> PAddr
+> VAddr
+> CPU
+> HWAddr
+> PIM Unit
+> Offset PCN PAddr
+> (Mid)
+> (Real)
+
+(a) Architecture  
+
+> MBus
+> Re -layout
+> Cache (RC)
+> Command
+> Generator (CG)
+> Address
+> Translation
+> Module (ATM)
+> Col_
+> addr
+> (Remaining bits)
+> Ro_
+> addr
+> Ba_
+> addr
+> Col_
+> addr
+
+Fig. 6. (a) GUMPIM architecture. (b)(c) Address mapping path for PIM and CPU pages. 
+
+4.1 CPU-side Address Mapping 
+
+As mentioned in Section 3, CPU and PIM pages have different data layouts and require dynamic address mapping. For CPU pages, the address mapping path is kept unchanged as configured in the BIOS. The address mapping for a PIM page involves two steps: above-bank and below-bank address mapping. Above-bank address mapping is implemented by configuring the CPU’s BIOS. For below-bank address mapping, hardware modules are introduced on the DRAM side. This is because the intra-rank device organization is entirely transparent to the host CPU and cannot be configured via BIOS. 
+
+4.1.1 Above-Bank Address Mapping. For address mapping of hierarchies at and above the bank level (i.e., channel, rank, and bank in DIMM DRAM), we adopt the multiple address mappings technique [38]. With this approach, an address alias with a different address mapping is added by configuring the memory controllers through the BIOS. For example, in the Xeon processor, an alias can be implemented by appending a TAD region, 𝑇 𝐴𝐷 1, to the PCI configuration space. 
+
+𝑇 𝐴𝐷 1 points to the same memory space as the default 𝑇 𝐴𝐷 0 (Fig. 6(c)), but with a non-interleaved address mapping, as shown in Fig. 6(b). In our example with a 256GB memory system, the interleaved physical address space spans [0, 256GB), while the non-interleaved address alias spans [256GB, 512GB). Bit 37 of the physical address determines which TAD region an address belongs to. If bit 37 is 0, the address is from a CPU page, using 𝑇 𝐴𝐷 0 for address mapping. Otherwise, the address is from a PIM page and 𝑇 𝐴𝐷 1is used. After determining the used TAD, the memory controller performs partial address mapping. In this step, only physical address bits for rank, channel, and bank are mapped to the real hardware address. The remaining bits are transferred to the DRAM side GUMPIM interface for below-bank address mapping. This means that the hardware address generated by the memory controller at this step is an intermediate result and is to be further mapped by the GUMPIM interface presented in Section 4.1.2. To comply with the DRAM protocol, the remaining bits are divided into row and column addresses ( 𝐶𝑜𝑙 _𝑎𝑑𝑑𝑟 and 𝑅𝑜 _𝑎𝑑𝑑𝑟 in Fig. 6(b)) and sent to DRAM. 
+
+ACM Trans. Arch. Code Optim., Vol. 23, No. 3, Article 114. Publication date: September 2026. 114:10 Zhao et al. 
+
+4.1.2 Below-Bank Address Mapping. Dynamic address mapping of levels below the bank (i.e., row, device, and column), as illustrated in Fig. 6(b), is carried out by three main hardware modules, the Rank Chunk List (RCL), Address Translation Module (ATM), and Command Generator (CG), in the GUMPIM interface. The three hardware modules are integrated into the RCD chip, as shown in Fig. 6(a). The Rank Chunk List determines the page type, while the Address Translation Module maps the remaining bits of the intermediate hardware address to row, column, and device addresses. Command Generator (CG) generates a command with the real address for the DRAM interface. 
+
+Rank Chunk List . Each row of the Rank Chunk List stores the physical chunk number of one chunk. Upon receiving a row address, the highest 9 bits of the address are matched against the list. A hit (HIT=1) indicates a PIM page, while a miss (HIT=0) indicates a CPU page. 
+
+Address Translation Module and Command Generator . As depicted in Fig. 6(c), if the Rank Chunk List detects that the address belongs to CPU pages, the Address Translation Module keeps the row and column addresses unchanged. Otherwise, the Address Translation Module maps bits 9-7 of the original column address ( 𝐶𝑜𝑙 _𝑎𝑑𝑑𝑟 ) as the device address ( 𝐷𝑒 _𝑎𝑑𝑑𝑟 ), and other bits are left-shifted by 3 (zero-padded at the least significant bits) to generate the real column address (𝐶𝑜𝑙 _𝑎𝑑𝑑𝑟 _𝑟 ). The row and column addresses are sent to the DRAM interface for data access, and the device and bank addresses are sent to the Re-layout Cache (RC) for further data selection. We present the procedure in Section 4.3. After mapping the address, the Command Generator generates the real command for the DRAM interface. 
+
+Timing of Address Mapping. Although the GUMPIM interface is in the critical path between the memory controller and the DRAM interface, it preserves native DRAM device timings. Fig. 8(a) depicts a read ( RD ) request and its prerequisite requests, precharge ( PRE ) and activate ( ACT ). After receiving a precharge request, the GUMPIM interface starts to convert the address and then sends the real precharge request to the DRAM interface. The memory bus, GUMPIM interface, and DRAM interface form a pipeline. As a result, the DRAM timing 𝑡𝑅𝑃 and 𝑡𝑅𝐶𝐷 are kept unchanged. In effect, only a fixed delay 𝑡𝑈 𝐼 is incurred on end-to-end read latency without accumulating across pipelined commands, so its impact on the overall read latency is minimal. 
+
+4.2 PIM-side Address Translation 
+
+PIM Chunk List. The PIM Chunk List contains the physical chunk numbers allocated by the CPU, where each entry is indexed by its corresponding PIM chunk number ( 𝑁 ). When the PIM unit generates a virtual address, the PIM Chunk List looks up the 𝑁 th row and gets the corresponding physical chunk number. The physical chunk number is further combined with the PIM offset to obtain the physical address. 
+
+4.3 Data Re-layout 
+
+The DRAM is designed to access data at burst granularity [42–44]. Assume a DRAM burst size of 64B and a bit width of 64 bits. In each burst, the DRAM interface accesses 8B of data from every device to fully utilize the device-level parallelism. For example, as illustrated in Fig. 7, one burst consists of data 00 , 10 , . . . , 70 , which are distributed across all devices of a rank. However, according to the mapping rules of PIM pages, a consecutive 64B range of a PIM page, denoted as 
+
+PIM burst , is mapped to the same device. For instance, one PIM burst comprises data 00 , 01 , . . . , 07 .Accessing such a complete 64B range requires 8 normal burst accesses, with each device providing 64B of data. The remaining 7 × 64B, however, remain unused, resulting in a waste of memory bus bandwidth and requiring CPU intervention to filter out these unused cache lines. Therefore, we propose adding a Re-layout Cache module to buffer, re-layout, and assemble the contiguous 64B on the DRAM side, conserving memory bus bandwidth and mitigating the need for CPU involvement. 
+
+> ACM Trans. Arch. Code Optim., Vol. 23, No. 3, Article 114. Publication date: September 2026.
+
+GUMPIM: Unitary and Malleable Memory for Processing-in-Memory with Guaranteed PIM Pages 114:11 00 10 20 30  … 70 Burst0                                            
+
+> 00 10 20 30 …70 Burst1 01 11 21 31 …71
+> 00 10 20 30 …70 Burst7 01 11 21 31 …71 07 17 27 37 …77
+> (b)
+> Device 0
+> 00 01 02 …07
+> Device 1
+> 10 11 12 …17
+> Device 2
+> 20 21 22 …27
+> Device 7
+> 70 71 72 …77
+> Memory Bus 30 31 37
+> Sub -Buffer 0 Sub -Buffer 1 Sub -Buffer 7
+> MUX2
+> MUX1 MUX1 MUX1 MUX1
+> MUX2 MUX2 MUX2
+> …………
+> …
+> …
+> …
+> …SB0 SB1 SB2 SB7
+> 8B
+> (a)
+> Burst
+> De_
+> addr De_addr
+> =3
+> …
+
+Fig. 7. (a) RC-to-device connection. (b) Data re-layout with Re-layout Cache. 
+
+Re-layout Cache . The Re-layout Cache circuits are placed between the memory bus and the data signal line of the DRAM interface and are integrated into the DIMM buffer [56]. With a burst size of 64B and a bit width of 64, each Re-layout Cache contains eight sub-buffers (SBs), each consisting of eight cells that store 8B of data, as depicted in Fig. 7(a). Fig. 7(b) shows an example of reading a PIM burst from the third DRAM device ( 𝐷𝑒 _𝑎𝑑𝑑𝑟 =3), and Fig. 8(b) depicts the timing. The Address Translation Module converts the column address ( 𝐶𝑜𝑙 _𝑎𝑑𝑑𝑟 ) from the memory controller into the real column address ( 𝐶𝑜𝑙 _𝑎𝑑𝑑𝑟 _𝑟 ). Note that the lower 3 bits of 𝐶𝑜𝑙 _𝑎𝑑𝑑𝑟 _𝑟 are zero, as mentioned in Section 4.1.2. The Command Generator then generates 8 burst access commands ranging from column 𝐶𝑜𝑙 _𝑎𝑑𝑑𝑟 _𝑟 to 𝐶𝑜𝑙 _𝑎𝑑𝑑𝑟 _𝑟 + 7. At the end of each burst, the MUX1 of every sub-buffer is selected by the 𝐵𝑢𝑟𝑠𝑡 signal generated by the Command Generator, i.e., the 𝑖 th (𝑖 = 0, . . . , 7) burst fills the 𝑖 th sub-buffer. After the 8 bursts, all the sub-buffers are filled. Then the 𝐷𝑒 _𝑎𝑑𝑑𝑟 signal (=3) is used to select MUX2, and the 3 rd cell of each SB is pushed to the memory bus and transferred to the CPU side. RW                     
+
+> CMD
+> tRP tRCD
+> CMD_r
+> tRP tRCD tUI
+> (a) Read delay of CPU pages
+> CMD
+> DQ Burst0
+> CMD_r
+> DQ_r Burst0 Burst1 Burst7
+> DQS
+> tUI tCL tCCD *8 tRC tBL
+> (b) Read delay of PIM pages when RC not hits
+> tUI+tRC
+> (c) Read delay of PIM pages when RC hits
+> Burst0
+> tBL
+> ATM
+> PRE
+> ATM
+> PRE
+> ACT
+> RD
+> RD RD RD
+> RD
+> RD
+> ACT RD
+> ATM ATM
+> DQ_r
+> /DQ Burst
+> tCL
+> RC WW
+> MC: Memory Controller
+> UI :GUMPIM Interface
+> DI: DRAM Interface
+> ATM: Address Translation Module
+> RC :Re -layout Cache
+> R
+> MC
+> UI
+> DI
+> MC
+> DI
+> UI
+> tUI :GUMPIM Interface Address
+> Translation Delay
+> tRC : RC Read Delay
+
+Fig. 8. Timing of GUMPIM interface. 
+
+The Re-layout Cache enables fast data re-layout and filtering on the DRAM side without CPU participation. However, it does not prevent DRAM banks from reading redundant bytes. We adopt a delayed update scheme to improve the chances of using the redundant bytes already fetched into the Re-layout Cache, i.e., updating only on a Re-layout Cache miss. Fig. 8(c) shows the timing when data has already been fetched into the Re-layout Cache. When accessing data from PIM chunks, the Command Generator first checks whether the data has already been fetched into the Re-layout Cache by comparing the row, bank, and column addresses. If the data has already been fetched, the Command Generator can directly initiate the burst transfer by reading from the Re-layout Cache, which saves 𝑡𝐶𝐿 time. Therefore, to maximize performance, the compiler should explicitly optimize memory access patterns to improve the Re-layout Cache hit rate. 
+
+4.4 DRAM Instruction Support for Dual-Track Memory Management 
+
+We summarize the instructions that support dual-track memory management in Table 1. These instructions are implemented via MMIO operations exposed as normal memory read/write or 
+
+ACM Trans. Arch. Code Optim., Vol. 23, No. 3, Article 114. Publication date: September 2026. 114:12 Zhao et al. 
+
+register configurations [17, 75] rather than extending the CPU ISA or DRAM standard commands. Consequently, the instruction types, hierarchical organization, and state machine rules of the DRAM interface remain completely unchanged. Specifically, the ACN instruction appends an item to the PIM Chunk List and Rank Chunk List when a new PIM chunk is allocated, while the CCL 
+
+instruction clears the chunk lists upon program termination. Additionally, the CRC instruction flushes data in the Re-layout Cache to DRAM banks to avoid data inconsistency caused by the delayed update scheme. 
+
+Table 1. DRAM-PIM Instruction Extension.                  
+
+> Technique Command Parameter Description Dual-Track ACN Chunk No. Append chunk number to RCL & PCL Memory Management CCL -Clear RCL & PCL CRC -Write data in RC back to DRAM banks Guaranteed PIM SRMT Srcs & Dests Append (Srcs, Dests) row pairs to RMT Chunk Allocation CRMT -Clear RMT
+
+5 Software Support for GUMPIM 
+
+In this section, we provide API support for memory management and specific memory access modes. We also provide APIs for specific data transfer operations between PIM units, i.e., scatter, broadcast, and gather. 
+
+5.1 Memory Allocation 
+
+For CPU pages, we keep the malloc() function in glibc unchanged. For PIM pages, we define an API function malloc_pim( 𝑙𝑒𝑛 ) to allocate memory with length 𝑙𝑒𝑛 for all PIM units. The API calculates the required chunk count based on 𝑙𝑒𝑛 , allocates chunks through the mmap() system call, and marks them as THPs through madvise() . Due to demand paging, the CPU must access at least one byte per chunk to trigger physical page allocation. Since PIM units cannot handle page faults, the mlock() system call is invoked to prevent PIM chunks from being swapped out. Finally, the API queries /proc/pid/pagemap for the physical address and extracts the physical chunk number, which is then registered to the Rank Chunk List and PIM Chunk List via the ACN instruction. Upon program termination, the CCL instruction clears the two Chunk Lists. 
+
+5.2 Unit-Aware Memory Access 
+
+To simplify memory access across multiple chunks within a PIM unit, we provide unit-aware APIs that allow developers to access data by specifying the PIM unit ID and PIM offset, without manually computing virtual addresses. The unit-aware APIs are summarized as follows: 
+
+• pim_get_ptr( 𝑢𝑛𝑖𝑡 _𝑖𝑑 , 𝑜 𝑓 𝑓 𝑠𝑒𝑡 ) returns a pointer to the memory at the specified offset within the given PIM unit’s local memory, facilitating random access. 
+
+• pim_copy( 𝑑𝑠𝑡 _𝑢𝑛𝑖𝑡 _𝑖𝑑 , 𝑑𝑠𝑡 _𝑜 𝑓 𝑓 𝑠𝑒𝑡 , 𝑠𝑟𝑐 _𝑢𝑛𝑖𝑡 _𝑖𝑑 , 𝑠𝑟𝑐 _𝑜 𝑓 𝑓 𝑠𝑒𝑡 , 𝑙𝑒𝑛𝑔𝑡ℎ , 𝑑𝑖𝑟𝑒𝑐𝑡𝑖𝑜𝑛 ) han-dles memory copy operations with automatic cross-chunk boundary management, where 
+
+𝑑𝑖𝑟𝑒𝑐𝑡𝑖𝑜𝑛 specifies the transfer direction: PIM_TO_CPU , CPU_TO_PIM , or PIM_TO_PIM .
+
+• pim_iterator( 𝑢𝑛𝑖𝑡 _𝑖𝑑 _𝑙𝑖𝑠𝑡 , 𝑠𝑡𝑎𝑟𝑡 _𝑜 𝑓 𝑓 , 𝑒𝑛𝑑 _𝑜 𝑓 𝑓 ) provides an iterator interface to tra-verse consecutive data within one or multiple PIM units across chunk boundaries. These APIs provide a linear address space abstraction for each PIM unit, automatically handling the wrap-around at chunk boundaries and the crossing of chunk boundaries within a PIM unit’s linear address space. This enables straightforward operations like vector traversal and multi-operand alignment without the need for manual and error-prone address computation. 
+
+> ACM Trans. Arch. Code Optim., Vol. 23, No. 3, Article 114. Publication date: September 2026.
+
+GUMPIM: Unitary and Malleable Memory for Processing-in-Memory with Guaranteed PIM Pages 114:13 
+
+5.3 Performance Impact of Different Nested Loop Order 
+
+After PIM computation, CPUs must traverse the results for further processing or inter-PIM com-munication. The traversal order significantly impacts the Re-layout Cache hit rate and DRAM bandwidth. For instance, sequential traversal of a single device (with 8-way device interleaving) reads 8× redundant data from DRAM. Although the Re-layout Cache filters this redundancy before it reaches the memory bus, DRAM bandwidth utilization remains only 1/8. For example, in all-gather communication, which reads data from all PIM units and broadcasts it back, the loop structure (Fig. 9(d)) contains five nested loops: offset inside each PIM unit’s bank 𝑙 ,read/write bank addresses 𝑏 𝑟 /𝑏 𝑤 , and read/write device addresses 𝑑 𝑟 /𝑑 𝑤 . To maximize Re-layout Cache hit rate, device address loops ( 𝑑 𝑟 and 𝑑 𝑤 ) must be innermost. Specifically: (1) For reads, 
+
+𝑏 𝑟 and 𝑙 should be outside 𝑑 𝑟 ; (2) For writes, 𝑙 , 𝑏 𝑟 , and 𝑑 𝑟 should be outside 𝑑 𝑤 . Fig. 9(f) shows all-gather performance under different loop orders. Orders obeying these rules achieve higher Re-layout Cache hit rates and DRAM bandwidth, resulting in performance close to the CPU-page baseline (only 1.6× slower than the baseline). This optimization strategy also applies to general traversal operations (Fig. 9(e)). PIM 0              
+
+> PIM 1
+> PIM 2
+> PIM 3
+> PIM 0
+> PIM 1
+> PIM 2
+> PIM 3
+> for l in range(len/64):
+> for p in range(#pim) :
+> memcpy( src[p,l] ,dest[p,l] , 64)
+> for l in range(len/64):
+> for p in range(#pim) :
+> memcpy(src [l] , dest [p,l] , 64)
+> PIM 0
+> PIM 1
+> PIM 2
+> PIM 3
+> PIM 0
+> PIM 1
+> PIM 2
+> PIM 3
+> Mode Pesudo -Code
+> PIM 0
+> PIM 1
+> PIM 2
+> PIM 3
+> for i in range( I):
+> for j in range( J):
+> ...
+> dest[ i,j,...] =f(src 1[i,j,...] ,
+> src2 [i,j,...], ... )
+> (a) Scatter
+> (b) Broadcast
+> (c) Gather
+> (e) General Traversal
+> for l in range(len/64):
+> for p in range(#pim) :
+> memcpy( dest[p,l] ,src[p,l] , 64)
+> for l in range(len/64):
+> for br in range(#bank) :
+> for dr in range(8):
+> for bw in range(#bank):
+> for dw in range(8):
+> memcpy( dest[bw, dw, (br*8+dr)
+> *s+l] ,src[br, dr, l] , 64)
+> +
+> +
+> Mode Pesudo -Code
+> Time (ms)
+> Order of Nested Loop
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1
+> 0
+> 400
+> 800
+> 1200
+> 1600
+> RC Hit  Rate /
+> Normalized Read  BDW
+> Time RC Hit Rate Normalized Read BDW
+> 0
+> (d) All -Gather
+> (f)
+
+Fig. 9. (a-e) Inter-PIM-unit communication and CPU traversal on the results of the PIM computation. (f) Time, Re-layout Cache hit rate, and read bandwidth (normalized to CPU Page) of all-gather on 8 PIM ranks with different nested-loop orders. The data block size is 1024. Left: the order disobeys at least one rule. Middle: the order obeys all the rules. Right: an all-gather operation on CPU pages. 
+
+5.4 High-level APIs for Inter-PIM-Unit Data Transfer 
+
+We provide several high-level APIs for widely used inter-PIM-unit communication operations whose performance is significantly affected by the Re-layout Cache hit rate. Due to the significant cost of communication between PIM units, existing PIM systems often adopt a fork-join computing mode [17, 31, 50, 56]. therefore, we adopt communication modes from NCCL [63] and present the nested-loop order for these modes to better utilize the Re-layout Cache. 
+
+Scatter. Scatter reads a contiguous data block from a single DRAM bank and distributes its subblocks across all banks. Fig. 9(a) presents a scatter that involves 4 PIM units. In each iteration of the outermost loop 𝑙 , a burst length of data is read from each bank and written to the destination PIM bank. The Re-layout Cache in each rank buffers data from 8 devices and performs batch writes, thereby fully utilizing its locality. 
+
+ACM Trans. Arch. Code Optim., Vol. 23, No. 3, Article 114. Publication date: September 2026. 114:14 Zhao et al. 
+
+Broadcast. Broadcast reads a data block from a single DRAM bank and writes it to all banks. Fig. 9(b) depicts a broadcast originating from PIM 0. In each iteration of the outermost loop 𝑙 , a 64B block is read from PIM 0 and written to every PIM bank. This order fully leverages the locality of the Re-layout Cache. 
+
+Gather. Gather is the reverse of scatter, reading data blocks from all DRAM banks and consoli-dating them into a single bank. As shown in Fig. 9(c), PIM 0 gathers data from every bank. The outermost loop 𝑙 iterates over data block offsets, similar to scatter. By reading data with the same offset 𝑙 in adjacent iterations, the locality of the Re-layout Cache is fully utilized. 
+
+6 Guaranteed PIM Chunk Allocation 6.1 Memory Fragmentation and Chunk Allocation 
+
+As presented in Section 3.1, chunk-based PIM page management requires allocating a large block of contiguous memory space. However, allocating a chunk is challenging in modern operating systems due to severe physical memory fragmentation. Our experiments on a 256GB memory system show that even at only 25% memory occupancy, allocating a single 256MB chunk can fail. Although the OS attempts to form contiguous space via page migration, this approach falls short for two reasons: First, page migration overhead (~4 𝜇 s per page [84]) can offset PIM’s performance gains. Second, unmovable pages (e.g., slab and DMA pages that have strict access latency constraints) are scattered throughout the memory, preventing the OS from consolidating contiguous physical memory. Consequently, chunk allocation fails and falls back to normal 4kB pages, violating the contiguous memory requirement of PIM. Static memory reservation (e.g., hugetlbfs [74]) avoids migration but lacks flexibility and wastes memory for CPU applications. Thus, overcoming the latency and mobility bottlenecks of dynamic page migration offers a far more practical path to guaranteed chunk allocation. 
+
+6.2 Challenges in CPU-Assisted Page Migration 
+
+Page migration overhead fundamentally stems from three components: Translation Lookaside Buffer (TLB) shootdown, Page Table Entry (PTE) updates, and data copying. To reduce these costs, state-of-the-art CPU-assisted designs like Contiguitas [84] introduce hardware extensions in the Last-Level Cache (LLC) to buffer migrating pages, allowing host CPUs to access them during migration. This method reduces the page migration overhead by 2× by eliminating the need for locking and TLB shootdown, and enables migration of otherwise unmovable pages. Despite these improvements, this cache-based approach introduces two critical limitations. First, the migrating page copy is buffered in the LLC, forcing I/O devices to redirect accesses to the CPU-side cache and requiring substantial CPU-side hardware modifications. Second, because data must still be transferred between main memory and the CPU, migration overhead remains high. The memory copy accounts for 58% of the total migration overhead (TLB shootdown is excluded) according to our simulation. 
+
+6.3 PIM-Assisted Page Migration 
+
+PIM architectures offer a promising alternative to fundamentally alleviate migration bottlenecks and achieve flexible, on-demand chunk allocation. By offloading transparent page migration entirely to custom hardware components on the DRAM side, we can eliminate expensive bus-crossing data movements while keeping the migration process nearly transparent to the host CPU. The core insight of PIM-assisted page migration is to introduce an address redirection scheme in DRAM, coupled with data movement performed directly by the PIM units. This ensures that CPUs and I/O devices access the correct data throughout the entire migration process without 
+
+> ACM Trans. Arch. Code Optim., Vol. 23, No. 3, Article 114. Publication date: September 2026.
+
+GUMPIM: Unitary and Malleable Memory for Processing-in-Memory with Guaranteed PIM Pages 114:15 
+
+software intervention or memory coherence violations. We deliberately constrain all hardware modifications to the DRAM side, which is architecturally principled: DRAM serves as the ultimate memory layer that is physically shared and directly accessible via physical addresses by all system agents (e.g., CPUs, GPUs, and I/O controllers). Implementing address redirection directly inside DRAM leverages this universal visibility, enabling seamless, transparent access across all system agents throughout the migration process. 
+
+Row Migration Table (RMT). The Row Migration Table is a lightweight hardware component that resides in each memory bank and tracks data location and migration status, enabling row address redirection throughout migration (Fig. 10(a)). Each Row Migration Table entry contains two key fields: (1) a location field ( loc ) indicating whether the row has been physically migrated, and (2) a copying field identifying the row currently being migrated. Fig. 10(c) illustrates the redirection principle for three cases, covering all possible situations during migration. In case 1, a PIM unit is copying 𝑅 0 ( copying = 𝑅 0). The data being copied is loaded into the PIM buffer, and the Row Migration Table redirects the access to the PIM buffer if the CPU accesses 𝑅 0. In case 2, when the CPU accesses 𝑅 0 while the data is still in the source row ( loc = 0), the Row Migration Table redirects the access to the source row. In case 3, the migration of 𝑅 0 completes ( loc = 1), and the Row Migration Table routes the access to the new physical row 𝑅 2. This hardware-supported redirection ensures the correct data access during migration, maintaining coherence for CPUs and I/O devices until the OS updates the page tables. CPU Host                                    
+
+> MMU/
+> IOMMU
+> CPU
+> TLB
+> DRAM Ranks
+> Banks
+> DRAM
+> Array
+> PIM Unit
+> RMT
+> src dest
+> R0 R2
+> R1 R3
+> loc
+> 1
+> 0
+> R0
+> R2
+> Set
+> PTEs
+> 1
+> MCtrl
+> Update 3
+> 4Flush
+> 5Clear TAD0
+> TAD1
+> F0
+> F1 R0
+> R1
+> PAddr HW
+> Addr
+> CPU
+> Program
+> P0
+> P1
+> VAddr
+> Inv
+> R2
+> R3
+> PIM
+> Program
+> F2
+> F3
+> 1OS Set RMT
+> TAD0
+> TAD1
+> F0
+> F1 R0
+> R1
+> PAddr
+> CPU
+> Program
+> P0
+> P1
+> VAddr
+> Inv
+> R2
+> R3
+> PIM
+> Program
+> F2
+> F3
+> 2PIM Copy Data
+> TAD0
+> TAD1
+> F0
+> F1
+> PAddr
+> CPU
+> Program
+> P0
+> P1
+> VAddr
+> Inv
+> R2
+> R3
+> PIM
+> Program
+> F2
+> F3
+> 3OS Update PTE
+> P: Virtual pages F: Physical Frames R: A DRAM Row : The Space to Accommodate a PIM Chunk
+> TAD0
+> TAD1
+> PAddr
+> CPU
+> Program
+> P0
+> P1
+> VAddr
+> Chunk
+> R2
+> R3
+> PIM
+> Program
+> F2
+> F3
+> 5OS Clear RMT &
+> Allocate Chunk
+> P2
+> R0
+> R1
+> Buffer
+> set copy 2
+> R0
+> HW
+> Addr HW
+> Addr HW
+> Addr
+> 2
+> # of  Free Row  Stripes
+> Memory Utilization (%)
+> Samples Trendline
+> 0
+> 1E4
+> 2E4
+> 3E4
+> 4E4
+> 5E4
+> 6E4
+> 7E4
+> 020 40 60 80 100
+> (a) (b)
+> (c) (d)
+> RMT
+> src dest
+> R0 R2
+> …
+> loc
+> 0
+> Case 1: CPU Access R0 When PIM Copying R0
+> R0
+> MCtrl  DRAM Array
+> PIM Buffer
+> R0 Data R0 Copying:
+> Redirect to
+> PIM Buffer
+> RMT
+> src dest
+> R0 R2
+> …
+> loc
+> 0
+> Case 2: CPU Access R0 Before Copied
+> R0
+> MCtrl  DRAM Array
+> PIM Buffer
+> Rxx Data Rxx Copying:
+> R0
+> R0 RMT
+> src dest
+> R0 R2
+> …
+> loc
+> 1
+> Case 3: CPU Access R0 After Copied
+> R0
+> MCtrl  DRAM Array
+> PIM Buffer
+> Rxx Data Rxx Copying:
+> R0
+> R2
+
+Fig. 10. (a) (b) PIM-assisted page migration during chunk allocation. (c) Cases of CPU access to the migrating page. (d) Row stripe count under different memory occupancy. 𝐹 0 denotes the set of 4kB physical page frames whose backing storage is contained within a DRAM row 𝑅 0, since a typical DRAM row spans multiple page frames. 𝑃 0 denotes the set of 4kB virtual pages referencing 𝐹 0.
+
+Migration Workflow. When the PIM program allocates a chunk, the OS selects a candidate physical region. The OS identifies the occupied pages within this region and allocates an equivalent capacity of free physical pages via native memory allocation mechanisms (e.g., the Linux Buddy System [27]) to accommodate these pages. Fig. 10(b) illustrates the subsequent page migration process. The OS issues the SRMT instruction (summarized in Table 1) to initialize the Row Migration 
+
+ACM Trans. Arch. Code Optim., Vol. 23, No. 3, Article 114. Publication date: September 2026. 114:16 Zhao et al. 
+
+Table with source-destination row address ( src -dest ) pairs ( 1 ). The location field of every entry is initialized to 0. After the Row Migration Table is populated, the CPU triggers the PIM units to perform the migration row by row ( 2 ). To copy a row, the PIM unit first loads it entirely into the PIM buffer. Upon migration completion, if the buffered data remains unmodified, the PIM unit clears the buffer and sets the corresponding location field to 1. Otherwise, the PIM unit re-writes the dirty buffer to the destination row. This mechanism ensures that the CPU can always access the right data during migration. The CPU periodically polls the Row Migration Table to monitor progress, determining that the migration is finished once all location fields are set to 1. Subsequently, the OS performs the necessary software updates to ensure translation consistency, which include: (1) leveraging reverse mapping (rmap) to locate all virtual pages and page-table entries (PTEs) that reference the migrated physical pages, (2) updating those PTEs to point to the new physical destination ( 3 ), and (3) issuing a global TLB flush as in conventional page migration ( 4 ). Although the rmap phase may incur significant latency, it does not access the old physical frames, which have already been vacated, and therefore does not block the PIM program from utilizing the newly allocated chunk. Finally, the CPU issues a CRMT instruction (summarized in Table 1) to clear the entire Row Migration Table ( 5 ), preparing it for the next migration. To avoid the complexity of multi-level redirection or migration chains, the system enforces serialized chunk allocation by allowing a new allocation only after the Row Migration Table is fully cleared. This strict ordering ensures that any subsequent memory access or migration request starts with a clean Row Migration Table state, preventing circular lookups and ensuring that the destination of one migration does not prematurely overlap with the source of another. While this mechanism enables seamless in-DRAM redirection, a fundamental design question remains: why must this migration and redirection operate at the DRAM row level rather than the standard OS page level? We justify this granularity choice below. 
+
+6.4 Justification of Migration Granularity 
+
+Note that for each bank, the minimum page migration granularity of GUMPIM is an entire DRAM row. This constraint is imposed by the DRAM access protocol defined in JEDEC standards [42–44]. During each access, the memory controller first issues an ACT command with the row address, which physically activates the target row. Only afterward are column addresses sent via read or write commands to access data within the activated row. To comply with strict DRAM timing constraints, the Row Migration Table must resolve the target physical row address (either src 
+
+or dest ) immediately upon receiving the ACT command. Crucially, because the column address is not yet issued, the Row Migration Table cannot make decisions based on the column address. Otherwise, a sub-row migration would leave the Row Migration Table unable to determine the correct row to activate, inevitably causing subsequent column accesses to read corrupted data. Thus, per-bank migration must occur at the granularity of a complete DRAM row, typically 4–16kB per rank in DDR4 (e.g., 8 devices with 0.5–2kB each) [43]. At the system level, per-bank migration must be coordinated across interleaved memory channels. If only one channel’s bank were migrated, a page striped across multiple channels would become only partially migrated, breaking data contiguity. The OS must therefore coordinate migration at the granularity of a row stripe, which aggregates co-aligned physical DRAM rows across all interleaved channels (e.g., spanning 64kB in an 8-channel system with an 8kB row size). Accordingly, GUMPIM adopts this row-stripe granularity as its fundamental unit for both hardware redirection and software management. 
+
+Feasibility of Row-Stripe-Granular Page Migration. Row-stripe-granularity migration im-plies that when allocating a PIM chunk, the OS must scan the target memory range and allocate  
+
+> ACM Trans. Arch. Code Optim., Vol. 23, No. 3, Article 114. Publication date: September 2026. GUMPIM: Unitary and Malleable Memory for Processing-in-Memory with Guaranteed PIM Pages 114:17
+
+additional row stripes to accommodate existing occupied row stripes. Therefore, it is crucial that the system have sufficient free row stripes for allocation. We quantify free row-stripe availability under a realistic memory fragmentation scenario. Using a real Linux server configured as described in Section 8, we executed a randomized sequence of SPEC CPU 2006 benchmarks [36] over extended periods to induce representative memory fragmentation. During execution, we periodically sample the number of fully free row stripes (i.e., no page allocated within the row stripe), and plot the results in Fig. 10(d). Even at high occupancy levels (e.g., >90%), there are still over 5000 free row stripes, sufficient to accommodate the entire capacity of a chunk. This indicates that, under typical workloads and the Linux kernel’s page allocation policy, memory fragmentation smaller than a row stripe size can be effectively avoided. Consequently, the assumption of available destination rows for row-stripe-granular PIM-assisted migration is valid in practice. 
+
+6.5 DRAM Instruction Support for Guaranteed PIM Chunk Allocation 
+
+The instructions that support Row Migration Table management in guaranteed PIM chunk allocation are also summarized in Table 1. SRMT appends the src and dest pairs to the Row Migration Table. 
+
+CRMT is sent to clear the whole Row Migration Table after the PTEs are updated by the OS. 
+
+7 GUMPIM on Other DRAM Systems 
+
+In this section, we generalize our dual-track memory management to other memory architectures, including HBMx and LPDDRx. For these architectures that lack the device-level hierarchy, we show that DRAM-side hardware can be simplified without compromising the core dual-track management. This enables immediate deployment on existing PIM prototypes. Fig. 11(a,b) depicts the architectural support for our dual-track memory management on LPDDRx and HBMx. As both lack a device hierarchy, all remaining hierarchy levels are directly addressable by the memory controller, eliminating the need for below-bank address mapping (Section 4.1.2). Moreover, without interleaving across devices, the normal burst layout is inherently consistent with the PIM burst, so no data re-layout hardware is required (Section 4.3). In contrast, the CPU-side above-bank address mapping (Section 4.1.1) and PIM-side address translation (Section 4.2) remain necessary. The above-bank address mapping requires appropriate configuration of the memory controller to enable the desired address layout. The deployment and necessity of GUMPIM hardware modules are summarized in Table 2. LPDDRx Chip                     
+
+> Banks
+> DRAM
+> Array
+> PIM Unit PCL
+> Interface
+> Address Path
+> RMT
+> Host SoC
+> ARM CPU
+> MCtrl
+> AD 0
+> AD 1
+> MBus
+> Ch Ro Ba Pch Co 023 524 25 29 20 19 7
+> (c)
+> PPN Offset
+> 611 12 29 50
+> (a)
+> Ch Ro Ba Ra Co 023 524 26 28 20 19 7
+> (d)
+> PPN Offset
+> 611 12 29 50
+> HBMx Pseudo Channel
+> Banks
+> DRAM Array
+> PIM Unit PCL RMT
+> TSV
+> GPU
+> MCtrl
+> AD 0
+> AD 1
+> Iter -connect
+> 25
+> (b)
+
+Fig. 11. (a,b) Dual-track memory management on (a) LPDDRx and (b) HBMx. (c,d) Address mapping rules of PIM pages for (b) HBMx and (c) LPDDRx. 
+
+For LPDDRx, which is commonly used in mobile SoCs, the SoC vendors typically provide configurable address decoders (AD), similar to Intel’s TAD, that support multiple address-mapping regions [68]. In contrast, HBMx controllers are typically co-integrated with DRAM stacks and have fixed address mapping logic, but PIM vendors can customize them due to full control over the logic die [10, 80]. This flexibility ensures that our dual-track management can be adapted to HBMx                      
+
+> ACM Trans. Arch. Code Optim., Vol. 23, No. 3, Article 114. Publication date: September 2026. 114:18 Zhao et al.
+> Table 2. Deployment and Necessity of GUMPIM Components Across DRAM Technologies
+> Technique DIMM LPDDRx HBMx
+> Address Mapping MemCtrl MemCtrl MemCtrl (Above Bank) (SoC, Config) (SoC, Config) (DRAM) Dual-Track Memory Address Mapping ATM & RCL //Management (Below Bank) (DRAM) PIM Addressing PCL (DRAM) Data re-layout RC (DRAM) //Guaranteed Chunk Allocation RMT (DRAM)
+
+without host-side changes. The address mapping rules are illustrated in Fig. 11(c, d). These rules adhere to the principle that higher-level memory hierarchies are indexed by the high-order bits of the physical address. This mapping preserves spatial locality, ensuring that adjacent addresses map to the same memory bank whenever possible. Thus, the dual-track memory management adapts to LPDDRx and HBMx with significantly reduced DRAM-side hardware complexity, demonstrating the generality of the design. 
+
+8 Evaluation 8.1 Experiment Setup 
+
+Baselines. We compare GUMPIM with one CPU system and two PIM system baselines on DIMM, HBM3, and LPDDR5 DRAM. The system configurations are summarized in Table 3. The DRAM configuration is from the commercial DRAM PIM system UPMEM [17]. In the DIMM-based PIM system configuration, the bank count is smaller than that of standard DDR4 because of the additional PIM units. We adopt identical hardware configurations for all systems, except that half of the DRAM channel sockets are populated with PIM DRAMs in GUMPIM and PIM systems. In the CPU system, global memory interleaving is turned on. The PIM-Ion system turns on global memory interleaving and uses software to translate addresses and re-layout data [11]. The PIM-Ioff system turns off global memory interleaving at the rank and channel levels and uses software to perform address translation and data re-layout for the remaining DRAM hierarchies, as in [17]. Both PIM systems reserve a physical address space for PIM units. GUMPIM provides two address mappings for the two page types by configuring the memory controllers, as presented in Section 4.1.1. 
+
+Simulation. The performance of GUMPIM and baselines is evaluated with the GEM5 simulator [60] under the X86 ISA and by integrating Ramulator2 [15, 61] (based on Ramulator [52]) for DRAM modeling. We modify the address mapping in Ramulator2 and incorporate the latency of the added circuit models into the corresponding memory hierarchy, which is manifested as an increase in the read latency. The added address mapping logic completes within two clock cycles and operates in parallel with existing decoding stages, so the total read latency increases by only two cycles. The chunk-based non-interleaved address mapping alias of GUMPIM and the reserved PIM memory spaces for PIM systems are abstracted as NUMA nodes in the GEM5 simulator. The driver for the CPU to access the reserved memory space is ported from the UPMEM Driver [75]. PIM unit performance is measured with real-world UPMEM DPUs [17], and the PIM task latency is inserted into the PIM-task launch point of the CPU host program to obtain the overall computing time. The logic circuits used in the Rank Chunk List, Address Translation Module, and Re-layout Cache are synthesized through Synopsys Design Compiler with the TSMC 90nm technology library at a frequency of 2.4GHz, and the buffer array used in the Re-layout Cache is simulated with CACTI 7.0 [3]. The DRAM interface is estimated with CACTI-IO [45], and the DRAM die area is estimated with CACTI 7.0 [3]. The software data transfer functions of baseline PIM systems used in the CPU host program, including address translation and data re-layout, are from the UPMEM Software Development Kit (SDK) [75]. 
+
+> ACM Trans. Arch. Code Optim., Vol. 23, No. 3, Article 114. Publication date: September 2026.
+
+GUMPIM: Unitary and Malleable Memory for Processing-in-Memory with Guaranteed PIM Pages 114:19 
+
+Table 3. System Configuration 
+
+Host CPU Processor 8-Core O3CPU @3.2GHz L1/L2/L3 32kB, Assoc: 8 / 1MB, Assoc: 16 / 22MB, Assoc: 22. 64B Cache Line Size DIMM DRAM Systems DRAM DDR4-2400, 8GB/Rank, Bank/Device/Row/Column: 8/8/131072/1024 Timing Param [43] tBURST=3.32ns, tRCD=tCL=tRP=14.16ns, tRAS=32ns, tRRD=3.32ns, tXAW=13.328ns, tRFC=350ns, tWR=15ns, tWTR=5ns, tXS=340ns, tRTP=7.5ns, tRTW=tCS=1.666ns, tREFI=7.8us CPU System 8 DRAM Channels ×4 Ranks, Addr Map: Row-Rank-Bank-Column-Channel PIM Systems {4 Normal, 4 PIM Channels} ×4 Ranks (PIM-Ion/off, GUMPIM) Addr Map: Row-Rank-Bank-Column-Channel (PIM-Ion) / Channel-Rank-Row-Bank-Column (PIM-Off) HBM3 DRAM Systems DRAM HBM3-2Gbps, 1GB/Channel, Pseudo Channel/Bank/Row/Column: 2/8/32768/1024 Timing Param [44] tBURST=4ns, tRCD=tCL=tRP=7ns, tRAS=17ns, tRRD=3ns, tFAW=15ns,tRFC=350ns, tWR=8ns, tWTR=4ns, tRTP=3ns, tRTW=3ns, tREFI=3.9us PIM Systems {8 Normal, 8 PIM Channels} (PIM-off, GUMPIM); Addr Map: Channel-Pseudo Channel-Row-Bank-Column LPDDR5 DRAM Systems DRAM LPDDR5-6400, 1GB/Rank, Bank/Row/Column: 8/8/32768/1024 Timing Param [42] tBURST=5ns, tRCD=tRP=9.4ns, tCL=12.5ns, tRAS=21.3ns, tRRD=2.5ns, tFAW=10ns, tRFC=131ns, tWR=17.5ns, tWTR=6.3ns, tRTP=2.5ns, tCS=1.3ns tREFI=3.9us PIM Systems {4 Normal, 4 PIM Channels} ×4 Ranks (PIM-off, GUMPIM); Addr Map: Channel-Rank-Row-Bank-Column (PIM-Off) PIM Units PIM Unit UPMEM DPU [17] @500MHz, 16 Tasklets, at Bank level 
+
+Benchmarks. The benchmarks for evaluating GUMPIM and baselines are divided into two categories. 1) CPU workloads. CPU workloads run only on the CPU side for evaluating the impact of different memory interleaving strategies. We select 6 benchmarks from SPEC CPU 2006 [36]. 2) PIM workloads. In PIM workloads, the CPU offloads memory-intensive program segments to PIM units, and other segments are executed by the host CPU. We select 12 benchmarks from PRIM [30, 31], GAP [5], AiM [19], and PIM-ML [32]. All the benchmarks are summarized in Table 4. 
+
+Table 4. CPU and PIM Benchmarks. 
+
+CPU Workloads [36] (MPKI is from [82]) Benchmark lbm dealII mcf MPKI 0.55 0.09 0.92 Benchmark xalancbmk sjeng GCC MPKI 0.13 0.13 0.03 PIM Workloads Benchmark Parameter Benchmark Parameter Benchmark Parameter BFS [31] #node: 196608 UNI [31] len: 256M HST-S [31] len: 1.5M sparsity: 5e-5 TC [5] #node: 8k bins: 256 PR [5] Kronecker gen. SCAN-RSS [31] len: 8M NW [31] size: 64k #node: 8k SCAN-SSA [31] WFA [19] len: 20k×110 MLP [31] neuron: 16k SEL [31] len: 32M RL [32] iter: 100 layers: 3 
+
+8.2 CPU Workloads 
+
+Fig. 12 shows the performance of CPU workloads on the CPU system, PIM-Ioff, and GUMPIM, normalized to that of the CPU system. The Cache Misses per 1000 Instructions (MPKI) of the benchmarks are summarized in Table 4. Compared with the CPU system, PIM-Ioff shows perfor-mance degradation of 88.2%, 83.8%, and 74.2% for 2-, 4-, and 8-core CPU configurations across the benchmarks. For lbm and mcf , which have higher MPKI, PIM-Ioff’s non-interleaved address mapping exhibits >40% performance degradation for 8-core CPUs. When the core number increases from 2 to 8, the performance of lbm on the PIM system decreases from 64.3% to 22.4%. In contrast, for GUMPIM, the performance degradation is less than 0.1% for the benchmarks. This is because the 
+
+ACM Trans. Arch. Code Optim., Vol. 23, No. 3, Article 114. Publication date: September 2026. 114:20 Zhao et al. 
+
+address interleaving of CPU pages can preserve CPU bandwidth. The proposed hardware module for address mapping has only an ignorable impact on overall performance. Overall, GUMPIM avoids the severe CPU-side performance penalty of existing PIM systems, making it practical for multi-core environments where PIM acceleration coexists with high-bandwidth CPU workloads. CPU System  GUMPIM  PIM -Ioff                         
+
+> 0
+> 20
+> 40
+> 60
+> 80
+> 100
+> Speedup (%)
+> #CPU
+> Bench -
+> marks
+> 248248248248248248
+> lbm mcf sjeng dealII xalancbmk gcc
+> 248
+> (AVE)
+
+Fig. 12. Performance degradation of CPU workloads on GUMPIM and the PIM system compared with the CPU system. 
+
+8.3 PIM Workloads 
+
+Fig. 13 depicts the computing time and its breakdown of PIM workloads on GUMPIM and PIM systems, normalized to that of PIM-Ion. To isolate the performance impact of dual-track memory management, we assume that the working set is preloaded in main memory, and thus exclude the overhead of memory allocation and data staging. This assumption aligns with standard practice in processing-in-memory research, which focuses on the efficiency of in-situ operations [32, 35, 46, 50]. We use 1 CPU thread, and PIM units from all 16 ranks are used. The overall computing time is divided into three parts: CPU computing, data transfer (Xfer), and PIM unit computing. GUMPIM has no separate data transfer component because of the unitary memory space, and the CPU computing time already includes the overhead of directly accessing PIM pages. PIM-Ioff reduces data transfer time by 29.6% on average compared with PIM-Ion because of the simpler software-based address translation and data re-layout, demonstrating the necessity of disabling memory interleaving under isolated memory designs. GUMPIM reduces CPU computing and data transfer time by 4.93× on average compared with PIM-Ioff, resulting in a 1.96× overall workload speedup. This reduction stems from reduced data transfer overhead and efficient address mapping and data re-layout. Moreover, 9 of the 12 benchmarks leverage the efficient inter-PIM communication APIs, significantly reducing communication latency. The other 3 benchmarks (BFS/PageRank/NW) cannot utilize the APIs due to their sparse, non-blocking data transfers. However, for benchmarks with intensive, fine-grained transfers (NW/BFS/SEL in Fig. 3(a)), GUMPIM still eliminates the fixed per-transfer overhead at the hardware level, boosting CPU compute speedups (8.52×/4.60×/10.65×). CPU Compute  Xfer  PIM Compute  PIM -Ion  PIM -Ioff  GUMPIM          
+
+> Normalized Time
+> 0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1
+> Bench -
+> marks BFS Page -
+> Rank
+> MLP NW UNI SCAN
+> -RSS
+> SCAN
+> -SSA
+> SEL HST -SRL TC WFA (AVE)
+
+Fig. 13. Computing time of PIM workloads on PIM systems and GUMPIM. 
+
+Fig. 14 shows the computing time of BFS and PageRank across different PIM unit counts. When more PIM units are used, the amount of data transferred between PIM units increases significantly. This results in an increase in end-to-end time when scaling beyond 8 PIM ranks, despite higher  
+
+> ACM Trans. Arch. Code Optim., Vol. 23, No. 3, Article 114. Publication date: September 2026. GUMPIM: Unitary and Malleable Memory for Processing-in-Memory with Guaranteed PIM Pages 114:21
+
+parallelism. In contrast, the lower data transfer overhead of GUMPIM makes this impact less pro-nounced. As a result, GUMPIM enables both benchmarks to better exploit the increased parallelism of PIM units. 16        
+
+> Time (ms)
+> #PIM Rank BFS 8421
+> Time (ms)
+> 16
+> #PIM Rank PageRank 84210
+> 50
+> 100
+> 150
+> 200
+> 250
+> 300
+> 0
+> 20
+> 30
+> 40
+> 50
+> 60
+> 2
+> CPU Compute Xfer PIM Compute PIM -Ion PIM -Ioff GUMPIM
+
+Fig. 14. Computing time of PIM workloads with different numbers of PIM units. (64 PIM units per PIM rank.) 
+
+8.4 Chunk Allocation Overhead 
+
+In this experiment, we explicitly include the overheads of memory allocation and data loading before the workload execution, as shown in Fig. 15. The page migration and memory allocation overhead is obtained using the full-system (FS) mode of GEM5, running a Linux kernel (Ubuntu 6.8.0). We compare GUMPIM’s PIM-assisted allocation mechanism against a conventional CPU-driven approach, where occupied pages are migrated by first reading them into the last-level cache and then writing them back to DRAM [84]. Fig. 15(a-c) compares the two approaches under different migration ratios (i.e., the fraction of occupied pages that require migration during chunk allocation) when only one round of computation follows each allocation. The results show that the PIM-assisted allocation reduces chunk allocation time by 2.7×, thereby lowering the average end-to-end latency of PIM workloads by 2.3× at a 50% migration ratio. For most PIM benchmarks, including UNI, SCAN-RSS/SSA, SEL, and HST-S, chunk allocation alone accounts for over 95% of the total end-to-end latency. This highlights a characteristic trait of PIM workloads, which is large memory footprints but modest computational demands. Consequently, for these workloads, the PIM-assisted allocation mechanism achieves an average end-to-end speedup of 2.65×. We also compare the end-to-end time under different computation-to-allocation ratios (C:A) in Fig. 15(a,d-f). The computation-to-allocation ratio is defined as the number of computation task rounds following each allocation. As the computation-to-allocation ratio increases, the speedup of GUMPIM decreases as the proportion of computation time increases. However, even when “C:A=100:1”, PIM workloads with large memory footprints but modest computational demands (e.g., UNI, SCAN-RSS/SSA, SEL, and HST-S) can still benefit from the PIM-assisted allocation mechanism. These benchmarks achieve an average speedup of 2.6×. This demonstrates that reducing allocation latency remains critical for real-world PIM workloads, even when computation dominates the nominal execution profile. The time breakdown of PIM-assisted page migration is shown in Table 5. The breakdown is measured by injecting M5ops [73]. With PIM-assisted page migration, the data copy proportion is reduced from 58% to less than 1%, reducing the chunk allocation time by 2.7×. 
+
+8.5 Migration Granularity 
+
+Fig. 16 plots the Row Migration Table module area and chunk allocation latency across varying migration granularities and memory utilization levels. Chunk allocation latency rapidly saturates at approximately 55 ms as memory utilization increases, primarily due to fragmentation effects where any occupied page necessitates migrating the entire granularity. At high occupancy (e.g., 80%), even finer granularities such as 64kB must migrate nearly all stripes because most row stripes contain at least one occupied page, resulting in latency similar to coarser granularities. This saturation is exacerbated with coarser granularities; notably, at 512kB, latency reaches 50 ms even at merely 20% 
+
+> ACM Trans. Arch. Code Optim., Vol. 23, No. 3, Article 114. Publication date: September 2026.
+
+114:22 Zhao et al. Memory Allocation PIM Compute  CPU Migrate  PIM -Assisted Allocation    
+
+> 0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1
+> Normalized Time
+> Bench -
+> marks
+> Migration Ratio=20%, C:A=1:1
+> 0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1
+> Normalized Time
+> 0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1
+> Normalized Time
+> Bench -
+> marks
+> 0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1
+> Normalized Time
+> 0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1
+> Normalized Time
+> 0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1
+> Normalized Time
+> Migration Ratio=50%, C:A=1:1 Migration Ratio=80%, C:A=1:1
+> Migration Ratio=50%, C:A=2:1 Migration Ratio=50%, C:A=10:1 Migration Ratio=50%, C:A=100:1
+
+(a)  (b)  (c) 
+
+(d)  (e)  (f) 
+
+Fig. 15. End-to-end time of PIM workloads with on-demand chunk allocation. “Migration Ratio” indicates the fraction of occupied pages within a chunk region that must be migrated to allocate it. “C:A=2:1” means that after the PIM pages are allocated, the PIM computation task is executed for two rounds. Memory Occupation  0.2     
+
+> Chunk Allocation
+> Latency (ms)
+> 0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1
+> 1.2
+> 0
+> 10
+> 20
+> 30
+> 40
+> 50
+> 60
+> 64k 128k 256k 512k 1M 2M
+> Normalized RMT
+> Area
+
+Migration Granularity (B)   
+
+> 0.4 0.6 0.8
+> RMT Area
+
+Fig. 16. Row Migration Table area and chunk allocation latency under differ-ent migration granularity. CPU Compute  Xfer  PIM -Ioff  GUMPIM 
+
+> Normalized Time
+> 0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1
+
+Bench -
+
+marks 
+
+(a) 
+
+> Normalized Time
+> 0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1
+
+Bench -
+
+marks 
+
+(b) 
+
+Fig. 17. Speedup of GUMPIM compared with PIM-Ioff on different DRAM architectures. (a) HBMx (b) LPDDRx. Table 5. Time Breakdown of PIM-assisted Page Migration 
+
+Component Latency (per Row Stripe) Allocation 1.7 μs Data Copy 0.063 μs Reverse Mapping 11.6 μs 
+
+Table 6. Area and Power Overhead of Proposed Modules 
+
+Position Component Area (Overhead) mm 2
+
+Power(Overhead) mW 
+
+PIM Chunk List 0.032 (0.025%) 3.55 (1.60%) DRAM chip Row Migration Table 0.134 (0.102%) 3.61 (1.63%) 
+
+Total 0.17 (0.13%) 7.16 (3.23%) 
+
+Rank Chunk List 0.151 (0.100%) 3.53 (0.59%) RCD Address Translation Module 3×10 -4 (~0%) 0.08 (~0%) Command Generator + IO 0.568 (0.376%) 15.95 (2.66%) 
+
+Total 0.72 (0.48%) 19.48 (3.36%) 
+
+DIMM Buffer Re-layout Cache 0.208 33.10 memory utilization. Conversely, finer granularities incur a significant hardware penalty, causing the Row Migration Table area to expand substantially. Therefore, the optimal design strategy selects the finest migration granularity that stays within the acceptable Row Migration Table area budget, effectively balancing allocation efficiency against hardware costs. 
+
+ACM Trans. Arch. Code Optim., Vol. 23, No. 3, Article 114. Publication date: September 2026. GUMPIM: Unitary and Malleable Memory for Processing-in-Memory with Guaranteed PIM Pages 114:23 
+
+8.6 GUMPIM on LPDDR5 and HBM3 
+
+We also compare GUMPIM with PIM-Ioff on LPDDR5 and HBM3. The detailed configuration is summarized in Table 3. We keep the number of banks in the LPDDR5 and HBM3 systems the same as that in the DIMM system. As there is no device level for word expansion in LPDDR5 and HBM3, the total number of PIM units is 1/8 of that in DIMM. The address mapping configuration is kept the same as that in the DIMM system, with higher hierarchy levels mapped to higher-order bits of the physical address. We plot the CPU-part time, including CPU computing and data transfer, in Fig. 17. We select 5 typical benchmarks from Table 4, and GUMPIM reduces the CPU time by 6.0× on average across these benchmarks. For PIM-Ioff on the LPDDR5 system, GUMPIM reduces the CPU time by 5.9× on average. The advantage is slightly smaller than that on the DIMM system because the LPDDR5 system does not have the device level, resulting in software data re-layout working at the cache-line level instead of the byte level. Therefore, the transfer overhead is originally smaller than that in the DIMM system. For PIM-Ioff on the HBM3 system, GUMPIM reduces the CPU time by 5.2× on average. This is because HBM3 DRAM originally has larger memory bandwidth, resulting in smaller transfer overhead in PIM-Ioff. Although GUMPIM provides a smaller advantage on these two DRAM systems, it can still achieve a significant speedup over PIM-Ioff. 
+
+8.7 Area 
+
+The area and power overhead of the proposed modules is summarized in Table 6. The PIM Chunk List and Row Migration Table introduce 0.13% overhead compared with the 130 mm 2 DRAM die area derived from CACTI. The Rank Chunk List, Address Translation Module, and Command Generator contribute 0.72 mm 2 additional area (~0.48%) to the RCD chip [69]. The Re-layout Cache occupies 0.21 mm 2, which is significantly smaller than the DRAM buffer chip (100 mm 2). 
+
+9 Conclusion 
+
+In this work, we propose GUMPIM, a new system architecture with a unitary and malleable memory space for both CPU and PIM units. GUMPIM provides fine-grained interleaving for CPU pages, eliminates data transfer overhead between CPU and PIM units, and reduces PIM page allocation latency. The method can be adapted to various DRAM architectures, including DIMM DRAM, LPDDRx, and HBMx. GUMPIM achieves only 0.1% performance loss for CPU tasks while delivering a 2.3× overall speedup for PIM tasks by reducing CPU-part time and memory allocation time by 4.93× and 2.7×, respectively. 
+
+References         
+
+> [1] Junwhan Ahn et al. 2015. A Scalable Processing-in-Memory Accelerator for Parallel Graph Processing. In ISCA .[2] Alejandro Alonso-Marín et al. 2024. BIMSA: Accelerating Long Sequence Alignment Using Processing-In-Memory.
+> Bioinformatics 40, 11, Article btae631 (2024). [3] Rajeev Balasubramonian et al. 2017. CACTI 7: New Tools for Interconnect Exploration in Innovative Off-Chip Memories.
+> TACO 14, 2, Article 14 (2017). [4] Marzieh Barkhordar et al. 2025. ALPHA-PIM: Analysis of Linear Algebraic Processing for High-Performance Graph Applications on a Real Processing-In-Memory System. In IISWC .[5] Scott Beamer et al. 2017. The GAP Benchmark Suite . arXiv:1508.03619 [6] Maciej Besta et al. 2021. SISA: Set-Centric Instruction Set Architecture for Graph Mining on Processing-in-Memory Systems. In MICRO .[7] Amirali Boroumand et al. 2018. Google Workloads for Consumer Devices: Mitigating Data Movement Bottlenecks. In
+> ASPLOS .[8] Amirali Boroumand et al. 2019. CoNDA: Efficient Cache Coherence Support for Near-Data Accelerators. In ISCA .[9] Amirali Boroumand et al. 2021. Google Neural Network Models for Edge Devices: Analyzing and Mitigating Machine Learning Inference Bottlenecks. In PACT .ACM Trans. Arch. Code Optim., Vol. 23, No. 3, Article 114. Publication date: September 2026.
+
+114:24 Zhao et al. 
+
+[10] Amirali Boroumand et al. 2022. Polynesia: Enabling High-Performance and Energy-Efficient Hybrid Transac-tional/Analytical Databases with Hardware/Software Co-Design. In ICDE .[11] Dan Chen et al. 2023. MetaNMP: Leveraging Cartesian-Like Product to Accelerate HGNNs with Near-Memory Processing. In ISCA .[12] Jinfan Chen et al. 2024. SimplePIM: A Software Framework for Productive and Efficient Processing-in-Memory. In 
+
+PACT .[13] Liyan Chen et al. 2025. AsyncDIMM: Achieving Asynchronous Execution in DIMM-Based Near-Memory Processing. In HPCA .[14] Jaeyoon Choi et al. 2015. A Study in Identifying Memory Address Interleaving of x86 Servers. In ITC-CSCC .[15] CMU-SAFARI. 2023. Ramulator V2.0a . Retrieved Accessed: 2025-11-05 from https://github.com/CMU-SAFARI/ ramulator2 [16] Geraldo Francisco de Oliveira Junior et al. 2025. Proteus: Achieving High-Performance Processing-Using-DRAM with Dynamic Bit-Precision, Adaptive Data Representation, and Flexible Arithmetic. In ICS .[17] Fabrice Devaux. 2019. The true Processing In Memory accelerator. In HCS .[18] Alexandar Devic et al. 2022. To PIM or Not for Emerging General Purpose Processing in DDR Memory Systems. In 
+
+ISCA .[19] Safaa Diab et al. 2023. A Framework for High-throughput Sequence Alignment using Real Processing-in-Memory Systems. Bioinformatics 39, 5, Article btad155 (2023). [20] Mingyu Gao et al. 2015. Practical Near-Data Processing for In-Memory Analytics Frameworks. In PACT .[21] Mingyu Gao et al. 2017. TETRIS: Scalable and Efficient Neural Network Acceleration with 3D Memory. In ASPLOS .[22] Fabien Gaud et al. 2014. Large Pages May Be Harmful on NUMA Systems. In USENIX ATC .[23] Mohsen Ghasempour et al. 2016. DReAM: Dynamic Re-Arrangement of Address Mapping to Improve the Performance of DRAMs. In MEMSYS .[24] Christina Giannoula et al. 2022. SparseP: Efficient Sparse Matrix Vector Multiplication on Real Processing-In-Memory Architectures. In ISVLSI .[25] Christina Giannoula et al. 2024. PyGim: An Efficient Graph Neural Network Library for Real Processing-In-Memory Architectures. Proc. ACM Meas. Anal. Comput. Syst. 8, 3, Article 43 (2024). [26] Kailash Gogineni et al. 2024. SwiftRL: Towards Efficient Reinforcement Learning on Real Processing-In-Memory Systems. In ISPASS .[27] Mel Gorman. 2004. Understanding the Linux Virtual Memory Manager . Prentice Hall. [28] Yufeng Gu et al. 2025. PIM Is All You Need: A CXL-Enabled GPU-Free System for Large Language Model Inference. In 
+
+ASPLOS .[29] Harshita Gupta et al. 2023. Evaluating Homomorphic Operations on a Real-World Processing-In-Memory System. In 
+
+IISWC .[30] Juan Gómez-Luna et al. 2021. Benchmarking Memory-Centric Computing Systems: Analysis of Real Processing-In-Memory Hardware. In 2021 12th International Green and Sustainable Computing Conference (IGSC) .[31] Juan Gómez-Luna et al. 2022. Benchmarking a New Paradigm: Experimental Analysis and Characterization of a Real Processing-in-Memory System. IEEE Access 10 (2022), 52565–52608. [32] Juan Gómez-Luna et al. 2023. Evaluating Machine Learning Workloads on Memory-Centric Computing Systems. In 
+
+ISPASS .[33] Nastaran Hajinazar et al. 2021. SIMDRAM: A Framework for Bit-Serial SIMD Processing Using DRAM. In ASPLOS .[34] Mingxuan He et al. 2020. Newton: A DRAM-maker’s Accelerator-in-Memory (AiM) Architecture for Machine Learning. In MICRO .[35] Yintao He et al. 2025. PAPI: Exploiting Dynamic Parallelism in Large Language Model Decoding with a Processing-In-Memory-Enabled Computing System. In ASPLOS .[36] John L. Henning. 2006. SPEC CPU2006 Benchmark Descriptions. SIGARCH Comput. Archit. News 34, 4 (2006), 1–17. [37] Marius Hillenbrand. 2017. Physical Address Decoding in Intel Xeon v3/v4 CPUs: A Supplemental Datasheet. https: //os.itec.kit.edu/downloads/publ_2017_hillenbrand_xeon_decoding.pdf [38] Marius Hillenbrand et al. 2017. Multiple Physical Mappings: Dynamic DRAM Channel Sharing and Partitioning. In 
+
+APSys .[39] Kevin Hsieh et al. 2016. Accelerating Pointer Chasing in 3D-Stacked Memory: Challenges, Mechanisms, Evaluation. In 
+
+ICCD .[40] Maurus Item et al. 2023. TransPimLib: Efficient Transcendental Functions for Processing-in-Memory Systems. In 
+
+ISPASS .[41] B. Jacob et al. 2010. Memory Systems: Cache, DRAM, Disk . Vol. 40. Elsevier Science. [42] JEDEC. 2020. LPDDR5 SDRAM Standard . Technical Report. https://www.jedec.org/standards-documents/docs/jesd209-5a ACM Trans. Arch. Code Optim., Vol. 23, No. 3, Article 114. Publication date: September 2026. GUMPIM: Unitary and Malleable Memory for Processing-in-Memory with Guaranteed PIM Pages 114:25 
+
+[43] JEDEC. 2021. DDR4 SDRAM Standard . Technical Report. https://www.jedec.org/standards-documents/docs/jesd79-4a [44] JEDEC. 2023. High Bandwidth Memory (HBM3) DRAM . Technical Report. https://www.jedec.org/standards-documents/ docs/jesd238a [45] Norman P. Jouppi et al. 2012. CACTI-IO: CACTI with off-chip power-area-timing models. In ICCAD .[46] Hongbo Kang et al. 2022. PIM-Tree: A Skew-Resistant Index for Processing-in-Memory. Proc. VLDB Endow. 34, Article 66 (2022). [47] Liu Ke et al. 2020. RecNMP: Accelerating Personalized Recommendation with Near-Memory Processing. In ISCA .[48] Jin Hyun Kim et al. 2021. Aquabolt-XL: Samsung HBM2-PIM with in-Memory Processing for ML Accelerators and Beyond. In HCS .[49] Jeremie S. Kim et al. 2018. GRIM-Filter: Fast Seed Location Filtering in DNA Read Mapping Using Processing-in-Memory Technologies. BMC Genomics 19, Article 89. [50] Seongguk Kim et al. 2019. Processing-in-memory in High Bandwidth Memory (PIM-HBM) Architecture with Energy-efficient and Low Latency Channels for High Bandwidth System. In EPEPS .[51] Yoongu Kim et al. 2012. A Case for Exploiting Subarray-Level Parallelism (SALP) in DRAM. In ISCA .[52] Yoongu Kim et al. 2016. Ramulator: A Fast and Extensible DRAM Simulator. IEEE Computer Architecture Letters 15, 1 (2016), 45–49. [53] Youngeun Kwon et al. 2019. TensorDIMM: A Practical Near-Memory Processing Architecture for Embeddings and Tensor Operations in Deep Learning. In MICRO .[54] Yongkee Kwon et al. 2022. System Architecture and Software Stack for GDDR6-AiM. In HCS .[55] Young-Cheon Kwon et al. 2021. 25.4 A 20nm 6GB Function-In-Memory DRAM, Based on HBM2 with a 1.2TFLOPS Programmable Computing Unit Using Bank-Level Parallelism, for Machine Learning Applications. In ISSCC .[56] Donghun Lee et al. 2022. Improving In-Memory Database Operations with Acceleration DIMM (AxDIMM). In DaMoN .[57] Dongjae Lee et al. 2026. PIM-Malloc: A Fast and Scalable Dynamic Memory Allocator for Processing-In-Memory (PIM) Architectures. In HPCA .[58] Bingyao Li et al. 2023. Trans-FW: Short Circuiting Page Table Walk in Multi-GPU Systems via Remote Forwarding. In 
+
+HPCA .[59] Yuxi Liu et al. 2018. Get Out of the Valley: Power-Efficient Address Mapping for GPUs. In ISCA .[60] Jason Lowe-Power et al. 2020. The gem5 Simulator: Version 20.0+ . arXiv:2007.03152 [61] Haocong Luo et al. 2024. Ramulator 2.0: A Modern, Modular, and Extensible DRAM Simulator. CAL 23, 1 (2024), 112–116. [62] Sai Prashanth Muralidhara et al. 2011. Reducing Memory Interference in Multicore Systems via Application-aware Memory Channel Partitioning. In MICRO .[63] Nvidia. 2020. NVIDIA Collective Communication Library (NCCL) Documentation. https://docs.nvidia.com/ deeplearning/nccl/user-guide/docs/usage/p2p.html. [64] Ataberk Olgun et al. 2022. PiDRAM: A Holistic End-to-End FPGA-Based Framework for Processing-in-DRAM. TACO 
+
+20, 1, Article 8 (2022). [65] Geraldo F. Oliveira et al. 2024. MIMDRAM: An End-to-End Processing-Using-DRAM System for High-Throughput, Energy-Efficient and Programmer-Transparent Multiple-Instruction Multiple-Data Computing. In HPCA .[66] Ashish Panwar et al. 2019. HawkEye: Efficient Fine-grained OS Support for Huge Pages. In ASPLOS .[67] Peter Pessl et al. 2016. DRAMA: Exploiting Dram Addressing for Cross-Cpu Attacks. In SEC .[68] Qualcomm Technologies, Inc. 2026. Extend the Memory Map . Retrieved 2026-02-12 from https://docs.qualcomm.com/ doc/80-70018-3/topic/customize.html#extend-the-memory-map [69] Renesas Electronics Corporation. 2024. 4RCD0232K: DDR4 Registering Clock Driver (RCD) . Retrieved 2023-11-12 from https://www.renesas.com/en/products/4rcd0232k [70] Steve Rhyner et al. 2024. PIM-Opt: Demystifying Distributed Optimization Algorithms on a Real-World Processing-In-Memory System. In PACT .[71] Vivek Seshadri et al. 2013. RowClone: Fast and Energy-Efficient in-DRAM Bulk Data Copy and Initialization. In 
+
+MICRO .[72] Vivek Seshadri et al. 2017. Ambit: in-memory accelerator for bulk bitwise operations using commodity DRAM technology. In MICRO .[73] The gem5 Developers. 2026. M5ops Documentation .[74] The Linux Kernel Developers. 2019. Hugetlbfs Reservation . Retrieved 2026-02-05 from https://www.kernel.org/doc/ html/v5.1/vm/hugetlbfs_reserv.html [75] UPMEM. 2023. UPMEM DPU SDK 2023.2.0 Documentation. https://sdk.upmem.com/2023.2.0/. [76] Minghua Wang et al. 2020. DRAMDig: a Knowledge-Assisted Tool to Uncover DRAM Address Mapping. In DAC .[77] Yizhou Wei et al. 2022. PIMProf: An Automated Program Profiler for Processing-in-Memory Offloading Decisions. In 
+
+DATE .ACM Trans. Arch. Code Optim., Vol. 23, No. 3, Article 114. Publication date: September 2026. 114:26 Zhao et al. 
+
+[78] Wm. A. Wulf et al. 1995. Hitting the Memory Wall: Implications of the Obvious. SIGARCH Comput. Archit. News 23, 1 (1995), 20–24. [79] Yuan Xiao et al. 2016. One Bit Flips, One Cloud Flops: Cross-VM Row Hammer Attacks and Privilege Escalation. In 
+
+SEC .[80] Xinfeng Xie et al. 2021. SpaceA: Sparse Matrix Vector Multiplication on Processing-in-Memory Accelerator. In HPCA .[81] İsmail Emir Yüksel et al. 2024. Functionally-Complete Boolean Logic in Real DRAM Chips: Experimental Characteriza-tion and Analysis. In HPCA .[82] Fucen Zeng et al. 2012. Memory Performance Characterization of SPEC CPU2006 Benchmarks Using TSIM. In ICMPBE .[83] Jialiang Zhang et al. 2022. Software-Defined Address Mapping: A Case on 3D Memory. In ASPLOS .[84] Kaiyang Zhao et al. 2023. Contiguitas: The Pursuit of Physical Memory Contiguity in Datacenters. In ISCA .[85] Yilong Zhao et al. 2024. UM-PIM: DRAM-based PIM with Uniform & Shared Memory Space. In ISCA .
+
+Received 25 Mar 2026; revised 18 May 2026; accepted 21 May 2026 
+
+ACM Trans. Arch. Code Optim., Vol. 23, No. 3, Article 114. Publication date: September 2026.

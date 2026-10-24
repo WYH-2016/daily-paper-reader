@@ -1,0 +1,663 @@
+Title: The Case for TPU-Accelerated Analytical Query Processing
+
+URL Source: https://arxiv.org/pdf/2610.22673v1
+
+Published Time: Mon, 19 Oct 2026 00:21:53 GMT
+
+Number of Pages: 14
+
+Markdown Content:
+# The Case for TPU-Accelerated Analytical Query Processing 
+
+## Jaehyun Ha, Yeounoh Chung *, Helena Caminal, Aditya K Kamath, Fatma Özcan, Arvind Krishnamurthy, Henry M. Levy 
+
+SystemsResearch@Google Mountain View, USA jaehyunha, yeounoh, hcaminal, akkamath, fozcan, arvindkrish, hanklevy@google.com 
+
+## ABSTRACT 
+
+Large-scale analytical query processing requires computing sub-strates capable of immense distributed scale-out. Tensor Process-ing Units (TPUs) perfectly embody this extreme-scale architecture, offering massive computational density and highly scalable opti-cal pod-level interconnects. Despite these advantages, TPUs have so far remained largely unexplored for analytical database work-loads. In this paper, we present the first comprehensive case for TPU-accelerated analytical query processing by running all the TPC-H queries entirely on the TPUs. We introduce Native TPU Accelerator (NTA) for analytical query processing, which provides hardware-conscious algorithm design and optimizations in JAX/XLA. By exposing the TPU’s structural mechanics, we demonstrate how dynamic, memory-bound database operations can be rewritten into deterministic JAX programs. We engineer a suite of novel execu-tion strategies that leverage both the TPU’s TensorCore and Spar-seCore to trade sparse, unpredictable memory accesses for dense, hardware-aligned ones. At the core of NTA, a compiler uses cat-alog statistics to assign guarded static capacities and a hardware-calibrated local cost model to select a TPU-native implementation for each relational operator before JIT compilation. We evaluate our system using the TPC-H benchmark. Taking full advantage of TPU slices and JAX distributed computing, we seamlessly scale our execution environment to run TPC-H bench-mark up to Scale Factor 1000 (SF1000). Evaluated against a rigorous CPU ground truth (DuckDB), our native TPU accelerator achieves 
+
+state-of-the-art performance, achieving a 7 .0× single-device speedup over DuckDB at SF100 and a 68 .6× speedup with 16 TPUs at SF1000 (1TB). The results establish TPUs not merely as dense neural com-pute hardware, but as a highly competitive, massively scalable sub-strate for the next generation of analytical query processing. 
+
+PVLDB Reference Format: 
+
+Jaehyun Ha, Yeounoh Chung *, Helena Caminal, Aditya K Kamath, Fatma Özcan, Arvind Krishnamurthy, Henry M. Levy. The Case for TPU-Accelerated Analytical Query Processing. PVLDB, 20(1): XXX-XXX, 2027. doi:XX.XX/XXX.XX 
+
+> This work is licensed under the Creative Commons BY-NC-ND 4.0 International License. Visit https://creativecommons.org/licenses/by-nc-nd/4.0/ to view a copy of this license. For any use beyond those covered by this license, obtain permission by emailing info@vldb.org. Copyright is held by the owner/author(s). Publication rights licensed to the VLDB Endowment. Proceedings of the VLDB Endowment, Vol. 20, No. 1 ISSN 2150-8097. doi:XX.XX/XXX.XX
+> *Corresponding author.
+
+## 1 INTRODUCTION 
+
+Hardware-accelerated query processing is gaining significant mo-mentum across both academic and commercial analytics systems [3, 14, 17, 25, 37], which require computing substrates capable of im-mense, distributed scale-out. Tensor Processing Units (TPUs) per-fectly embody this capability: powering massively large-scale search and AI/ML workloads, they offer extreme computational density and highly scalable optical pod-level 1 interconnects [19]. Despite these massive structural advantages, TPUs remain largely unex-plored for analytical database systems. This paper fundamentally explores running relational queries on TPU architectures, reveal-ing precisely what it takes to map analytical queries to what is conventionally assumed to be a static execution paradigm built ex-plicitly without hardware-managed caches or dynamic execution. TPU and especially its main compute units, TensorCores, re-quire a fixed and deterministic execution environment where mem-ory access and shapes must be compiled and pre-determined. In contrast, relational operators rely on data-dependent dynamism [26], which is hard to predict. The number of rows produced by a filter (shape dynamism ) and the memory locations where matching tu-ples reside in a join ( address dynamism ) are strictly runtime prop-erties determined by the data. The TPU TensorCore, however, en-forces completely static evaluation: every instruction, buffer size, and DMA transfer must be predictably scheduled at query compile time. Naively mapping relational operations onto such a static sub-strate creates immense sparsity out of forced worst-case padding, and HBM pipeline stalls resulting from irregular gather/scatter 2.Traditional CPUs and GPUs mask these erratic access patterns dy-namically using large, hardware-managed caches and massive multi-threading architectures [21]. Fortunately, modern TPUs added Spar-seCore units to accelerate sparse, non-uniform memory accesses that can run in parallel with TensorCore computations. In this work, we argue that TPUs can be used as efficient pro-cessors for analytical workloads by fundamentally neutralizing dy-namic memory accesses, using a new TPU hardware co-processor, SparseCore [18]. We introduce Native TPU Accelerator (NTA), a tensor-based execution engine built entirely in JAX and XLA [2] 3.Rather than treating the TPU as a black-box HW accelerator, NTA co-designs relational operators directly around its memory and compute hierarchy. Our core insight is that dynamic, memory-bound database operations can be meticulously rewritten into predictable,    
+
+> 1A TPU Pod is a cluster of Google Tensor Processing Units (TPUs) connected by a high-speed network to act as a single, powerful AI supercomputer.
+> 2Gather refers to indirect, non-contiguous reads (e.g., retrieving join matches via in-dex vectors); scatter refers to indirect writes or in-place accumulations at arbitrary addresses (e.g., updating hash buckets or histogram bins).
+> 3JAX is an ML framework that represents array operations as tensor computation graphs; XLA (Accelerated Linear Algebra) is an ML compiler that lowers these com-putation graphs into statically scheduled, fused executables on HW accelerators. arXiv:2610.22673v1 [cs.DB] 15 Oct 2026
+
+compute-bound arithmetic. For instance, Sorted-Hash Lookup Join avoids sparse, padded hash tables, using unique-build equi-joins by sorting hashed composite keys and validating each re-trieved candidate against the original packed key. Providing highly optimized kernels is insufficient unless a dy-namic relational plan can be converted into a well-orchestrated TPU program. To achieve this, NTA introduces an end-to-end query compilation and execution pipeline (Section 3). Given an incoming logical plan, NTA uses catalog statistics to assign guarded capaci-ties (bounded static shapes) to intermediate results, derives exist-ing logical and physical properties, and selects a cost-optimal exe-cution target (TensorCore vs. SparseCore) kernel implementation for each operator. NTA then stitches individual physical operators into a physical plan, which is then lowered (program transforma-tion) into a statically shaped JAX program with Pallas kernels 4.Finally the JAX program is compiled and further optimized using the XLA compiler. To evaluate NTA at large scales (up to SF1000), we leverage JAX distributed (XLA SPMD [34]) computing over TPU v5p [11] slices. For a rigorous baseline, we compare our performance against DuckDB, a state-of-the-art SIMD-vectorized in-memory CPU database en-gine [13, 14, 17]. NTA achieves state-of-the-art performance, out-performing DuckDB on all 22 TPC-H queries and achieving geometric-mean speedups of 7 .0× at SF100 (100GB) and 68 .6× at SF1000 (1TB). When measured by total query-set runtime, the corresponding total-runtime speedups are 5 .7× and 50 .1× over the CPU baseline. In summary, this paper makes the following contributions: 
+
+• The case for TPU-Accelerated Analytical Query Pro-cessing : We present the first deep architectural analysis of mapping relational algebra onto TPU semantics, explicitly identifying core anti-patterns (shape dynamism, sparsity, gather/scatter stalls) and standardizing their mitigation. 
+
+• Native TPU Kernels via Pallas & SparseCore: We in-troduce a suite of highly optimized, TPU-native execution strategies , designed to address gather/scatter bottlenecks and HBM anti-patterns (round-trips and fusion breaks). 
+
+• Compilation and Local Physical Planning: Given a fixed logical plan, NTA bounds intermediate cardinalities, filters physical implementations by applicability and resource con-straints, and selects among them using TPU v5p-calibrated operator costs before JIT compilation. 
+
+• Comprehensive Evaluation at Extreme Scale: We demon-strate state-of-the-art analytical performance on TPC-H, utilizing JAX distributed computing to scale smoothly to SF1000 across orchestrated TPU slices. The remainder of this paper is organized as follows: Section 2 provides the architectural background on TPU and highlights our motivating micro-benchmarks. Section 3 details our native TPU-accelerated query processing algorithms. Section 4 describes our compiler and hardware-conscious intelligent kernel selection. Sec-tion 5 details extreme scale orchestration. Section 6 presents our extensive experimental evaluation. Finally, Sections 7 and 8 offer discussion and conclusions. 
+
+> 4Pallas kernel is a custom, low-level function in Python that runs directly on hardware accelerators (e.g., TPUs) within the JAX framework [18].
+
+Figure 1: TPU TensorCore and SparseCore HW overview and memory hierarchy [18]. 
+
+## 2 BACKGROUND 2.1 TPU Architecture 
+
+To understand the difficulty of porting database workloads to TPUs, one must examine the execution model. A modern TPU chip hosts 
+
+TensorCores , each combining Matrix Multiply Units (MXUs)—systolic arrays for dense matrix math—with a Vector Processing Unit (VPU) for element-wise operations. Each TensorCore owns a VMEM , a software-managed scratchpad serving as its fast memory. Unlike a hardware-managed CPU or GPU cache, VMEM is filled and drained exclusively by explicit DMA transfers, each statically described at program/binary compile time as a burst with a base address, stride, and count. Crucially, sizes and exact memory addresses need to be known at compile time to generate the memory instructions and DMA descriptors to move the right data to the vector lanes of the TensorCore. To appreciate the potential of the TPU for analytical query pro-cessing, one must understand how fundamentally its design dif-fers from traditional hardware. Rather than relying on hardware-managed caches, branch predictors, or fine-grained thread-level parallelism to intuitively hide the latency of irregular memory ac-cesses, the TPU operates on a philosophy of deterministic sim-plicity. Memory is explicitly managed via software, and execution proceeds via a statically scheduled Very Long Instruction Word (VLIW) pipeline. This extreme architectural minimalism makes TPUs vastly more efficient at predictable, dense tensor mathematics, but creates a challenging (but tractable) environment with the data-dependent dynamism inherent in relational algebra. One key component of the TPU is the SparseCore , recently added as an ally to the TensorCore. SparseCores traverse irregular in-dex streams, performing gathers and scatters from HBM, on behalf of TensorCores or as their own compute engines. However, Spar-seCore and TensorCore programs inherently exist separately and transfers between them require explicit DMA staging and synchro-nization via CMEM (common memory). These architectural trade-offs share a single premise: a careful mapping of operators to the right cores in the TPU is necessary. Table 1 contrasts these choices with contemporary hardware for SQL query processing. 
+
+## 2.2 The Software Stack and Tensor Query Processing 
+
+The software stack enforces this compile-time discipline end to end. JAX traces Python programs into a functional intermediate 
+
+> 2
+
+Table 1: The same decisions, made at different times. 
+
+Decision CPU: at runtime GPU: at runtime TPU: at compile time  
+
+> Where to read/write
+
+Any memory dynamically Any register dynamically Fixed in the program  
+
+> How to hide latency
+
+Caches & Pre-fetching Massive multithreading Statically scheduled DMA  
+
+> What to keep on chip
+
+Multi-level cache (L1-L3) Hardware caches (L1/L2) Compiler-managed VMEM  
+
+> How much to allocate
+
+Dynamic virtual memory Dynamic scaling Static worst-case bounds OR Use SC representation where every tensor has a fixed shape—unknown sizes must be padded to a static bound. XLA lowers this represen-tation to TPU code, allocating every buffer and scheduling every DMA transfer ahead of execution. Beneath XLA, Pallas allows pro-grammers to write custom TPU kernels with explicit control over blocking and the HBM-VMEM pipeline, enabling advanced query optimizations (Section 4). XLA’s most critical optimization is operator fusion . XLA fuses chains of operations into a single loop, streaming intermediate results through VMEM without touching HBM, sustaining high compute utilization. However, fusion relies on regular memory ac-cesses expressible as static DMA bursts. When an access depends on data (e.g., a hash join gather reading 𝐴 [𝑖𝑑𝑥 [𝑖 ]] ), no DMA burst can describe it, snapping the computational chain. The gather may touch any element, forcing the entire table to reside in HBM. We call this a fusion break —the tensor-program analogue of a pipeline breaker in query engines, but far stricter. On a TPU, merely ex-ecuting a single data-dependent gather breaks the computation pipeline, forcing massive HBM roundtrips. Within this static ecosystem, our starting point leverages the Tensor Query Processing strategy [14, 17], which compiles rela-tional queries into columnar tensor programs. GPUs excel at this: a selection equates to a boolean mask, and a join relies on index com-putations followed by gathers. GPUs mask the latency of dynamic gathers using hardware-managed caches and SIMT multithreading optimizations. These mappings were designed for hardware that resolves dynamism at runtime; however, when ported directly to a TPU, performance collapses due to the dynamism (Section 2.4). 
+
+## 2.3 The Gather/Scatter Bottleneck 
+
+In relational processing, joins and aggregations map to pipeline-breaking gathers and scatters, associated with TPU HBM roundtrips (Anti-Pattern ). To quantify the cost of this Anti-Pattern , we estab-lished a microbenchmark framework on the Google TPU v5p 5. We evaluated a 4-Byte Integer Gather (a canonical analytical lookup) mapping a 60-million-row outer relation against a 15-million-row inner relation. Table 2 maps different memory access patterns to potential gather bottlenecks (Queue) and resolutions. While the hardware pipeline is highly efficient under high-locality/low-sparsity, the Clustered High Sparsity access pattern (e.g., highly selective SQL queries) results in a severe performance bottleneck. As illustrated in Figure 2, decomposing the gather execution time across varying selectivities reveals a critical inflection point. At query selectivities dropping to 1.75%, HBM bank contention 
+
+> 5TPU v5p has 2 TensorCores and 4 SparseCores, 95GB HBM, see https://docs.cloud. google.com/tpu/docs/v5p
+
+Table 2: Gather Bottleneck Analysis (60M Probe → 15M Build) 
+
+Access Pattern Queue Resolution 
+
+> High Locality & Low Sparsity
+
+Low (Balanced DMA requests) Subcores operate near peak HBM BW bounds. 
+
+> Random & High Sparsity
+
+Moderate (Uni-form queueing) Subcores idle due to unpre-dictable random memory accesses ( 𝜏 𝑖𝑛 ).  
+
+> Clustered &High Sparsity
+
+Extreme (Fun-nel Failure) 
+
+A single subcore absorbs 100% of memory bank con-tention ( 𝜏 𝑎𝑐 ). 
+
+Figure 2: Gather execution time (60M → 15M) under vary-ing selectivity. The intersection demonstrates where hard-ware bank contention ( 𝜏 𝑎𝑐𝑡𝑖𝑣𝑒 ) overtakes pipeline idling cost (𝜏 𝑖𝑛𝑎𝑐𝑡𝑖𝑣𝑒 ) as the dominant bottleneck at 1.75% selectivity. 
+
+𝜏 𝑎𝑐𝑡𝑖𝑣𝑒 overtakes pipeline idling ( 𝜏 𝑖𝑛𝑎𝑐𝑡𝑖𝑣𝑒 ) as the primary perfor-mance bottleneck. Under clustered and highly selective access pat-terns, the most heavily loaded SparseCore subcore lane suffers from a “funnel failure,” absorbing queued DMA access that serializes memory access. 
+
+## 2.4 Data-Dependent Dynamism on TPUs 
+
+The gather/scatter bottlenecks highlight a fundamental architec-tural tension: relational query processing is inherently data-dependent, whereas the TPU’s compile-time optimization stack (XLA) relies on static shapes and deterministic execution graphs for performance optimization. This section defines the resulting performance gaps and presents the core design principles that guide our Native TPU Accelerator (NTA). 
+
+> 3
+
+A Taxonomy of Dynamism. Data-dependent dynamism mani-fests in two distinct forms. Shape dynamism arises when the out-put cardinality of an operator depends on its input data. This im-poses the cost of sparsity : every dynamically sized tensor must be declared at a worst-case bound, and every padded element is com-puted. Address dynamism arises when where each row belongs in the output is decided by runtime key values (e.g., gathers and scat-ters). This imposes the cost of stalls : every data-dependent access breaks operator fusion, forces its intermediate to be materialized in HBM, and stalls the TensorCore while it waits for the HBM round trip. Moreover, these two forms of dynamism compound each other. When address dynamism forces an intermediate ten-sor to materialize in HBM, it must do so at the worst-case size (for the output tensor) dictated by shape dynamism. 
+
+The Compound Cost of Sparsity and Stalls. Sparsity taxes ev-ery unit on the chip. When sweeping the fraction of padding, the execution time of operations on both the TensorCore and SparseC-ore stays flat on the TPU, as padded rows consume identical cy-cles to valid rows. Address dynamism introduces even a deeper cost; inserting a single data-dependent gather into a fused chain of element-wise operators forces the XLA compiler to inevitably split the chain. This is because the compiler cannot fuse element-wise operations across a dynamic look-up or gather. When the fu-sion breaks, the TPU is forced to materialize intermediate results to HBM, causing execution stalls on the TensorCore. While offload-ing the gather to the SparseCore mitigates the inefficiency of using TensorCore systolic arrays for scalar lookups, the mathematical op-erations chain (fusion) still breaks causing the TensorCore units to stall while waiting for the HBM roundtrip. Crucially, these costs multiply. Worst-case bounds compose across operators, generating massive padding factors in deep pipelines. And every materialization heavily inflates the HBM stall, as it is written at the worst-case, padded size. A single operator may sur-vive dynamism; a query plan does not. 
+
+System Design Implications. These constraints translate into three non-negotiable requirements for a TPU accelerator. R1: dy-namic shapes must be bounded tightly . R2: data-dependent mem-ory accesses must be mathematically translated into predictable tensor arithmetic (e.g., boolean masking) to sustain pipelined exe-cution and avoid fusion breaks. R3: unavoidable dynamic accesses must execute via SparseCore and its Scatter-Gather Engine (SGE) rather than relying on the TensorCore path. 
+
+## 3 NTA SYSTEM OVERVIEW 
+
+Modern TPUs offer distinct architectural advantages for massive tensor computation throughput, dedicated hardware gather-scatter acceleration (SparseCore), programmable on-chip scratchpad mem-ories, and ultra-fast ICI inter-chip networks. In order to unlock theses hardware capabilities for analytical query processing, we present Native TPU Accelerator (NTA) . Rather than treating the TPU as a black-box coprocessor, NTA co-designs relational operators directly around its memory and compute hierarchies. NTA selects highly optimized physical Pallas kernel implementa-tions, further optimizes and distributes its execution over available TPU topology and across different TPU computing units (e.g., Ten-sorCore, SparseCore). Figure 3 illustrates the compilation and dis-tributed execution workflow of NTA. (1) Plan Ingestion and Shape Planning (Section 5.1): NTA in-gests logical query plans and uses catalog statistics to compute compile-time cardinality bounds ( B𝑜 ) for every intermediate re-lation, sizing static tensor buffers with calibrated safety mar-gins. (2) Physical Operator Selection (Section 4, 5.2): Using compiled bounds, key distributions, and target TPU hardware cost pro-files, NTA selects the optimal physical operator from its TPU-native catalog (e.g., Sorted-Hash Lookup Join vs. SparseCore Gather Join). (3) Lowering to JAX and Pallas (Section 5.3): Non-materializing operators (filters, projections) are fused into adjacent kernels. The physical plan is lowered to a statically shaped JAX program with embedded Pallas custom kernels for specialized memory-movement routines. (4) XLA SPMD Compilation and Scale-Out (Section 6): The lowered program is compiled via XLA SPMD into a single device-mesh executable. During execution, relations are co-partitioned across TPU devices, each device processes local partitions via 32-bit local tuple identifiers, and partial results are merged into the final relation. 
+
+## 4 TPU-NATIVE RELATIONAL OPERATORS 
+
+NTA represents each intermediate relation as statically shaped col-umn tensors with a validity mask and compiles relational opera-tors into JAX or Pallas programs. Selections and projections are fused into the next materializing operator, whereas joins, aggrega-tions, duplicate elimination, and sorting may each admit multiple TPU-native implementations. Table 3 summarizes this physical op-erator catalog, including the input data property required by each implementation and its key execution primitives. The following subsections explain how each implementation preserves relational semantics and why its listed property makes it applicable. Section 5 then describes how NTA combines these properties with planned cardinality bounds and calibrated crossover rules (e.g., “small” do-main) to select among the applicable implementations. 
+
+## 4.1 Joins 
+
+NTA specializes join kernels to exploit physical properties of the input relations, including row alignment, bounded PK–FK fanout, and build-key uniqueness. The following paragraphs describe three implementation families: layout-specialized joins, indexed PK–FK joins, and sorted-hash joins over a unique build key. Indexed PK– FK joins assume a prebuilt lookup index, whereas sorted-hash joins construct their lookup structure on the fly when selected. 
+
+Layout-specialized joins. A clustered PK–FK layout stores at most 
+
+𝑘 child rows for each parent in fixed-width slots. Fanout-Reshape Join views the child columns as parent-by-𝑘 tensors and broad-casts each parent payload across its child slots. Unused slots re-main invalid, preserving join semantics without an indexed lookup. Key-Aligned SIMD Join applies to a 1:1 join whose inputs are al-ready aligned on the join key: at every row position, the two inputs contain the same key. Having the same key domain is not sufficient because the relations may order their keys differently or contain different key multiplicities.  
+
+> 4LOGICAL QUERY PLAN
+> Top-K 10
+> Aggregate
+> Filter
+> Join
+> RS
+> Catalog
+> TPU Topology
+> Columnar Data
+> (Parquet, NPZ)
+
+NTA             
+
+> COMPILE
+> Static Shape Planning
+> Physical Implementation
+> Selection
+> QUERY PHYSICAL PLAN
+> In-Kernel Top-K · VPU
+> Segment Reduction · VPU
+> SparseCore Gather Join · SC
+> Fused filter
+> Scan R Scan S
+> JAX / PALLAS PROGRAM
+> @jax.jit
+> def query(R, S):
+> x = pallas_gather_masked (
+> S.payload, R.fk,
+> valid_mask=R.valid)
+> m = R.valid & predicate (R, x)
+> g = jax.ops.segment_sum (
+> jnp.where(m, R.value, 0),
+> R.group,
+> num_segments=G)
+> return jax.lax.top_k (g, 10)
+> representative lowered program
+> XLA SPMD JIT
+> EXECUTE TPU Executable TPU EXECUTION · SPMD
+> TPU 0 TPU 1 TPU N−1
+
+⋯ 
+
+> Row-wise Co-shard Cross-shard Merge
+> QUERY RESULT
+> columns · validity mask
+> 1
+> 2
+> 3
+> 4
+
+Figure 3: NTA Architecture and End-to-End Query Lifecycle. (1) Static shape planning assigns guarded buffer bounds; (2) Phys-ical implementation selection maps operators to VPU, MXU, or SparseCore; (3) Plan lowering emits a JAX/Pallas program compiled by XLA SPMD; (4) Distributed execution evaluates queries over co-partitioned shards across the TPU slice. Table 3: NTA physical operator catalog. Logical Op. Physical Operator Required Property Primary Unit Key Primitive(s) Join 
+
+Key-Aligned SIMD Join 1:1 join; identical row-aligned keys VPU jnp.bitwise_and 
+
+Fanout-Reshape Join Clustered PK–FK; bounded fanout 𝑘 VPU jnp.reshape , jnp.repeat 
+
+VPU Index Lookup Join PK–FK; existing lookup index VPU jnp.take 
+
+SparseCore Gather Join PK–FK; existing lookup index SparseCore plsc.Indices , pltpu.emit_pipeline , pltpu.sync_copy 
+
+Sorted-Hash Lookup Join Unique-build equijoin VPU integer_hash , jnp.argsort , jnp.searchsorted , jnp.equal 
+
+Aggregation 
+
+One-Hot MatMul Aggregation Small dense group domain MXU jax.nn.one_hot , jax.lax.dot_general 
+
+VMEM Block Histogram Histogram working set fits VMEM VPU pl.pallas_call , pl.atomic_add 
+
+Radix-Packed Aggregation Multi-key; small packed domain MXU jnp.ravel_multi_index , jax.lax.dot_general 
+
+Sorted-Run Aggregation Input ordered by group key VPU jnp.diff , jnp.cumsum 
+
+Fanout-Reshape Aggregation Clustered groups; bounded fanout 𝑘 VPU jnp.reshape , jnp.sum 
+
+Segment Reduction Large or sparse group domain VPU, SparseCore jax.ops.segment_sum 
+
+Distinct 
+
+MXU One-Hot Distinct Small dense value domain MXU jax.nn.one_hot , jax.lax.dot_general 
+
+VMEM Bitonic Distinct Active working set fits VMEM VPU jax.lax.sort 
+
+Compact-Then-Sort Distinct Few active rows after filtering VPU jnp.nonzero , jax.lax.sort 
+
+Direct-Sort Distinct General fallback VPU jnp.unique(size=...) 
+
+Sort / Top-K 
+
+In-Kernel Top-K ORDER BY ... LIMIT 𝐾 VPU jax.lax.top_k 
+
+Global Sort Full ordering on TPU VPU jnp.argsort 
+
+Host-Hybrid Sort Host candidate set ≤ 20K rows TPU + Host jax.device_get , np.argsort 
+
+Indexed joins. A PK–FK lookup index maps each probe key to a build-side row identifier. VPU Index Lookup Join gathers the cor-responding payloads with jnp.take , whereas SparseCore Gather Join sends the same row identifiers through plsc.Indices and a pipelined SparseCore transfer. Unmatched probes are directed to a safe sentinel position and invalidated by the output validity mask. The multi-payload specialization reuses one row-identifier vector across multiple projected columns, amortizing the index lookup. 
+
+Sorted-hash lookup. For a unique-build equijoin without a pre-built lookup index, Sorted-Hash Lookup Join constructs a tempo-rary lookup structure during query execution. It packs and hashes the build keys, sorts the build rows by hash, and uses binary search to locate the matching hash range for each probe. It then scans a bounded number of candidates and compares the original keys be-fore accepting a match, preventing hash collisions from producing false matches. An overflow guard detects a collision range that ex-ceeds the compiled scan bound. Build-key uniqueness guarantees at most one exact match per probe row. 
+
+Join semantics. All implementations expose a common output contract: a build-side row identifier and a match predicate for each probe row. Inner joins invalidate unmatched probes, whereas left-outer joins retain the probe row and invalidate the unmatched build-side payloads. Semi and anti joins consume only the match predicate without materializing build-side payloads. A bounded-fanout layout extends the same contract to at most 𝑘 child slots per probe. The physical implementation therefore changes how matches are located without changing the logical join semantics. 
+
+## 4.2 Aggregations 
+
+Aggregation implementations differ in how they map grouping keys to aggregate state. NTA specializes this mapping to proper-ties of the grouping keys and input layout: a bounded dense key 
+
+> 5
+
+domain, an aggregate-state array that fits in VMEM, an existing group-key order, or a clustered layout with bounded fanout. When none of these applies, NTA uses segment reduction as the fallback. 
+
+Dense-domain aggregation. When group identifiers form a bounded domain (group key range), One-Hot MatMul Aggregation en-codes them as a masked one-hot matrix and evaluates additive ag-gregate state with jax.lax.dot_general on the MXU. For a com-posite grouping key, Radix-Packed Aggregation first maps each key tuple to a dense integer identifier with jnp.ravel_multi_index .This implementation applies when the product of the domains re-mains within the calibrated bound for the dense reduction. 
+
+Histogram and segment aggregation. When the aggregate state array fits in VMEM, VMEM Block Histogram processes the input in tiles and updates the group state on chip before writing the com-pleted state to HBM. Segment Reduction handles large or sparse group domains through the statically shaped reduction exposed by jax.ops.segment_sum . Unlike the dense-domain implementa-tions, these operators do not materialize an input-cardinality-by-domain-size one-hot matrix. 
+
+Structure-aware aggregation. Sorted-Run Aggregation applies when the input is already ordered by the grouping key. It identifies contiguous runs of equal keys and reduces each run into one group result. Fanout-Reshape Aggregation applies when a clustered layout stores at most 𝑘 input rows for each group in fixed-width slots; it reshapes the input into group-by-𝑘 tensors and reduces along the slot dimension. These implementations use the existing order or layout rather than sorting or repartitioning the input. 
+
+Aggregate state. NTA represents the SQL aggregates associated with each group as fixed-width state. COUNT and SUM use additive accumulators, AVG maintains a sum–count pair, and MIN and MAX 
+
+use masked extrema. Aggregates sharing the same grouping keys also share the group-to-state mapping. The product of the group-domain size and aggregate-state width determines the state foot-print and, in particular, whether the VMEM-resident histogram im-plementation is applicable. 
+
+## 4.3 Distinct 
+
+Distinct implementations differ in how they represent value mem-bership. For a single integer-valued expression with a bounded do-main, NTA records the values present in the input directly. Other-wise, it sorts value tuples and retains one row from each equality run. The sort-based implementations differ in how much inactive data they carry into the sort and whether the resulting working set fits the on-chip memory budget. 
+
+Dense-domain distinct. When the encoded value domain is within the calibrated one-hot limit, MXU One-Hot Distinct assigns one presence slot to each domain value and an additional slot to NULL ,when required. It forms a masked membership indicator, reduces each slot on the MXU, and emits the values whose presence bits are set. The output size is determined by the encoded domain rather than the input cardinality. 
+
+Sort-based distinct. The sort-based implementations order value tuples, identify boundaries between unequal adjacent tuples, and retain the first active row of each run. Compact-Then-Sort Dis-tinct first compacts the input when only a small fraction of its compiled rows are active, reducing the number of rows entering the sort. VMEM Bitonic Distinct uses jax.lax.sort when the active tuple payload fits the calibrated VMEM budget. Direct-Sort Distinct applies jnp.unique(size=...) to the full compiled in-put as the general fallback. All three produce fixed-size output ten-sors with a validity mask identifying the unique rows. 
+
+Grouped distinct. For COUNT(DISTINCT x) grouped by keys g,NTA treats (g, 𝑥 ) as the distinct identity. It removes duplicate valid pairs and then counts the surviving values for each group. The intermediate may therefore contain nearly as many rows as the input, even when the final number of groups is small. 
+
+## 4.4 Sort and Top-K 
+
+Sort implementations differ in how much ordering they materi-alize and where they complete it. For ORDER BY ... LIMIT K,In-Kernel Top-K masks invalid keys, extracts key–row-identifier pairs with jax.lax.top_k , and gathers non-key payload columns only after the winners are known. Global Sort uses jnp.argsort 
+
+when the entire relation must be ordered. For a small statically bounded candidate set, Host-Hybrid Sort transfers only keys and row identifiers to the host for final ordering and fetches the se-lected payload columns lazily, limiting host–device traffic. 
+
+## 5 TPU HW-CONSCICOUS COMPILATION & OPTIMIZATION 
+
+To address the shape and address dynamism described in Section 2.4, NTA compiles a logical query plan into a statically shaped JAX/Pallas program through three steps. (1) Static shape planning uses catalog statistics to assign each intermediate a compiled cardinality bound, which determines its tile-aligned tensor shape and buffer alloca-tion. (2) Physical operator selection uses these planned bounds, the physical properties available at each operator, and calibrated cost models to choose a TPU-native implementation for every logical operator. (3) Plan finalization groups the selected implementations into fusion-compatible producer–consumer regions and lowers the resulting physical plan to JAX/Pallas for XLA JIT compilation. TPUs shift scheduling and memory management from hardware to software. When intermediate cardinalities, data movement, and operator schedules can be bounded and planned before execution, NTA exposes compact, statically bounded, and fusable work to XLA, enabling dense pipelines with high hardware utilization. 
+
+## 5.1 Static Shape Planning 
+
+Static shape planning determines the tensor shape of every inter-mediate before XLA compilation. For each logical operator 𝑜 , NTA distinguishes two compile-time quantities: an estimated output car-dinality b𝑁 𝑜 , derived from catalog statistics and operator semantics, and a compiled cardinality bound 𝐵 𝑜 ≥ b𝑁 𝑜 . The estimate supports cardinality estimation and cost modeling, whereas the compiled bound determines the intermediate’s tile-aligned tensor shape and buffer allocation. The compiler also uses 𝐵 𝑜 to check whether the resulting buffers fit in device memory and to account for padded work during physical operator selection. 
+
+Base selections. For a selection over a base relation with 𝑁 rows, histograms, most-common-value frequencies, and the number of distinct values (NDVs) provide an upper selectivity estimate 𝑠 + 
+
+> 𝑖
+
+for 
+
+> 6
+
+each predicate 𝑖 . Joint statistics directly provide the combined esti-mate 𝑠 + when available. Otherwise, NTA combines predicate esti-mates conservatively: 
+
+𝑠 +∧ = min  
+
+> 𝑖
+
+𝑠 + 
+
+> 𝑖
+
+, 𝑠 +∨ = min 1,∑︁ 
+
+> 𝑖
+
+𝑠 +
+
+> 𝑖
+
+!
+
+. (1) This avoids treating attribute independence as an upper bound. NTA derives the compiled bound for the selection as 
+
+𝐵 sel = TileUp  min  𝑁 , 𝛾𝑁𝑠 + , (2) where 𝛾 > 1 is a calibrated safety factor and TileUp rounds to the static tile size required by the selected implementation. When the required statistics are unavailable, NTA conservatively sets 𝑠 + = 1. 
+
+Bound propagation. Starting from the base inputs, the compiler propagates compiled cardinality bounds bottom-up through the logical plan. Let 𝐵 in and 𝐵 out denote the compiled input and output bounds of an operator. A PK–FK join with referential integrity pro-duces no more rows than its foreign-key input, giving the bound 
+
+𝐵 FK . If the compiled PK input has bound 𝐵 PK and the layout guar-antees a maximum fanout 𝑘 , NTA uses the tighter bound 
+
+𝐵 out = min (𝐵 FK , 𝑘𝐵 PK ). (3) A unique-build equijoin executed by Sorted-Hash Lookup Join produces at most one match per probe row, so its output bound equals its probe-input bound. For a grouped aggregation over keys 𝐺 𝑖 , NTA uses 
+
+𝐵 out = min 𝐵 in ,
+
+Ö
+
+> 𝑖
+
+NDV (𝐺 𝑖 )
+
+!
+
+. (4) Duplicate elimination uses the corresponding value-domain bound, while ORDER BY ... LIMIT K uses 
+
+𝐵 out = min (𝐵 in , 𝐾 ). (5) 
+
+Runtime validation. Compiled cardinality bounds are guarded execution bounds rather than semantic worst-case bounds. Each bounded operator writes at most 𝐵 𝑜 tuples to its statically shaped output and reports an overflow if its observed output cardinality would exceed 𝐵 𝑜 . The host accepts a query result only if all over-flow checks succeed. If 𝑁 obs  
+
+> 𝑜
+
+> 𝐵 𝑜 , NTA discards the result, in-creases the violated bound, recomputes the downstream bounds, reruns physical operator selection, and recompiles the same logical plan. No such recompilation occurred in our evaluated workloads. 
+
+## 5.2 Physical Operator Selection 
+
+After static shape planning determines the compiled cardinality bounds, NTA selects one physical implementation for each logical operator. Selection first applies hard constraints: an implementa-tion is considered only when its required constraints and input lay-out are available and its working set fits the target TPU. Performance-dependent branches then use crossover rules calibrated for the tar-get hardware. Figure 4 shows the resulting decision paths for joins and grouped aggregations. 
+
+Join and aggregation choices. Figure 4 applies the required prop-erties in Table 3. For joins, NTA first exploits identical row align-ment or clustered PK–FK fanout. An existing PK–FK lookup index enables either VPU Index Lookup Join or SparseCore Gather Join, with the hardware profile and calibrated probe-size crossover selecting the backend. Without an index, a unique-build equijoin enables Sorted-Hash Lookup Join. For aggregation, NTA con-siders a small dense domain, VMEM-resident histogram state, a small packed multi-key domain, existing key order, and clustered bounded fanout in turn. Large or sparse group domains use Seg-ment Reduction. 
+
+Other operators. Distinct and Sort/Top-K use the same property-first procedure. For DISTINCT , a small bounded integer domain se-lects MXU One-Hot Distinct; otherwise, a low active-row frac-tion selects Compact-Then-Sort Distinct, a working set that fits VMEM selects VMEM Bitonic Distinct, and Direct-Sort Dis-tinct is the general fallback. For ORDER BY , a bounded LIMIT or 
+
+OFFSET selects In-Kernel Top-K. Without such a bound, a small host-finalization boundary enables Host-Hybrid Sort; remaining cases use Global Sort. Selections and projections have no inde-pendent physical implementation and fuse into the selected con-sumer unless materialization is required. 
+
+Selection thresholds. Terms such as “small” and “above crossover” refer to target-specific thresholds rather than universal constants. Some choices follow directly from input properties: NTA selects SparseCore Gather for PK–FK joins with a prebuilt index and Sorted-Hash Lookup when no such index is available, as shown in Figure 8. When both VPU and SparseCore indexed joins are applicable, the v5p policy switches to SparseCore at 50K probe rows. In the 600M-row aggregation sweep, NTA selects One-Hot MatMul through 
+
+𝐾 = 256; at 𝐾 = 1024, the 𝑁 × 𝐾 representation exceeds device memory, and NTA switches to Segment Reduction through the largest evaluated domain, 𝐾 = 220 . For Distinct, One-Hot admits at most 128 value slots, Compact-Sort requires an active-row fraction at most 20% over an input of at least 100K rows, and VMEM sort admits at most 8 MiB of active payload. In-Kernel Top-K requires 
+
+𝐾 ≤ 4096, while Host-Hybrid Sort admits at most 20K candidates. 
+
+## 5.3 Plan Finalization and Lowering 
+
+After selecting a physical implementation for each operator, NTA assembles the selected operators into a complete physical plan. It fuses non-materializing operations, such as selections and pro-jections, into the adjacent operators that consume them and con-structs any composite keys required by joins and grouped aggre-gations. This removes unnecessary intermediate tensors and keeps adjacent computation together where possible. NTA then applies the tile-aligned tensor shapes determined in Section 5.1, propa-gates validity masks through the plan, and adds overflow checks to operators with data-dependent output cardinalities. Finally, it low-ers regular tensor computation to JAX and custom data-movement kernels to Pallas. XLA compiles the resulting statically shaped pro-gram, allocates its buffers, and schedules its execution. 
+
+## 6 ORCHESTRATION AT EXTREME SCALE 
+
+While single-device execution provides a foundation, processing hundreds of gigabytes to terabytes (e.g., SF1000) requires coordi-nating query execution across multiple TPU chips. This section describes how NTA distributes physical query plans across TPU devices and schedules concurrent queries under the TPU runtime’s execution constraints.           
+
+> 7(a) Join →yes ↓no
+> 1:1 join with identical row-aligned keys? Clustered PK–FK with bounded fanout 𝑘 ?Existing PK–FK lookup index? SparseCore feasible & above crossover? Unique-build equijoin?
+> Key-Aligned SIMD Join Fanout-Reshape Join SparseCore Gather Join VPU Index Lookup Join Sorted-Hash Lookup Join
+> (b) Aggregation →yes ↓no
+> Small dense group domain with MXU support? Histogram work-ing set fits VMEM? Multi-key with small packed domain? Input ordered by group key? Clustered groups with bounded fanout 𝑘 ?
+> One-Hot Mat-Mul Aggregation VMEM Block Histogram Radix-Packed Aggregation Sorted-Run Aggregation Fanout-Reshape Aggregation Segment Reduction
+
+Figure 4: Physical operator selection for joins and grouped aggregations. Blue rightward branches denote satisfied conditions; gray downward branches continue to the next alternative. Conditions and leaves correspond to Table 3. Scaling Out with JAX Distributed. NTA uses JAX’s distributed runtime ( jax.distributed ) and XLA’s GSPMD partitioner [34] to execute a physical query plan across a TPU slice. The devices in the assigned slice form a logical JAX device mesh used for both SPMD compilation and data (relation) placement. XLA compiles the physical query plan for this execution layout, and each device processes the relation partitions assigned to it. A naive execution strategy partitions each relation independently and relies on XLA to route indexed lookups to the device con-taining the referenced tuple. This can turn PK–FK joins into dis-tributed joins that require communication for every lookup. Re-taining global tuple identifiers also requires 64-bit indices once a relation exceeds the signed 32-bit row range, doubling index stor-age and index-read traffic on TPUs. NTA instead preserves par-titioning metadata and row alignment across physical operators. Large relations are partitioned across devices, whereas small re-lations are replicated when they fit in device memory. Relations connected by high-volume PK–FK joins are co-partitioned when their existing layouts are compatible. The corresponding indexes use partition-local signed 32-bit tuple identifiers, allowing each de-vice to evaluate the indexed join using only its local partitions. Partition-local identifiers can also serve as group identifiers when the grouping attributes are aligned with the partitioning scheme. In this case, each device computes a local aggregation without ex-changing input tuples. Each partition carries a stable partition iden-tifier, and a tuple identifier that appears in the query result is rep-resented as (partition _id , local _id ) and decoded during result ma-terialization. Lookups into replicated relations are also local. Joins whose inputs are neither replicated nor compatibly partitioned re-quire a repartitioning exchange. Each device executes the compiled query over its local relation partitions. Scans, selections, co-partitioned indexed joins, and local aggregations proceed without communication. Data exchange is required only for repartitioning and for combining partial results into the final result relation. 
+
+Concurrency and Multi-Tenant Scheduling. While the TPU excels at raw throughput, managing concurrent queries in a uni-fied compilation model exposes static execution constraints. In our current JAX/TPU deployment, the host submits query executables to a serialized, First-In-First-Out (FIFO) instruction queue. Con-sequently, unlike CPU databases that time-slice concurrent ana-lytical queries, NTA’s average query latency scales linearly with the number of concurrent tenants, even though aggregate cluster throughput remains constant. 
+
+## 7 EVALUATION 
+
+We evaluate NTA to validate three core claims: (1) our hardware-conscious algorithms effectively reduce TPU memory-bound stalls, (2) our hardware-conscious local physical planner selects perfor-mant JAX and Pallas implementations, and (3) our JAX distributed orchestration scales effectively to extreme bounds. 
+
+## 7.1 Experimental Setup 
+
+Benchmarks. We evaluate NTA on TPC-H [31] and ClickBench [9]. We run all 22 TPC-H queries at SF1, SF100, and SF1000 for the main benchmark experiments. We also run ClickBench queries (stan-dard 100M row table) for generalization & limitations study (dis-cussed in Section 8.1). 
+
+Baselines & Setup. We compare DuckDB, Direct JAX, and NTA. 
+
+DuckDB is our SIMD-vectorized, in-memory CPU baseline, a widely-accepted analytics query processing baseline [17, 33, 35, 38]. Di-rect JAX follows TQP [14]’s tensor query mapping using JAX/XLA on TPU, without our native TPU kernels and intelligent kernel se-lection; NTA is the complete system. Direct JAX isolates NTA’s contribution on the same TPU hardware. All runs use isolated Linux containers. All runs use isolated Linux containers. DuckDB runs on a dual-socket Google Cloud host equipped with two Intel Xeon Platinum 8481C processors (112 physical cores, 224 vCPUs via 2-way SMT) and up to 400 GB of memory. DuckDB is configured with 224 worker threads, matching the 224 hardware execution contexts (its default auto-detected concurrency) without oversub-scribing the CPU. TPU runs use v5p unless noted, with selected single-chip runs repeated on v7p; Direct JAX and NTA use identi-cal allocations. Each host supports at most four chips, so 𝐷 chips span ⌈𝐷 /4⌉ hosts. 
+
+Measurements. All measurements are warm: input data is resi-dent in memory and TPU executables are precompiled. We time 
+
+> 8
+
+query execution only, excluding data generation, loading, host-to-device transfer, and JIT compilation. We report the median latency of five runs and speedup over DuckDB. We summarize each query set by geometric-mean speedup and total-runtime speedup, the ra-tio of summed DuckDB to system runtimes. 
+
+## 7.2 Macrobenchmarks (SF1 & SF100) 
+
+Figure 5(a) reports per-query speedup over DuckDB at SF1. Di-rect JAX achieves a geometric-mean speedup of 0 .058 × and outper-forms DuckDB only on Q6, whereas NTA accelerates every query by 3 .5–61 .0×, achieving 10 .3× geometric-mean and 8 .5× total-runtime speedup. At SF100 (Figure 5(b)), Direct JAX achieves 0 .073 × geometric-mean and 0 .026 × total-runtime speedup, outperforming DuckDB only on Q1, Q6, and Q13. NTA accelerates every query by 1 .9– 30 .5× and achieves 7 .0× geometric-mean and 5 .7× total-runtime speedup. 
+
+Sources of improvement. Q6 is the only Direct JAX query faster than DuckDB at both scales because its selective scan and scalar re-duction already map to a compact fused tensor program. At SF100, Q1 and Q13 also cross the baseline, but most Direct JAX join and grouped-reduction queries remain far slower. NTA retains the com-pact Q6 path and additionally regularizes the joins and grouped re-ductions that dominate the remaining queries. Selective dimension predicates become masks before fact-table access, indexed payloads use masked SparseCore gathers, and bounded or small-domain groups use reshape, histogram, or dense reduction rather than global scat-ter. These choices are especially effective for Q9 (25 .3× at SF1), whose multi-hop joins reuse compact lookup payloads, and for Q12 (16 .9×), whose selective order lookup feeds a two-group reduc-tion. Q13 and Q22 obtain the largest SF1 gains (61 .0× and 36 .7×): Q13 scans dictionary tokens and reduces directly into a 61-bin customer-count distribution, while Q22 extracts phone-code bytes and aggregates the surviving customers into a small dense domain. 
+
+Residual bottlenecks. The benefit depends on how early the se-lected implementation collapses the working set. At SF100, Q15 (30 .5×), Q13 (25 .4×), and Q6 (23 .5×) retain compact aggregate state while their input scans grow. In contrast, Q1, Q5, Q7, and Q8 still stream much of lineitem and several payload columns, leaving them bounded by HBM bandwidth at 3 .1–3 .7×. Q16 has the smallest gain (1 .9×) because substring predicates, distinct supplier count-ing, and a full ordering over tens of thousands of output groups leave substantial per-row and high-cardinality work after filtering; Q11 similarly scans partsupp , forms per-part state, and sorts its sur-viving groups. The takeaway is that TPU-native operators remove irregular-access overhead, but they cannot eliminate bytes that the query must scan or large result state that it must materialize. 
+
+## 7.3 Extreme Scale (SF1000) 
+
+Figure 6 reports SF1000 performance using 16 TPU v5p chips against DuckDB. NTA accelerates every query by 5 .5–250 .7×, achieving 68 .6× geometric-mean speedup. The complete query set finishes in 1.613 seconds, down from 80.86 seconds, yielding 50 .1× total-runtime speedup. 
+
+Scale-out behavior. Row-wise co-sharding keeps scans, masks, indexed gathers, and local reductions partition-local; devices ex-change only bounded aggregate state or Top-K candidates. Q6 there-fore reaches 250 .7×: each chip performs a contiguous scan and con-tributes one scalar partial sum. Q2, Q12, and Q13 achieve 164 .8– 172 .0× because selective predicates sharply reduce the fact-side work and the final Top-K or group state is small. Q3 and Q18, which are less dominant on one chip, reach 103 .2× and 185 .3× because clustered per-order reductions execute independently within each shard and require only a small final Top-K merge. 
+
+Scale-out limits. Queries with large per-shard state or work that does not shrink with row partitioning remain the tail. Q16 im-proves by only 5 .5× because string matching, high-cardinality dis-tinct counting, and final ordering are still performed within ev-ery shard; Q17 reaches 15 .4× because its correlated per-part av-erage requires variable-fanout child reads and multiple reductions. Q11, Q15, and Q20 also retain per-key state or dependent filter-ing passes, limiting them to 29 .8–40 .0×. Consequently, the 50 .1×
+
+total-runtime gain is lower than the 68 .6× geometric mean: the re-maining long-running, state-heavy queries receive less benefit and dominate elapsed time. Even so, the slowest query remains 5 .5×
+
+faster, showing that NTA’s static programs scale without shifting the bottleneck to inter-device exchange. 
+
+## 7.4 Ablation Study 
+
+Roofline Analysis. To ground our operator-level performance, we examine our TPC-H query execution against the TPU’s Roofline model in Figure 7. The left panel shows the HBM Roofline (ridge point at 6.5 FLOPS/byte). Because relational algebra streams ar-rays, almost all queries (Scan, Aggregation, Join) heavily populate the memory-bound region (0.1–1.0 FLOPS/byte) when constrained by HBM. Only heavy sorting operators (e.g., Q18) approach the compute-bound region. Relative to VMEM, many of our queries transition decisively to the ridge point or fully into the compute-bound region. This demonstrates our TPU-native execution per-fectly transitions inherently memory-bound analytical operations into tightly fused tensor math limited only by raw compute. 
+
+Intelligent Join Kernel Selection. Figure 8 evaluates single-chip join kernel performance across scale factors, SF0.1 to SF10 for two join patterns. For primary-foreign key (PK-FK) joins (e.g., Q3) for-eign key indices can be pre-built and mapped directly. NTA detects and optimally routes the execution to the Pallas SC Gather ker-nel, which leverages the SparseCore to achieve fast (< ms) lookups and up to 41 .4× speedup over DuckDB at SF10. For FK-FK joins (e.g., Q5) where pre-built index maps are unavailable, NTA dynam-ically switches to the Sorted Hash Lookup Join . This intelligent selection avoids the heavy overhead of sorting algorithms, outper-forming the naïve TC Sort-Merge Join baseline by over 15 × while maintaining a robust 18 .4× speedup over the CPU baseline at SF10. 
+
+Intelligent Aggregation Kernel Selection. Figure 9 illustrates how aggregation kernels behave under varying group cardinalities, 
+
+𝐾 , for a fixed 600M-row workload. For low-cardinality ( 𝐾 ≤ 256), the TC One-Hot Matmul kernel utilizes the systolic MXU array, achieving over 1000 × speedup at 𝐾 = 4. However, because it mate-rializes an 𝑁 ×𝐾 dense matrix, it encounters HBM Out-of-Memory (OOM) errors for 𝐾 ≥ 1024. At higher cardinalities, NTA instead 
+
+> 9Q1 Q2 Q3 Q4 Q5 Q6 Q7 Q8 Q9 Q10 Q11 Q12 Q13 Q14 Q15 Q16 Q17 Q18 Q19 Q20 Q21 Q22
+
+0.01 ×
+
+0.1 ×
+
+1×
+
+10 ×
+
+Geometric mean Direct JAX 0.058 × · NTA 10.3 ×
+
+Total runtime Direct JAX 0.031 × · NTA 8.5 ×
+
+(a) SF1 
+
+> Q1 Q2 Q3 Q4 Q5 Q6 Q7 Q8 Q9 Q10 Q11 Q12 Q13 Q14 Q15 Q16 Q17 Q18 Q19 Q20 Q21 Q22
+
+0.01 ×
+
+0.1 ×
+
+1×
+
+10 ×
+
+Geometric mean Direct JAX 0.073 × · NTA 7.0 ×
+
+Total runtime Direct JAX 0.026 × · NTA 5.7 ×
+
+(b) SF100 
+
+> Speedup over DuckDB
+
+Direct JAX NTA (1 TPU) DuckDB (1 ×)Figure 5: Per-query speedup over DuckDB on 1 TPU v5p chip at (a) SF1 and (b) SF100. Q1 Q2 Q3 Q4 Q5 Q6 Q7 Q8 Q9 Q10 Q11 Q12 Q13 Q14 Q15 Q16 Q17 Q18 Q19 Q20 Q21 Q22 
+
+050 ×
+
+100 ×
+
+150 ×
+
+200 ×
+
+250 ×
+
+> Speedup over DuckDB
+
+Geometric mean 68.6 × · Total runtime 50.1 ×
+
+NTA (16 TPUs) DuckDB (1 ×)
+
+Figure 6: Per-query speedup over DuckDB on 16 TPU v5p chips at SF1000. 10 3 10 2 10 1 10 0 10 1 10 2 10 3 10 4
+
+FLOPS/byte       
+
+> 10 4
+> 10 3
+> 10 2
+> 10 1
+> 10 0
+> 10 1
+> 10 2
+> TFLOPS
+> Memory-Bound Compute-Bound
+> Q1 Q3 Q4 Q5 Q6 Q7 Q8 Q9 Q10 Q12 Q14 Q15 Q16 Q17 Q18 Q19 Q20 Q21
+
+HBM Roofline           
+
+> Roofline (HBM) Ridge: 6.5 FLOPS/byte 10 310 210 110 010 110 210 310 4
+
+FLOPS/byte      
+
+> 10 4
+> 10 3
+> 10 2
+> 10 1
+> 10 0
+> 10 1
+> 10 2
+> TFLOPS
+> Memory-Bound Compute-Bound
+> Q1 Q3 Q4 Q5 Q6 Q7 Q8 Q9 Q10 Q12 Q14 Q15 Q16 Q17 Q18 Q19 Q20 Q21
+
+VMEM (SRAM) Roofline     
+
+> Roofline (VMEM (SRAM)) Ridge: 0.7 FLOPS/byte Scan+Filter Scan+Agg Join+Filter Subquery Sort/TopN
+
+Figure 7: Dual roofline analysis for the optimized NTA on TPC-H (SF1). 0.1 1.0 10.0 
+
+Scale Factor (SF) 
+
+> 10 0
+> 10 1
+> Speedup vs. DuckDB
+
+PK-FK Join (e.g., Q3)   
+
+> DuckDB Baseline (1x) TC Sort-Merge Sorted Hash Lookup SC Gather (Pre-built Index) NTA Kernel Selection
+> 0.1 1.0 10.0
+
+Scale Factor (SF) 
+
+> 10 0
+> 10 1
+> Speedup vs. DuckDB
+
+FK-FK Join (e.g., Q5) 
+
+> DuckDB Baseline (1x) TC Sort-Merge Sorted Hash Lookup SC Gather (On-the-fly Index) NTA Kernel Selection
+
+Figure 8: Single-chip join (PK-FK, FK-FK) benchmark across scale factors. 
+
+selects Segment Reduction, which uses XLA scatter-add through 
+
+jax.ops.segment_sum and avoids materializing the 𝑁 × 𝐾 matrix. This hardware-aware selection prevents OOM failures, achieving a robust 4 .2× speedup over the CPU baseline. 
+
+Multi-Device Scaling. Figure 10 illustrates the distributed scala-bility of NTA across the TPU pod slices (1 to 128 TPU chips with fast ICI links). JAX/XLA SPMD shards the data row-wise across the available devices, minimizing interconnect bottlenecks. Both 24 27 210 213 216 219 
+
+Group Cardinality (K) 
+
+10 0
+
+10 1
+
+10 2
+
+10 3
+
+> Speedup vs. DuckDB
+> DuckDB Baseline (1x) TC One-Hot Matmul TC One-Hot (OOM Cliff) JAX Segment Sum SC Scatter-Add NTA Kernel Selection
+
+Figure 9: Single-chip aggregation benchmark varying group cardinalities ( 𝐾 ). 1 4 16 32 64 128 
+
+Number of TPU Chips (Devices) 
+
+10 0
+
+10 1
+
+10 2
+
+10 3
+
+> Speedup vs. DuckDB
+
+NTA Multi-Device Distributed Scalability 
+
+> DuckDB Baseline (1x) Ideal Linear Scaling (PK-FK) NTA Join (PK-FK Selected) NTA Join (FK-FK Selected) NTA Agg (Low-K Selected) NTA Agg (High-K Selected)
+
+Figure 10: NTA scalability using JAX distributed (SPMD) up to 128 TPU v5p chips. 
+
+the selected join kernels (PK-FK SC Gather, FK-FK Sorted Hash), the selected aggregation kernels (Low-𝐾 One-Hot-Matmul, High-
+
+𝐾 Segment Reduction) exhibit near-linear distributed speedup up to 128 devices. This demonstrates the effectiveness of our hardware conscious kernel design and selection. 
+
+10 Q4 (Semi-Join) Q6 (Scan & Agg) Q11 (Stream Index) Q12 (2-Way Agg) Q13 (Stream Group) 
+
+> 10 0
+> 10 1
+> 10 2
+> 10 3
+> Speedup vs v5p
+> 1.84× (+84%) 2.44× (+144%) 142.86× (+14186%) 38.46× (+3746%) 2.59× (+159%)
+> TPU v5p Parity (1.0× Baseline)
+
+Figure 11: TPU v7 speedups over TPU v5p (streaming & scan-heavy queries, TPC-H SF100) Scan & Streaming Microbenchmark. We evaluate streaming and scan-heavy queries (Q4, Q6, Q11, Q12, Q13 in TPC-H SF100). They expose performance ceilings due to HBM bandwidth, DMA en-gines, and scratchpad (SMEM, VMEM) capacities. The TPU v5p vs. v7 ablation illustrates that the latest v7 6 with much larger bandwidth and capacity can unlock much stronger performance through both hardware improvements (e.g., 2.7x HBM bandwidth increase) and software kernel redesigns. For instance, Q11 and Q12 can stage entire dimension filters within v7’s expanded registers/SMEM, avoiding extra HBM roundtrips. Similarly, the left-outer join re-sults (order count per customer) in Q13 can be pipelined and resi-dent on-chip, eliminating extra HBM roundtrips and multi-kernel launches for the separate aggregations. 
+
+## 8 DISCUSSION & FUTURE WORK 8.1 Generalization & Limitations Q0 Q1 Q2 Q3 Q4 Q5 Q6 Q7 Q8 Q9 Q10 Q11 Q12 Q13 Q14 Q15 Q16 Q17 Q18 Q19 Q20 Q21 Q22 Q23 Q24 Q25 Q26 Q27 Q28 Q29 Q30 Q31 Q32 Q33 Q34 Q35 Q36 Q37 Q38 Q39 Q40 Q41 Q42 0.01 ×  
+
+> 0.1 ×
+> 1×
+> 10 ×
+> 100 ×
+> 1000 ×
+> Speedup over DuckDB  1 TPU 4 TPUs 16 TPUs
+
+Figure 12: Warm-execution speedup over DuckDB for each ClickBench query using 1, 4, and 16 TPUs. 
+
+We evaluate NTA on ClickBench, a 100M-row flat-table analyt-ics benchmark (Figure 12). To isolate physical TPU execution from high-level optimization, NTA ingests fixed logical plans directly from DuckDB, delegating orthogonal logical rewrites (e.g., join re-ordering, CSE, factorized aggregation pushdown) upstream to fo-cus on physical operator selection and tile scheduling. Across ClickBench, performance is governed less by query com-plexity than by how early execution collapses into compact, stat-ically bounded, and fusable state. Queries reducing to metadata   
+
+> 6TPU v7 offers twice the HBM capacity and more than 2.6×the HBM bandwidth, see https://docs.cloud.google.com/tpu/docs/tpu7x
+
+lookups, scalar reductions, or small histograms scale exceptionally well: Q0 leverages row-count metadata, Q3 and Q6 perform scalar reductions, and Q29 computes 90 derived sums from a single base sum and row count, achieving up to 417 × speedup. Overall, a sin-gle TPU delivers a 1 .79 × geometric-mean speedup, outperforming DuckDB on 26 of 43 queries (4 .36 × geomean on these wins); 4 TPUs achieve 5 .17 × (winning 39 queries), and 16 TPUs reach 14 .60 × (win-ning 40 queries). This demonstrates that NTA’s benefits generalize beyond relational joins (TPC-H) to large-scale flat-table aggrega-tions with bounded output domains. In contrast, performance bottlenecks occur when intermediate states cannot fit on-chip: Q8 and Q10 compute exact distinct-user counts across grouping keys, requiring table-scale resolution of composite identities prior to reduction. Similarly, Q27 scans 100M rows with an unbounded URL key domain that exceeds on-chip scratchpad (VMEM) capacity, forcing histogram updates into latency-heavy HBM round-trips. Variable string lengths and highly selective string matching (e.g., textttLIKE, regex ). This is challenging because the underlying static tensor shapes would require shorter strings to be right-padded to the worst-case bounds. This padding and worst-case bound static tensor representation incur severe memory and bandwidth waste. When average string lengths are much shorter than the maximum, the majority of materialized tensors consist of zero-padding bytes that saturate scarce HBM bandwidth and on-chip scratchpad mem-ory (VMEM). Furthermore, TensorCore VPU vector lanes waste significant compute throughput comparing these padded positions. We see this variable string lengths challenge as a future co-design opportunity for us. Overall, NTA explicitly binds to JAX/XLA and Pallas kernels to bring about maximum performance from TPU and its various computing units. JAX/XLA also provides backend portability to different HW backends. Although writing performant Pallas ker-nels traditionally requires manual tuning, emerging agentic data-base coding systems [20, 32] offer a compelling solution path. By leveraging specialized database coding agents, systems can auto-matically synthesize, optimize, and specialize JAX/XLA and Pallas query kernels directly for TPU microarchitectures. 
+
+## 8.2 HW & SW Co-Design Opportunities 
+
+Re-engineering database operations for TPUs highlights residual performance gaps stemming from data-dependent dynamism, from 
+
+redundant work from shape dynamism (padded rows and masked SIMD lanes) and memory stalls from address dynamism (fusion breaks at HBM roundtrips). To bridge these gaps without sacrific-ing the TPU’s highly optimized static (compiler-based) execution model, we propose four critical hardware co-design directions: 
+
+Dynamic Tile-Skipping. Static shape bounding forces VPUs to schedule and evaluate fully invalid or padded tiles. Lightweight hardware mask-evaluation units that inspect tile validity metadata prior to dispatch could dynamically bypass dead tiles, conserving memory bandwidth and freeing execution cycles for active data. 
+
+Compaction of Sparse Vectors. Another source of sparsity is originated in the processing of the data, at the tuple level. Prior operators eliminate some of the tuples, which may not be consec-utive in memory, leading to a finer-granular sparsity. For this case, 
+
+> 11
+
+compacting the data, locally near the VPU units, to have dense vec-tors would be a very useful hardware feature. 
+
+Smart Caching. Unlike the hardware-managed caches seen in CPUs and GPUs, TPUs provide kernel-managed scratchpad mem-ories (SPMEM/VMEM). Prior work [3] has noted that cache evic-tions of hot data leads to significant performance drops. For hardware-managed caches, this is unavoidable, as accessing transient data (e.g., tuples) pollutes the cache, evicting hot data (e.g., hash table entries) and requiring extra HBM accesses. With TPUs, managing the scratchpad becomes a critical optimization point, allowing the database designer to ensure that frequently accessed data is ac-cessed at a high bandwidth and low latency, reducing stalls. 
+
+Hardware-Level Virtual Partitioning: Currently, there is a lack of hardware partitioning and isolation on TPUs, enforcing strict se-quential execution of query kernels and preventing efficient multi-tenancy. Future TPUs could benefit from virtual partitioning and hardware supported isolation [3], to improve aggregate through-put and hardware utilization under concurrent workloads (Section 6). 
+
+## 8.3 End-to-End Semantic Queries 
+
+Emerging semantic AI query engines [7, 8, 12, 22, 27] extend rela-tional queries with semantic operators (e.g., filters and aggregations evaluated implicitly via LLM inference). Today, these pipelines suf-fer from severe data transfer penalties as they constantly move across the host-to-accelerator boundary, alternating between CPU-based relational logic and LLM model inference on accelerator hard-ware. By deploying NTA, the entire semantic AI query (relational operators and LLM invocations) can be compiled into a unified JAX program that runs natively on the TPU end-to-end. We view this unification and elimination of the execution boundary as a promis-ing application of our work, enabling the next generation of AI-native database engines [6]. 
+
+## 9 RELATED WORK 
+
+Hardware-Accelerated Query Processing. Relational query ac-celeration on massively parallel hardware has historically centered on GPUs. Early engines leveraged GPU SIMT architectures and hardware-managed caches to mask memory latency [13, 29], while subsequent systems integrated JIT compilation into heterogeneous CPU-GPU runtimes [5, 10, 28]. Concurrently, Tensor Query Pro-cessing (TQP) [14] proved that relational algebra can execute atop tensor computation runtimes—a paradigm now commercially de-ployed in Microsoft Fabric [17] with substantial speedups over CPU engines. Recently, modular GPU-native accelerators have emerged: Sirius [36] accelerates existing engines (e.g., DuckDB, Apache Doris) via drop-in CUDA-X libraries ( libcudf , RMM) for up to 10 × speedups, while Theseus [1] optimizes distributed GPU query execution across high-speed interconnects. However, these frameworks remain GPU-centric. While initial studies evaluated TPUs [14, 16], they largely treated the TPU as a black-box GPU drop-in, ignoring the severe HBM stalls and fu-sion breaks caused by the hardware’s statically scheduled execu-tion model. In contrast, NTA re-engineers relational query execu-tion specifically for TPU hardware, directly co-designing physical operators around SparseCore and TensorCore via custom Pallas kernels at terabyte scale. 
+
+Join Algorithms on Accelerators. Efficiently executing joins— the most computationally expensive relational operator—has driven decades of research into hardware-conscious algorithm design. Tra-ditional optimizations focus heavily on Hash Joins [15, 30], opti-mizing hash table bucket layouts and probing strategies to max-imize cache hit rates on multi-core CPUs and GPUs. Advanced iterations have explored leveraging fast GPU interconnects (e.g., NVLink) to scale radix partitioning for joins beyond device mem-ory [23, 24]. However, these techniques rely implicitly on dynamic memory allocation and fine-grained scatter/gather operations. On a TPU, formulating a sparse hash table with empty padding buck-ets induces severe sparsity, while erratic hash-probing causes DMA queue contention at the memory banks. To circumvent these hard-ware limitations, Sorted-Hash Lookup Join abandons sparse hash materialization. Inspired by sort-merge architectures for highly par-allel vector engines, it transforms sparse, memory-bound hash prob-ing into packed-key hashing, parallel sorting, and vectorized search. 
+
+Other TPU Applications. While TPUs were designed to accel-erate deep learning (e.g., matrix multiplications and embedding lookups [19]), recent work has also used them for scalable nearest-neighbor search [4]. This workload still maps to predictable, it-erative tensor computations. Analytical database queries present a uniquely challenging environment for TPUs due to their data-dependent dynamism, where output sizes and memory access pat-terns are dictated by the underlying data distribution/values at runtime. To the best of our knowledge, our engine is the first to successfully challenge these static dynamic restrictions, enabling TPUs to execute strict relational algebra effectively across multi-terabyte datasets up to SF 1000. 
+
+## 10 CONCLUSION 
+
+Google’s TPUs bring about massive computing at scale, yet they have not been sufficiently explored for analytical database work-loads. Our Native TPU Accelerator (NTA) demonstrates immense potential for analytical query processing through HW-conscious algorithm design and JAX/XLA optimizations that leverage Spar-seCore to efficiently offload dynamic memory accesses, multi-chip TPU slices, and fast ICI links. We show that TPUs have powerful programmable software stacks that enable per-query engineering and unlock effective TPU performance optimizations. Our NTA achieves very competitive TPU-accelerated analytical query pro-cessing results (e.g., state-of-the-art performance on TPC-H bench-marks). With AI/ML workloads consuming all the latest and great-est accelerators, older generation TPUs, like TPU v5p, are natu-rally becoming more available. It is becoming sensible to migrate database workloads to the earlier-generation accelerators, as they provide massive speedups for analytical query processing. As LLMs and semantic AI queries are increasingly integrated into data analytics engines to enable richer structured and unstruc-tured data analytics, migrating SQL workloads to the accelerator opens an unprecedented opportunity. By executing both relational queries and AI semantic operations on a shared computing sub-strate, our study shows that it is possible to unify enterprise data management with ML/AI accelerator HW/SW stacks, unlocking fundamentally greater performance and efficiency. 
+
+> 12
+
+## ACKNOWLEDGMENTS 
+
+We would like to thank Chris Taylor, David E. Culler, Greg Ganger, Alon Halevy, Cliff Young, Suvinay Subramanian for invaluable feed-back and support. 
+
+## REFERENCES 
+
+[1] Felipe Aramburu, William Malpica, Kaouther Abrougui, Amin Aramoon, Ro-mulo Auccapuclla, Claude Brisson, Matthijs Brobbel, Colby Farrell, Pradeep Ga-rigipati, Joost Hoozemans, Supun Kamburugamuve, Akhil Nair, Alexander Ocsa, Johan Peltenburg, Ruben Quesada Lopez, Deepak Sihag, Ahmet Uyar, Dhruv Vats, Michael Wendt, Jignesh M. Patel, and Rodrigo Aramburu. 2025. Theseus: A Distributed and Scalable GPU-Accelerated Query Processing Platform Opti-mized for Efficient Data Movement. https://doi.org/10.48550/arXiv.2508.05029 arXiv:2508.05029 [cs.DB] [2] James Bradbury, Roy Frostig, Peter Hawkins, Matthew James Johnson, Yash Katariya, Chris Leary, Dougal Maclaurin, George Necula, Adam Paszke, Jake VanderPlas, Skye Wanderman-Milne, and Qiao Zhang. 2018. JAX: composable transformations of Python+NumPy programs . JAX Authors. http://github.com/ jax-ml/jax [3] Jiashen Cao, Rathijit Sen, Matteo Interlandi, Joy Arulraj, and Hyesoon Kim. 2023. GPU Database Systems Characterization and Optimization. Proceedings of the VLDB Endowment 17, 3 (2023), 441–454. [4] Felix Chern, Blake Hechtman, Andy Davis, Ruiqi Guo, David Majnemer, and Sanjiv Kumar. 2022. TPU-KNN: K Nearest Neighbor Search at Peak FLOP/s. 
+
+Advances in Neural Information Processing Systems 35 (2022), 15489–15501. [5] Periklis Chrysogelos, Manos Karpathiotakis, Raja Appuswamy, and Anastasia Ailamaki. 2019. HetExchange: Encapsulating Heterogeneous CPU-GPU Paral-lelism in JIT Compiled Engines. Proc. VLDB Endow. 12, 5 (2019), 544–556. [6] Yeounoh Chung, Helena Caminal, and Fatma Özcan. 2026. AI Query Compila-tion for Unified and Optimized Execution. In VLDB 2026 Workshop: Applied AI for Database Systems and Applications (AIDB 2026) . VLDB Endowment, Boston, MA, USA, 8. https://www.vldb.org/2026/Workshops/VLDB-Workshops-2026/ AIDB/aidb26_3.pdf [7] Yeounoh Chung, Rushabh Desai, Jian He, Yu Xiao, Thibaud Hottelier, Yves-Laurent Kom Samo, Pushkar Khadilkar, Xianshun Chen, Sam Idicula, Fatma Öz-can, Alon Halevy, and Yannis Papakonstantinou. 2026. 100x Cost & Latency Re-duction: Performance Analysis of AI Query Approximation using Lightweight Proxy Models:[Experiments & Analysis]. Proceedings of the ACM on Manage-ment of Data 4, 3 (2026), 1–23. https://doi.org/10.1145/3802002 [8] Yeounoh Chung, Thibaud Hottelier, Cosmin Arad, Brenton Milne, Per Jacobsson, Sam Idicula, Fatma Özcan, Alon Y Halevy, and Yannis Papakonstantinou. 2026. Architecting the AI-Powered Agentic Data Cloud. IEEE Data Eng. Bull. 50, 1 (2026), 22–39. [9] ClickHouse. 2024. ClickBench: A Benchmark for Analytical Databases. https: //github.com/ClickHouse/ClickBench. [10] Harish Doraiswamy, Vikas Kalagi, Karthik Ramachandra, and Jayant R. Haritsa. 2023. A Case for Graphics-driven Query Processing. Proc. VLDB Endow. 16, 10 (2023), 2499–2511. [11] Google Cloud. 2024. TPU v5p . Google LLC. https://docs.cloud.google.com/tpu/ docs/v5p [12] Jaehyun Ha, Yongjoo Park, and Wook-Shin Han. 2026. CADENZA: Compiling Natural-Language Intent into Task-Specific Operator DAGs for Semantic Query Processing. Proceedings of the ACM on Management of Data 4, 4 (SIGMOD), Article 265 (9 2026), 27 pages. https://doi.org/10.1145/3837103 [13] Bingsheng He, Mian Lu, Ke Yang, Rui Fang, Naga K. Govindaraju, Qiong Luo, and Pedro V. Sander. 2009. Relational Query Coprocessing on Graphics Proces-sors. ACM Trans. Database Syst. 34, 4 (2009), 21:1–21:39. [14] Dong He, Supun Nakandala, Dalitso Banda, Rathijit Sen, Karla Saur, Kwanghyun Park, Carlo Curino, Jesús Camacho-Rodríguez, Konstantinos Karanasos, and Matteo Interlandi. 2022. Query Processing on Tensor Computation Runtimes. 
+
+Proc. VLDB Endow. 15, 11 (2022), 2811–2825. [15] Max Heimel, Michael Saecker, Holger Pirk, Stefan Manegold, and Volker Markl. 2013. Hardware-Oblivious Parallelism for In-Memory Column-Stores. Proc. VLDB Endow. 6, 9 (2013), 709–720. [16] Yu-Ching Hu, Yuliang Li, and Hung-Wei Tseng. 2022. TCUDB: Accelerating Database with Tensor Processors. In Proceedings of the 2022 International Con-ference on Management of Data . Association for Computing Machinery, New York, NY, USA, 1360–1374. https://doi.org/10.1145/3514221.3517869 [17] Matteo Interlandi, Nicolas Bruno, Brandon Haynes, Carlo Curino, Rathijit Sen, Yinan Li, Kaushik Rajan, Bailu Ding, Lukas M. Maas, Wei Cui, Kevin Gaffney, Mingsheng Hong, Brian Kroth, Sampath Rajendra, Peng Cheng, Sura-jit Chaudhuri, Johannes Gehrke, Raghu Ramakrishnan, Lidong Zhou, Momin Al-Ghosien, Craig Peeper, Marius Dumitru, Conor Cunningham, Kevin Bock-srocker, Prasanna Sundar, Ron Boskovic, YongChul Kwon, Marko Zivanovic, Runbin Shi, Krystian Sakowski, Denis Lamtsov, Josep Aguilar-Saborit, Krish Srinivasan, Adarsh Kapil, Andrew Putnam, Anudeep Kambapu, Aparna Kon-duri, Aaron Landy, Aaron Moore, Aaron Pitman, Artem Oks, Ashit Gosalia, Babu Kandimalla, Blake Pelton, Bogdan Crivat, César A. Galindo-Legaria, Chidamber Kulkarni, Jesús Camacho-Rodríguez, Evgeny Babin, Hans Lehnert Marino, Igor Konev, Israel Arroyo, Luis Peñaranda, Mandar Datar, Morten Borup Petersen, Nicholas Simmons, Parminder Poonian, Pravija Danda, Rob Rydberg, Este-ban Calvo Vargas, Ronak Bajaj, Sai Sumanth Kammal Shetty, Sharanya Bhat, and Zach Iracheta. 2026. CoddSpeed: Hardware Accelerated Query Processing in Microsoft Fabric. In Companion of the 2026 International Conference on Man-agement of Data . Association for Computing Machinery, New York, NY, USA, 359–372. https://doi.org/10.1145/3788853.3803077 [18] JAX Community. 2026. Pallas SparseCore Hardware Overview. https://docs.jax. dev/en/latest/pallas/tpu/sparsecore.html#hardware-overview. [19] Norman P. Jouppi, George Kurian, Sheng Li, Peter Ma, Rahul Nagarajan, Lifeng Nai, Nishant Patil, Suvinay Subramanian, Andy Swing, Brian Towles, Clifford Young, Xiang Zhou, Zongwei Zhou, and David A. Patterson. 2023. TPU v4: An Optically Reconfigurable Supercomputer for Machine Learning with Hardware Support for Embeddings. In Proceedings of the 50th Annual International Sym-posium on Computer Architecture . Association for Computing Machinery, New York, NY, USA, 1147–1160. https://doi.org/10.1145/3579371.3589350 [20] Jiale Lao and Immanuel Trummer. 2026. GenDB: The Next Generation of Query Processing–Synthesized, Not Engineered. https://doi.org/10.48550/arXiv.2603. 02081 arXiv:2603.02081 [cs.DB] [21] Erik Lindholm, John Nickolls, Stuart Oberman, and John Montrym. 2008. NVIDIA Tesla: A Unified Graphics and Computing Architecture. IEEE Micro 
+
+28, 2 (2008), 39–55. [22] Chunwei Liu, Matthew Russo, Michael Cafarella, Lei Cao, Peter Baile Chen, Zui Chen, Michael Franklin, Tim Kraska, Samuel Madden, Rana Shahout, and Gerardo Vitagliano. 2025. Palimpzest: Optimizing AI-Powered Analyt-ics with Declarative Query Processing. In 15th Annual Conference on Innova-tive Data Systems Research (CIDR ’25) . CIDR, Amsterdam, The Netherlands, 7. https://www.vldb.org/cidrdb/2025/palimpzest-optimizing-ai-powered-analytics-with-declarative-query-processing.html [23] Clemens Lutz, Sebastian Breß, Steffen Zeuch, Tilmann Rabl, and Volker Markl. 2020. Pump Up the Volume: Processing Large Data on GPUs with Fast Intercon-nects. In Proceedings of the 2020 ACM SIGMOD International Conference on Man-agement of Data . Association for Computing Machinery, New York, NY, USA, 1633–1649. https://doi.org/10.1145/3318464.3389705 [24] Clemens Lutz, Sebastian Breß, Steffen Zeuch, Tilmann Rabl, and Volker Markl. 2022. Triton Join: Efficiently Scaling to a Large Join State on GPUs with Fast In-terconnects. In Proceedings of the 2022 International Conference on Management of Data . Association for Computing Machinery, New York, NY, USA, 1017–1032. https://doi.org/10.1145/3514221.3517911 [25] Todd Mostak. 2016. MapD: A GPU-Powered Big Data Analytics and Visual-ization Platform. In Proceedings of the 2016 International Conference on Man-agement of Data (SIGMOD ’16) . ACM, New York, NY, USA, 2211–2211. https: //doi.org/10.1145/2897839.2927468 [26] OpenXLA. 2026. Dynamism in StableHLO. https://openxla.org/stablehlo/ dynamism [27] Liana Patel, Carlos Guestrin, and Matei Zaharia. 2026. Towards AI-Native Data Systems with the Semantic Operator Model and LOTUS. IEEE Data Eng. Bull. 
+
+50, 1 (2026), 59–73. [28] Johns Paul, Bingsheng He, Shengliang Lu, and Chiew Tong Lau. 2020. Improving Execution Efficiency of Just-in-Time Compilation Based Query Processing on GPUs. Proceedings of the VLDB Endowment 14, 2 (2020), 202–214. [29] Anil Shanbhag, Samuel Madden, and Xiangyao Yu. 2020. A Study of the Fun-damental Performance Characteristics of GPUs and CPUs for Database Analyt-ics. In Proceedings of the 2020 ACM SIGMOD International Conference on Man-agement of Data . Association for Computing Machinery, New York, NY, USA, 1617–1632. https://doi.org/10.1145/3318464.3380595 [30] Panagiotis Sioulas, Periklis Chrysogelos, Manos Karpathiotakis, Raja Ap-puswamy, and Anastasia Ailamaki. 2019. Hardware-Conscious Hash-Joins on GPUs. In IEEE 35th International Conference on Data Engineering (ICDE) . IEEE, Piscataway, NJ, USA, 698–709. https://doi.org/10.1109/ICDE.2019.00068 [31] Transaction Processing Performance Council. 2022. TPC-H Benchmark Standard Specification, Revision 3.0.1 . Transaction Processing Performance Council. https: //www.tpc.org/tpc_documents_current_versions/pdf/tpc-h_v3.0.1.pdf [32] Johannes Wehrstein, Timo Eckmann, Matthias Jasny, and Carsten Binnig. 2026. Bespoke OLAP: Synthesizing Workload-Specific One-size-fits-one Database En-gines. https://doi.org/10.48550/arXiv.2603.02001 arXiv:2603.02001 [cs.DB] [33] Bowen Wu, Wei Cui, Carlo Curino, Matteo Interlandi, and Rathijit Sen. 2025. Terabyte-Scale Analytics in the Blink of an Eye. Proceedings of the VLDB Endow-ment 19, 2 (2025), 141–155. https://doi.org/10.14778/3773749.3773754 [34] Yuanzhong Xu, HyoukJoong Lee, Dehao Chen, Blake Hechtman, Yanping Huang, Rahul Joshi, Maxim Krikun, Dmitry Lepikhin, Andy Ly, Marcello Maggioni, Ruoming Pang, Noam Shazeer, Shibo Wang, Tao Wang, Yonghui Wu, and Zhifeng Chen. 2021. GSPMD: General and Scalable Paralleliza-tion for ML Computation Graphs. https://doi.org/10.48550/arXiv.2105.04663 
+
+> 13
+
+arXiv:2105.04663 [cs.DC] [35] Bobbi Yogatama, Weiwei Gong, and Xiangyao Yu. 2024. Scaling Your Hybrid CPU-GPU DBMS to Multiple GPUs. Proceedings of the VLDB Endowment 17, 13 (2024), 4709–4722. https://doi.org/10.14778/3704965.3704977 [36] Bobbi Yogatama, Yifei Yang, Kevin Kristensen, Devesh Sarda, Abigale Kim, Adrian Cockcroft, Yu Teng, Joshua Patterson, Gregory Kimball, Wes McKinney, Weiwei Gong, and Xiangyao Yu. 2026. Rethinking Analytical Processing in the GPU Era. In 16th Annual Conference on Innovative Data Systems Research (CIDR ’26) . CIDR, Chaminade, USA, 7. https://www.vldb.org/cidrdb/2026/rethinking-analytical-processing-in-the-gpu-era.html [37] Keh Kok Yong and Peh Chiong Teh. 2025. Evaluating GPU-Accelerated Struc-tured Query Engines Using TPC-H: A Comparative Study with DuckDB and RAPIDS. In 2025 IEEE 11th International Conference on Smart Instrumentation, Measurement and Applications (ICSIMA) . IEEE, Piscataway, NJ, USA, 144–149. https://doi.org/10.1109/ICSIMA66552.2025.11233381 [38] Yichao Yuan, Advait Iyer, Lin Ma, and Nishil Talati. 2024. Vortex: Overcoming Memory Capacity Limitations in GPU-Accelerated Large-Scale Data Analytics. 
+
+Proceedings of the VLDB Endowment 18, 4 (2024), 1250–1263. https://doi.org/10. 14778/3717755.3717780

@@ -1,0 +1,526 @@
+Title: Breaking the Coupling: Efficient Concurrency Fuzzing for Linux Kernel Data Race Detection
+
+URL Source: https://arxiv.org/pdf/2610.30813v1
+
+Published Time: Fri, 23 Oct 2026 00:44:48 GMT
+
+Number of Pages: 16
+
+Markdown Content:
+# Breaking the Coupling: Efficient Concurrency Fuzzing for Linux Kernel Data Race Detection 
+
+Cen Zhang 
+
+Beihang University Beijing, China zzzccc427@buaa.edu.cn 
+
+Jia-Ju Bai *
+
+Beihang University Beijing, China baijiaju@buaa.edu.cn 
+
+Zi-Yu Zhang 
+
+Beihang University Beijing, China ziyuzhang201@buaa.edu.cn 
+
+Zuming Jiang 
+
+The University of Hong Kong Hong Kong SAR, China jzuming@hku.hk 
+
+Abstract —Detecting data races in the Linux kernel requires ex-ploring both the input space and the thread-interleaving space. Existing kernel concurrency fuzzers couple these two searches by exploring interleavings during fuzzing, often spending sub-stantial scheduling effort on inputs with little potential to trigger real races. In this paper, we present a new concurrency fuzzing paradigm that decouples concurrent-input genera-tion from thread-interleaving exploration, enabling expensive scheduling to focus on promising inputs. To identify inputs that warrant targeted scheduling, we introduce May Race Pairs (MRPs), which represent conflicting memory-access pairs observed within a dynamically deter-mined time threshold. Our framework first generates and exe-cutes concurrent syscall groups without controlled scheduling, collecting MRPs to guide further input mutation and identify schedule-worthy inputs. It then uses a separate scheduling instance to explore targeted interleavings and confirm real data races. To improve the effectiveness of both stages, we incorporate LLM-assisted semantic mutation for generating diverse syscall groups, backpressure-guided dynamic threshold control for balancing candidate production and scheduling con-sumption, and history-aware context recovery, context-aware interleaving scheduling, and candidate MRP prioritization for efficient race confirmation. We implement our framework for the Linux kernel and evaluate it on eight common kernel modules in Linux 6.17. It discovers 187 unique real-world data races, including 59 harmful races. Under the same testing budget, our approach detects substantially more data races than existing kernel concurrency fuzzers, including SegFuzz and CONZZER. These results demonstrate the effectiveness of decoupling concurrent-input generation from interleaving exploration and concentrat-ing scheduling effort on promising candidates. 
+
+## 1. Introduction 
+
+Data races are a common and critical class of concur-rency issues in the Linux kernel. A data race occurs when a conflicting access pair executes concurrently. A conflicting access pair is defined as two accesses from different threads 
+
+> *Corresponding author.
+
+to the same or overlapping memory range, where at least one access is a write. In the Linux kernel, data races can cause data corruption [1], memory corruption [2]–[4], and severe security vulnerabilities such as privilege escalation [5]–[7]. Detecting data races is more challenging than detecting single-threaded bugs, because race exposure depends on both suitable inputs and schedules. The input dimension determines whether concurrently executed threads can create a conflicting access pair. The schedule dimension determines whether these accesses occur simultaneously. Therefore, detecting data races in the Linux kernel must consider both input and schedule dimensions. This greatly enlarges the search space and complicates practical race detection. Many approaches have been proposed to detect data races in the Linux kernel. Coverage-guided fuzzers primar-ily explored the input dimension alone [8]–[17], relying on runtime data-race checkers such as KCSAN [18] and KTSAN [19] to identify races during execution. However, their main feedback signal is code coverage, which reflects sequential system executions but provides little guidance for exploring thread interleavings, and therefore limits their ability to expose data races. Recent work has increasingly recognized that data-race detection must reason about both inputs and thread interleav-ings. One line of work first reduces the search space through static race analysis, memory-access traces collected from sequential executions, or learned predictors trained from prior executions, and then performs concurrent execution with strategic scheduling within the reduced space [20]– [22]. Another line of concurrency-aware fuzzing uses run-time concurrency information to guide thread-interleaving exploration, increasing the probability of triggering con-currency issues [23]–[28]. These approaches substantially improve practical race detection because they move beyond single-threaded coverage and consider schedule dimensions. However, existing approaches remain inefficient because they still deeply couple their concurrent-input generation with thread-interleaving exploration when detecting data races. Specifically, existing approaches have to repeatedly execute the inputs and insert scheduling points ( e.g. , thread delay) during their executions. However, most of the inputs they randomly generate have limited potential to trigger real races, as a result of which existing approaches waste a sig-arXiv:2610.30813v1 [cs.OS] 22 Oct 2026 nificant amount of computing resources in scheduling these inputs. The root cause of this inefficiency is that concurrent-input generation and thread-interleaving exploration remain coupled. As they lack a systematic way to identify the inputs that have a higher potential to trigger data races under scheduling, existing approaches either have to sched-ule most inputs once they are generated, including many low-potential ones, or rely on concurrency feedback, such as covered thread interleavings, whose collection requires repeatedly scheduling for each generated input. In this paper, we propose a new concurrency fuzzing paradigm, decoupling concurrent-input generation and thread-interleaving exploration , to significantly increase the efficiency of race detection in the Linux kernel. Controlled scheduling is much more expensive than ordinary concurrent execution, as it typically requires repeated input executions or fine-grained system execution controls. Therefore, our insight is that the fuzzers should perform thread scheduling for only the inputs that have a higher potential to trigger data races, instead of applying expensive scheduling to every generated input. Based on this insight, we separate data race detection into two decoupled processes: (1) generating concurrent inputs and selecting the ones that deserve to be scheduled; (2) scheduling the execution of the given input and determining whether it can indeed trigger a data race. The core part of such decoupling is how to determine whether a given input has the potential to trigger real races and thus deserves the expensive scheduling. To address it, we introduce a new concept, May Race Pair (MRP). An MRP represents a conflicting access pair that occurs within a dynamically determined time threshold. It does not prove the existence of a data race. Instead, it indicates a scheduling-worthy pair: when two accesses target the same memory address and occur within a short time window, they are more likely to occur concurrently under scheduling than other pairs. With MRP, we can effectively select the inputs that have a higher potential to trigger data races and perform expensive scheduling on only these inputs. Moreover, an MRP records the conflicting access pair, which enables the scheduling for the input to focus on a pair of concrete code sites, significantly reducing the scheduling cost. Based on this concept, we design DCIGSE, a kernel concurrency fuzzing framework. DCIGSE consists of two decoupled instances: an input-generation instance and a thread-scheduling instance. The two instances run in par-allel. The input-generation instance produces inputs that trigger MRPs, while the thread-scheduling instance con-sumes these inputs by scheduling their thread execution to trigger the potential data races. To maximize the number of detected data races, the throughput of these instances should be the same, which motivates our design of the dynami-cally determined time threshold specified in the MRP. This threshold involves a tradeoff: (1) a smaller threshold admits only conflicting access pairs with shorter temporal distances, which are usually more promising for triggering real races under scheduling, but may produce too few candidate MRPs and underutilize the thread-scheduling instance; (2) a larger threshold allows the input-generation instance to collect more MRPs, but may also admit more low-potential can-didates, which may waste the scheduling effort. DCIGSE adopts a backpressure-guided control to dynamically adjust the threshold. Specifically, DCIGSE decreases the time threshold when the collected MRPs accumulate faster than they can be consumed, so that the input-generation instance admits fewer MRPs with shorter temporal distances and the thread-scheduling instance can spend its limited budget on more promising candidates. Conversely, DCIGSE increases the time threshold when the collected MRPs are insufficient, ensuring enough candidate MRPs to avoid starvation of the thread-scheduling instance. The input-generation instance generates syscall groups. Each group consists of two sequences of syscalls. Given a syscall group, this instance executes the two syscall se-quences concurrently without controlled scheduling. The instance collects the syscall groups that trigger new MRPs. We propose LLM-assisted semantic mutation for generating more interesting syscall groups. Specifically, we provide the LLM with module-specific mutation constraints and cross-sequence semantic interaction objectives. Guided by this information, we leverage its reasoning capabilities and pretrained knowledge to understand and semantically mutate promising syscall groups selected based on MRP feedback. The thread-scheduling instance consumes the collected syscall groups and schedules them to confirm whether they can indeed trigger data races. We integrate three methods: history-aware context recovery to recover the kernel state required to reproduce candidate MRPs, context-aware inter-leaving scheduling to distinguish different dynamic occur-rences of the same static access site using finer-grained run-time contexts, and candidate MRP prioritizing to prioritize candidate inputs based on previous scheduling results. We implemented DCIGSE and evaluated DCIGSE on eight common Linux kernel modules in Linux 6.17. In total, it found 187 unique real-world data races, among them 59 are identified as harmful races. We reported the harmful races. As of paper submission, 39 bugs have been confirmed, and 15 of the bugs have been fixed. These races may result in critical security vulnerabilities like concurrent use-after-frees. The comparison results indicate that our approach can find significantly more data races than existing approaches including SegFuzz [27] and CONZZER [26] within the same testing budget. In summary, we make the following contributions:  
+
+> •
+
+At the conceptual level, we propose a new paradigm for kernel concurrency fuzzing: decoupling concurrent-input generation and thread-interleaving exploration. We further introduce a new concept, May Race Pair (MRP), to facilitate the decoupling.  
+
+> •
+
+At the technical level, we design DCIGSE, a ker-nel concurrency fuzzing framework that realizes this paradigm. We integrate DCIGSE with LLM-assisted se-mantic mutation to generate diverse system inputs, and with history-aware context recovery, context-aware inter-leaving scheduling, and candidate MRP prioritizing to efficiently explore promising thread interleavings. • At the practical level, we implemented and evaluated DCIGSE on eight common Linux kernel modules in Linux 6.17. DCIGSE found 187 unique real-world data races (59 harmful, 39 confirmed, and 15 fixed), outper-forming the existing approaches. 
+
+## 2. Background 
+
+2.1. Data Race 
+
+In this work, consistent with prior kernel race fuzzers (e.g., Razzer and CONZZER [20], [26]), we identify a data race when the two endpoints of a conflicting access pair are observed to overlap in execution. A conflicting access pair consists of two accesses from different threads to the same or overlapping memory range, with at least one access being a write. Thus, triggering a data race requires an input that produces a concrete conflicting access pair and a schedule that brings its two accesses into monitored overlap in time. 
+
+2.2. Concurrent Execution in the Linux Kernel 
+
+System calls (syscalls) are the primary interface through which user-space programs drive kernel behavior. A syscall can create and manipulate kernel objects, establish resource dependencies, update subsystem state, and trigger different allocation, access, and cleanup paths. In kernel fuzzing, syscalls serve as the de facto input representation. To systematically exercise interactions between different threads, a concurrency fuzzer executes multiple system-call sequences concurrently. These executions may inter-act through the same object instance, related resources, or shared subsystem state, and may consequently produce a concrete conflicting access pair. These concurrent executions introduce a large interleav-ing space. Different syscall sequences may reach different shared states and trigger diverse memory accesses. More-over, even the same concurrently executed sequences can in-terleave in many ways because each syscall handler contains numerous internal operations, blocking points, and memory accesses. To prevent interleavings from corrupting shared kernel data, the kernel relies on synchronization mechanisms to enforce safe thread execution orders. However, missing or incorrectly scoped synchronization may allow conflicting accesses to occur concurrently, manifesting as data races. Accordingly, kernel data-race detection involves both an input dimension and a schedule dimension. The input di-mension determines whether the executed syscall sequences produce a concrete conflicting access pair, while the sched-ule dimension determines whether the two accesses tempo-rally overlap. Without proper inputs to establish the required kernel states and execution contexts, scheduling cannot drive the thread execution to reach potentially conflicting code paths. Conversely, inputs alone cannot ensure that these accesses actually overlap in time during execution. 
+
+2.3. Limitations of Existing Approaches 
+
+Existing approaches do not fully decouple concurrent-input generation and interleaving exploration. One line of work searches both spaces jointly in a single fuzzing pro-cess, while another first uses static analysis or observations from single-threaded executions to guide a later concurrent-testing stage, where inputs and schedules remain coupled. KRACE and CONZZER follow the first design. KRACE jointly evolves multithreaded syscall programs and delay choices, while CONZZER jointly mutates program in-puts and concurrent-call-pair targets [26], [29]. Although KRACE runs its race checker in the background, this sepa-rates trace collection from race analysis. It does not decouple concurrent-input generation and interleaving exploration. Snowboard, Razzer, SegFuzz, and Ozz instead use static analysis or runtime observations from single-threaded exe-cutions to select candidates and guide subsequent concur-rent testing, but construct concurrent inputs and schedules together in that later stage [20], [21], [27], [30]. Snow-board illustrates this limitation. It records memory-access traces from independent sequential tests and infers cross-trace PMCs. Only afterward does it combine test pairs and schedule their concurrent execution. Snowboard reports that only about 36% of the resulting tests exercise the predicted channel because concurrency may change runtime objects or control flow [21]. Static or sequential information cannot accurately predict complex concurrent behavior, so whether a constructed concurrent input realizes the intended interaction remains unknown until the input is executed concurrently. Consequently, concurrent-input generation and interleaving exploration remain coupled in the later stage. In contrast, DCIGSE decouples concurrent-input gen-eration and interleaving exploration. Rather than relying on PMCs or other signals inferred from static analysis or single-threaded executions, DCIGSE uses MRPs collected while syscall groups execute concurrently. Each MRP both guides further mutation of its group and records a concrete con-flicting access pair for subsequent scheduling. This allows concurrent-input generation to pursue diverse concurrent be-haviors, while expensive scheduling is reserved for selected inputs and targets their recorded access pairs. 
+
+## 3. Basic Idea 
+
+3.1. May Race Pair 
+
+We decouple concurrent-input generation and thread-interleaving exploration by selecting the inputs that have the potential to trigger data races and performing thread scheduling for only the selected inputs. In this case, this separation significantly reduces thread-scheduling cost and improves overall race-detection efficiency. The research question in this design is: how to determine whether a given input deserves to be scheduled? Kernel executions produce many cross-thread accesses to overlapping addresses, but not all of them indicate a meaningful interaction between two threads. For example, two accesses may overlap only because the same address has been released and later reused for a different kernel object, rather than because both accesses operate on the same live kernel object. Moreover, even if the two accesses target the same kernel object, they may belong to entirely different lifecycle phases of the object, such as resource initializa-tion and finalization, and thus are temporally isolated by a substantial time gap under normal execution. Therefore, we use temporal closeness as an additional admission criterion for conflicting access pairs: an observed conflicting access pair is interesting only when the two accesses occur within a bounded time window during execution. We propose a new concept, May Race Pair (MRP), which serves as the criterion for selecting interesting syscall groups. An MRP is an observed conflicting access pair whose two accesses occur within a short time threshold. Section 3.3 describes how this threshold is dynamically determined. An MRP does not prove a race. Instead, it marks a memory conflict whose temporally close endpoints war-rant targeted interleaving exploration. During the concurrent execution of a syscall group, we record the runtime memory accesses. Each access is represented as 
+
+a = ⟨n, s, tid , addr , size , type , ts ⟩,
+
+Here, n is a compile-time 64-bit identifier derived from the instrumented access’s source/IR location and kind, while 
+
+s is a 64-bit hash of its runtime kernel call chain, tid 
+
+identifies the thread that performs the access, addr and 
+
+size describe the accessed memory range, type indicates whether the access is a read or a write, and ts records the access timestamp. Given two runtime accesses a1 and a2,we formalize a May Race Pair as 
+
+p = ⟨a1, a 2, ∆t⟩, ∆t = |a1.ts − a2.ts |,
+
+s.t. a1.tid ̸ = a2.tid ,
+
+[a1.addr , a 1.addr + a1.size )
+
+∩ [a2.addr , a 2.addr + a2.size )̸ = ∅,a1.type = W ∨ a2.type = W,
+
+∆t ≤ τ. 
+
+The first three constraints require the two accesses to form a conflicting access pair: they are performed by dif-ferent threads, their accessed memory ranges overlap, and at least one access is a write. The last constraint is the temporal-admission constraint: the pair is retained as an MRP only when its temporal distance is no larger than the current threshold τ . The threshold τ is an admission-control parameter rather than a race-confirmation criterion; Section 3.3 describes how DCIGSE adjusts it dynamically. For feedback deduplication, DCIGSE groups MRPs by their access-site pair ⟨n1, n 2⟩. MRPs with the same access-site pair but different stack-context pairs ⟨s1, s 2⟩ are treated as distinct context variants of that pair. For each access-site pair, DCIGSE retains at most a configurable number of context variants throughout the fuzzing campaign. 
+
+3.2. Fuzzing Framework 
+
+Based on MRPs, we propose a novel kernel concurrency fuzzing framework, DCIGSE, which decouples concurrent-input generation and thread-interleaving exploration using two instances. Starting from a corpus of initial inputs, the input-generation instance generates and mutates inputs and executes them concurrently. This instance collects the new May Race Pairs from these executions. The corresponding inputs of the new MRPs are stored in the corpus for further mutation, and also in the schedule-worthy input queue for subsequent scheduling. The inputs in the schedule-worthy input queue are then consumed by the thread-scheduling in-stance. Given an input, the thread-scheduling instance sched-ules its thread executions to force the conflicting access pair recorded in the corresponding MRP to occur concurrently. The success of such scheduling indicates that a real data race has been detected. The scheduled syscall groups are dequeued from the schedule-worthy input queue. In this framework, the two instances are connected only through schedule-worthy inputs. 
+
+3.3. Dynamic Time-Threshold Control 
+
+A conflicting pair is admitted as an MRP only if its temporal distance is at most τ , the admission-control pa-rameter for the schedule-worthy corpus. τ trades candidate supply against selectivity. A smaller τ keeps only the inputs whose access pairs occur very close in time, making the re-tained inputs more selective and usually more promising for triggering data races under scheduling. However, an overly small threshold may produce too few schedule-worthy inputs and leave the scheduling instance underutilized. In contrast, a larger τ increases the candidate supply, but also admits inputs whose access pairs have larger temporal distances and are therefore harder to align under scheduling. Such pairs are less likely to be brought into overlap in time through scheduling and are more likely to include address-reuse artifacts, in which the same memory address is accessed after the underlying object has changed. A fixed time threshold is unsuitable for our design. A suitable threshold varies across modules and, for the same module, different hardware configurations and workloads. It can also drift as the kernel state and the mix of syscall groups change over time. More critically, the fixed threshold cannot maintain this balance across different kernel modules or throughout a fuzzing campaign. The production speed of schedule-worthy inputs may change as concurrent-input generation reaches different subsystem states, while the consumption speed may also vary when scheduling different inputs. Consequently, the fixed threshold may either starve the scheduling instance or cause excessive candidate accu-mulation in the schedule-worthy input queue. To tackle this problem, we propose backpressure-guided dynamic threshold control, as shown in Algorithm 1. The de-sign is inspired by adaptive admission control and backpres-sure in staged event-driven service systems, where requests flow through explicit queues between stages and upstream Algorithm 1 Backpressure-Guided Dynamic Thresh-old Control Input: initial threshold τ0, threshold bounds τmin and                                                                                   
+
+> τmax , control interval Tc, workload watermarks
+> Wlow and Whigh , smoothing factor ρ, relaxation step ∆τ, tightening factor γshrink
+> Output: dynamically adjusted threshold τ
+> 1τ←τ0;¯P←0;¯C←0;
+> 2while FUZZING RUNNING () do
+> 3WAIT (Tc);
+> 4P←NEW MRPR ECORDS ()
+> 5C←CONSUMED MRPR ECORDS ()
+> 6Q←PENDING MRPR ECORDS ()
+> 7¯P←ρ¯P+ (1 −ρ)P
+> 8¯C←ρ¯C+ (1 −ρ)C
+> 9W←Q/ max( ¯C, ϵ )
+> 10 if W > W high ∧¯P≥¯Cthen
+> 11 τ←max( τmin , γ shrink τ)
+> 12 else if Q= 0 ∨(W < W low ∧¯P≤¯C)then
+> 13 τ←min( τmax , τ + ∆ τ)
+> 14 SET THRESHOLD (τ)
+> 15 return τ;
+
+stages react to downstream overload signals [31]. Similarly, we model the input-generation instance as a producer, the thread-scheduling instance as a consumer, and the schedule-worthy input corpus as the queue connecting them. The threshold τ controls admission into this queue: increasing τ
+
+supplies more schedule-worthy inputs, whereas decreasing it admits fewer but more promising candidates. At the end of each control interval Tc, the controller measures the number of newly retained schedule-worthy inputs Pk, scheduled inputs Ck, and pending inputs Qk.To reduce the effect of short-term fluctuations, it maintains exponentially weighted moving averages: 
+
+¯Pk = ρ ¯Pk−1 + (1 − ρ)Pk, ¯Ck = ρ ¯Ck−1 + (1 − ρ)Ck.
+
+where ρ ∈ [0 , 1) is the smoothing factor. The controller estimates the buffered scheduling workload as 
+
+Wk = Qk
+
+max   ¯Ck, ϵ  .
+
+where ϵ > 0 prevents division by zero. In this paper, we set Tc = 30 s, Wlow = 10 , Whigh = 40 , ρ = 0 .8, ϵ = 1 ,and use γshrink = 0 .5 and ∆τ = 0 .05( τmax − τmin ) as the multiplicative tightening factor and additive relaxation step. The controller maintains Wk between a low and a high watermark. When the workload is excessive and continues to grow, it multiplicatively decreases τ to rapidly tighten admission. When the corpus is empty, or the workload is low and continues to decrease, it additively increases τ to gradually admit more candidates. Otherwise, the threshold remains unchanged during the current control interval. The two watermarks avoid frequent oscillations, while the asym-metric adjustment limits candidate accumulation without starving the thread-scheduling instance of candidate inputs. 
+
+3.4. Concurrent Execution Model 
+
+We use a syscall group as the input. A group is defined as the parallel composition of multiple syscall sequences, which are expected to execute concurrently: 
+
+G = S0 ∥ S1 ∥ · · · ∥ Sm−1,
+
+where ∥ denotes parallel composition, and each Si is as-signed to a distinct execution context. Each syscall sequence is a list of syscalls that execute on the system sequentially: 
+
+Si = ⟨ci, 0, c i, 1, . . . , c i,n i−1⟩,
+
+where ci,j denotes the j-th syscall in Si.Because pairwise thread testing substantially reduces testing complexity while preserving most bug-exposing ca-pability [32], we use two-member syscall groups by default. Each sequence runs in a separate user-space process, and synchronized release starts both sequences simultaneously. 
+
+## 4. Concurrent-Input Generation 
+
+DCIGSE’s concurrent-input generation aims to generate diverse syscall groups that expose a broad range of MRPs during concurrent execution, without controlled scheduling. To achieve this goal, in addition to generating individually effective syscall sequences, the fuzzer needs to ensure that the syscall sequences in each group are semantically coor-dinated to access shared or related kernel state during exe-cution. Therefore, effective syscall-group mutation imposes semantic requirements, including jointly understanding the semantics of syscall sequences in each syscall group, iden-tifying the kernel objects and subsystem states involved, and considering multiple syscall dependencies across the syscall group. To satisfy these semantic requirements and improve the diversity of the generated syscall groups, we propose LLM-assisted semantic mutation. By combining its reasoning capabilities with knowledge of system interfaces in prompts, including syscall semantics and kernel-resource lifecycle relations, an LLM can understand the semantics of the syscall group and mutate the two sequences in the group consistently, respecting module-specific syscall, resource, and environment constraints. 
+
+4.1. LLM-Assisted Semantic Mutation 
+
+Workflow. Figure 1 shows the workflow for concurrent-input generation. DCIGSE maintains a syscall-group cor-pus and selects a seed syscall group from the corpus for further mutation. The LLM-assisted semantic mutator jointly rewrites the two syscall sequences in the seed group and generates syscall-group mutants. DCIGSE accepts an LLM mutant only if it has the expected JSON structure and both sequences pass Syzkaller’s native deserializer and local checks for enabled syscalls, call limits, allowed paths/devices, and fd dependencies. Accepted groups are then executed concurrently. Since LLM inference can in-troduce non-trivial latency, DCIGSE issues LLM mutation Validity Checks 
+
+> Syscall group mutants
+
+LLM-Assisted Semantic Mutator 
+
+Syscall Group Corpus MRPs Extraction Concurrent Execution Schedule-Worthy Input Queue 
+
+> Valid syscall group mutants
+> syscall group with new MRPs
+
+Fast Mutator syscall group A syscall group B syscall group mutant Randomly select Figure 1. Workflow of concurrent-input generation. You are a syscall-group mutator for kernel fuzzing and you are familiar with constructing and mutating concurrent syscall groups, where each syscall group consists of two syscall sequences. Your task is to mutate the selected syscall group for the target module: [Module Name] .Do not decide whether a race exists. Only generate new syscall-group variants based on the seed syscall program group:          
+
+> [Syscall Seq A] ,[Syscall Seq B]
+> 1. Role & Seed
+> Use only allowed syscalls: [syscall1] ,[syscall2] ,[syscall3] ,[syscall4] ... Testing environment conditions as follows: [Conditions1] ,[Conditions2] ... Use only allowed path / file / fd resources and do not introduce unsupported devices, modules, or kernel features.
+> 2. Target-Module Constraints
+> Do not mutate any syscall sequence of this group independently and each variant should choose one or more interaction objectives: 1. shared-instance relation: make both sequences operate on the same ... 2. related-resource relation: make the sequences perform semantically ... 3. shared-context relation: make both sequences operate within the same higher-level execution or subsystem context. Allowed semantic edit operations: [Edit Operation1] ,[Edit Operation2] ...
+> 3. Mutation Policy
+> Return JSON variants only: { "id": "...", "sequence_a": "...", "sequence_b": "..." }
+> 4. Output Format
+> Syscall SequenceA :sync()
+> Syscall SequenceB :vmsplice(0xffff, 0x0, 0x0, 0x0)
+> Seed Syscall Group
+> Syscall SequenceA :r0 = open('Path A', 0x42, 0x1ff) pwrite64(r0, "a1b2c3d4", 0x4, 0x0) sync()
+> Syscall SequenceB :r0 = open('Path A', 0x42, 0x1ff) write(r0, "11223344", 0x4) syncfs(r0) vmsplice(r0, 0x0, 0x0, 0x0)
+> Mutated Syscall Group
+> LLM-Assisted Semantic Mutator
+> Figure 2. LLM-assisted semantic mutation.
+
+requests asynchronously and submits completed LLM mu-tants to the validation stage when they become available, without blocking the input-generation pipeline. While LLM requests are pending, a fast mutator keeps execution supplied by generating and executing syscall groups. When no completed LLM mutant is immediately available, it randomly selects two corpus groups, generates an additional group by randomly pairing sequences sampled from them, and applies Syzkaller’s lightweight mutations to each sequence in the syscall group [33]. During concurrent execution, DCIGSE runs each syscall sequence of a syscall group in a separate user-space process and synchronizes their release, as described in Section 3.4. DCIGSE then extracts MRPs from the resulting runtime memory-access trace. When an execution contributes one or more new MRPs, the corresponding syscall group is stored in the corpus for further mutation. DCIGSE also creates a schedule-worthy input entry and adds it to the schedule-worthy input queue for thread scheduling discussed in Sec-tion 5. 
+
+Mutation. Figure 2 shows the four-part structured prompt for mutating the selected syscall group. The role & seed part defines the LLM as a syscall-group mutator and provides the selected seed syscall group. The target-module constraints specify the syscall whitelist, syntax requirements, testing environment, and resource-dependency rules. The LLM re-ceives only these prompt fields; the constraints are distilled offline from the testing environment, kernel source and documentation, and Syzkaller definitions, without sending source code or raw memory-access traces to the LLM. The mutation policy requires the LLM to treat the two sequences as a single mutation unit and coordinate their edits according to predefined cross-sequence interaction objectives. Finally, the output format restricts the response to a structured rep-resentation that can be parsed and validated automatically. The mutation policy defines three complementary cross-sequence interaction objectives. Shared-instance relation specifies that both syscall sequences operate on the same concrete kernel object or resource instance. Related-resource relation coordinates operations on the same resource or on distinct but semantically related resources, such as a directory and one of its files, a link and its target, or different lifecycle stages of a resource. Shared-context relation places both syscall sequences in the same higher-level execution or subsystem context, such as a mount, namespace, device ses-sion, protocol state, or subsystem configuration. A generated group may satisfy multiple objectives. In Figure 2, the F2FS example shows how semantic mutation strengthens cross-sequence interaction: the seed loosely combines global synchronization with a file oper-ation, while the mutant adds file writes and synchronization around the same filesystem state, making the two sequences more likely to access overlapping filesystem state through local file operations and global synchronization. 
+
+Prioritized seed corpus. As in conventional fuzzing, mu-tation should prioritize interesting seeds. It is especially important for LLM-assisted mutation, as its inference effort for mutating each seed is not trivial. MRP feedback is well-suited to this need because it captures both concrete evidence of cross-thread interaction and the novelty of that interaction. A previously unseen access-site pair represents a new pair of conflicting code locations and thus a new Candidate MRP Prioritizing  
+
+> Task-level Skip Decision
+> MRP-level Skip Decision
+> Rerun the syscall group Collect reproducible MRPs Context-Aware Interleaving Scheduling MRP Priority Update History-Aware Context Recovery
+> 𝐀 𝐀𵀀𝐀𳀀 (𝐀𠀀𝐀) 𝐀 𝐀𵀀𝐀𳀀 (𝐀)
+> Real Races
+> Schedule-Worthy Input Queue
+> Skip? Y
+> Skip?
+> Reproducible MRPs NNFigure 3. Workflow of thread scheduling.
+
+interaction target. For a covered access-site pair, its newly triggered stack contexts indicate a different calling path or kernel state, but its novelty decreases when more stack contexts of that pair have already been observed. 
+
+## 5. Thread Scheduling 
+
+Rather than blindly exploring the thread-interleaving space of all generated inputs, DCIGSE targets the con-flicting access pairs specified by schedule-worthy groups’ MRPs and schedules threads to force these accesses to occur concurrently, thereby confirming real data races. As shown in Figure 3, we integrate three techniques to facilitate our scheduling: (1) candidate MRP prioritizing selects more promising syscall groups by excluding syscall groups with confirmed MRPs from further scheduling and deferring syscall groups with repeated unsuccessful schedul-ing attempts; (2) history-aware context recovery improves the reproducibility of conflicting access pairs by replaying all executed syscalls in a bounded history to reconstruct the required kernel resources, object relationships, and subsys-tem states; (3) to further improve reproducibility, context-aware interleaving scheduling involves fine-grained thread controls according to the access site, stack context, and the hit counts of specific access sites. DCIGSE dequeues a schedule-worthy entry and applies task-level candidate-MRP prioritization. A skipped task is deferred; otherwise, DCIGSE replays its bounded history H and reruns syscall group G to reproduce the entry’s MRPs. After MRP-level prioritization, the remaining MRPs undergo context-aware interleaving scheduling, which uses the reproduced runtime context to locate target access oc-currences, applies a local delay, and updates MRP priority according to the result for subsequent attempts. 
+
+5.1. Candidate MRP Prioritizing 
+
+During scheduling, each entry dequeued from the schedule-worthy input queue is represented as a scheduling task T = ⟨H, G, P G⟩, where G is the schedule-worthy syscall group, H is its bounded history consisting of pre-viously executed syscalls, and PG is the set of MRPs associated with that entry. These MRPs serve as candidate scheduling targets: they indicate conflicting access pairs that may become real data races under targeted interleaving, but have not necessarily been confirmed yet. Candidate MRP prioritizing controls how DCIGSE spends its limited scheduling budget. DCIGSE updates each candidate MRP’s skip probability from prior scheduling results. A higher probability makes it less aggressively attempted under the current budget; if skipped, the candidate is deferred for later scheduling rather than removed. Candidate MRP prioritizing is applied at two levels. At the MRP level, for each candidate MRP p, DCIGSE maintains a scheduling state that records whether p has been confirmed and the number Fp of failed targeted-scheduling attempts. A candidate with no scheduling state receives 
+
+Pr skip (p) = 0 , so every newly discovered candidate receives an initial scheduling opportunity. An MRP confirmed as a real race receives Pr skip (p) = 1 , so DCIGSE avoids redun-dant scheduling. For the remaining candidates, DCIGSE computes the skip probability as 
+
+Pr skip (p) = min 
+
+
+
+Pmax , Fp + αFp + α + β · (1 − ϵ)
+
+
+
+,
+
+where α and β are smoothing constants, ϵ preserves a min-imum scheduling probability, and Pmax caps the maximum skip probability allowed for each candidate MRP. At the task level, DCIGSE uses the skip probabilities of the unresolved MRPs in PG to decide whether to process a scheduling task T = ⟨H, G, P G⟩. Let UG ⊆ PG denote the set of candidate MRPs that have not yet been confirmed. DCIGSE computes the task-level skip probability as the average of their individual skip probabilities: 
+
+Pr skip (T ) = 1
+
+|UG|
+
+X
+
+> pi∈UG
+
+Pr skip (pi).
+
+MRPs confirmed as real races are excluded from UG. If 
+
+UG = ∅, the entry has no remaining scheduling target and is retired from the schedule-worthy input queue. Other-wise, DCIGSE performs a probabilistic skip decision using 
+
+Pr skip (T ). If the entry is skipped, it is appended to the tail of the schedule-worthy input queue rather than discarded. In this paper, we set α = 0 .5, β = 0 .5, ϵ = 0 .05 , and 
+
+Pmax = 0 .90 for candidate MRP prioritization. 
+
+5.2. History-Aware Context Recovery 
+
+Reproducing candidate MRPs may depend on kernel state created before the syscall group G itself. Such state includes resources, object references, filesystem state, device state, or subsystem state needed to reach the target variable access paths. Therefore, directly executing G from a clean state may fail to reproduce the MRPs in PG. DCIGSE addresses this problem by replaying a bounded execution history H before executing G. Formally, for a triggering syscall group Gt = G,
+
+H = ⟨Gt−NH , G t−NH +1 , . . . , G t−1⟩
+
+contains the NH syscall groups executed immediately be-fore Gt, in their original execution order. Replaying only these preceding groups avoids the cost and possible state perturbation of replaying the complete fuzzing history. The configurable bound NH allows DCIGSE to balance context recovery effectiveness and replay cost. Thread scheduling uses this recovery step in both the collection run and the targeted scheduling run. Each run starts from a clean validation VM state, replays H, and then executes G, preventing different scheduling attempts from interfering with each other. The collection run exe-cutes G without targeted delay and records, for each repro-duced MRP, the minimum-gap runtime pair that matches the recorded access-site pair and stack-context pair in ei-ther access order within τmax . The targeted scheduling run executes G with a targeted delay based on this metadata. Starting each run from a clean VM state would require repeatedly resetting the validation VM. Section 6 describes how DCIGSE accelerates this process with VM snapshots. 
+
+5.3. Context-Aware Interleaving Scheduling 
+
+Context-aware interleaving scheduling is designed based on the observation that the same access site may be executed many times under the same stack context even within a single syscall execution. Delaying the wrong accesses of the access sites can miss the target MRP, while delaying all matching occurrences may perturb the original interleaving and drive the execution away from the target race. Therefore, DCIGSE uses finer-grained runtime context to distinguish different dynamic access occurrences of the same static access site and to locate the two critical occurrences corre-sponding to the MRP during targeted scheduling. Because concurrent randomness can shift occurrences across different replays, DCIGSE first uses strict context matching and then progressively relaxes it via fallback strategies rather than relying on a single exact match. Let P rG ⊆ PG denote the set of MRPs reproduced during the collection phase. An access sequence number (ASN) is a per-thread counter that orders variable accesses within the same thread, allowing DCIGSE to distinguish repeated dynamic occurrences of the same static access site. In the preceding collection phase, DCIGSE selects, for each reproduced MRP, the matching runtime pair with the minimum temporal gap and records its access-site, stack-context, ASN and temporal-gap information. Algorithm 2 shows the context-aware scheduling pro-cedure. For each reproduced MRP, DCIGSE first applies candidate MRP prioritizing at the MRP level. If skipped, the MRP is deferred for future attempts. Otherwise, DCIGSE uses collection metadata to locate the two target access occurrences. It tries three matching strategies in order. Ex-actASN matches each access using its access site, stack                                                               
+
+> Algorithm 2 Context-Aware Interleaving Scheduling Input: validation task T=⟨H, G, P G⟩, re-observed candidate set PrGwith collection metadata
+> Output: confirmed real race set R
+> 1R← ∅
+> 2foreach p∈PrGdo
+> 3if SKIP MRP (p)then
+> 4DEFER (p)
+> 5continue
+> 6(e1, e 2)←ORDERED ACCESSES (p)
+> 7∆←TIME GAP (p)
+> 8M ← [ExactASN ,BoundedASN ,StackOnly ]
+> 9foreach m∈ M do
+> 10 π←BUILD SCHEDULE PLAN (e1, e 2, m, λ ∆)
+> 11 res ←REPLAY AND SCHEDULE (H, G, π )
+> 12 if CONFIRM RACE (res, p )then
+> 13 R←R∪ { (p, m, res )}
+> 14 UPDATE PRIORITY (p, res )
+> 15 break
+> 16 if TARGET MISS (res, p )then
+> 17 continue
+> 18 break
+> 19 if NOT CONFIRMED (p)then
+> 20 UPDATE PRIORITY (p, res )
+> 21 return R
+
+context, and the exact ASN recorded during collection. If ex-act matching fails, BoundedASN retains the access-site and stack-context constraints while allowing the ASN to drift within a configured window around the recorded ASN. The window size is configuration-fixed. If both ExactASN and BoundedASN fail, StackOnly drops the ASN constraint and applies the scheduling action to every occurrence matching the static access site and stack context. After locating the two target accesses, DCIGSE orders them according to their collection timestamps and denotes the earlier access as e1. When an occurrence matching e1
+
+is reached during the targeted scheduling run, DCIGSE arms a watchpoint-based observation window on the over-lapping memory range and delays e1 by λ∆, where ∆ is the temporal gap recorded in the collection phase and λ
+
+is a configurable delay multiplier. If the opposite access performs a conflicting access to the overlapping range while this observation window remains active, DCIGSE confirms the MRP as a real data race. Otherwise, the targeted attempt fails and updates the MRP priority. 
+
+## 6. Implementation 
+
+DCIGSE extends Syzkaller and adds LLVM-based ker-nel instrumentation and runtime support. 
+
+Syzkaller extensions. We extend Syzkaller’s executor to extract MRPs and its fuzzer and manager to generate and mutate syscall groups, manage the MRP corpus and schedul-ing queue, and control the dynamic threshold. We also add a dedicated validation pipeline for replay and targeted TABLE 1. I NFORMATION OF THE TESTED LINUX KERNEL MODULES .                           
+
+> Module Description Version LOC
+> XFS XFS file system Linux 6.17 150K Btrfs Btrfs file system Linux 6.17 112K PTMX PTMX/TTY subsystem Linux 6.17 134K OSS DSP Sound HDA/core subsystem Linux 6.17 104K Bluetooth Bluetooth protocol stack Linux 6.17 50K F2FS Flash-Friendly File System Linux 6.17 39K JFS Journaled File System Linux 6.17 17K Floppy Floppy block device driver Linux 6.17 4K
+
+scheduling. These changes comprise about 14.1 KLoC of Go/C++ code. We further add about 1.0 KLoC of Go code for snapshot-based resets in Syzkaller’s QEMU interface. QEMU runs the test VMs and accelerates validation resets but does not itself trace memory accesses. 
+
+Kernel instrumentation and runtime support. In addition, we implement an LLVM pass and kernel runtime callbacks for memory tracing and validation. The pass instruments memory accesses in selected target modules, and the call-backs emit access records through ftrace for collection by the executor. The callbacks also support the watchpoint-based race confirmation described in Section 5. MRP ex-traction operates directly on the recorded address ranges, as defined in Section 3.1, and does not reconstruct high-level object types. This instrumentation and runtime support comprises about 3.3 KLoC of C/C++ code in total. All reported code sizes are measured with cloc and exclude generated and third-party code. 
+
+## 7. Evaluation 
+
+7.1. Experiment Setup 
+
+We evaluate DCIGSE on eight common Linux kernel modules in Linux 6.17, including four file systems, three device-driver subsystems, and one network protocol stack. We select these modules to cover different parts of the kernel while supporting reproducible testing in a uniform QEMU/Syzkaller environment, allowing us to evaluate the effectiveness of our work across diverse kernel components. The information of these modules is listed in Table 1. We use CLOC [34] to count their lines of source code. Experiments run on an AMD Ryzen Threadripper PRO 5975WX 32-core server with 128 GB RAM. We use cset 
+
+to pin each run to dedicated physical cores to prevent interference. Unless stated otherwise, DCIGSE splits them evenly between its input-generation and thread-scheduling instances. Each experiment reports its allocated physical cores, memory budget, and run duration. 
+
+7.2. Finding Real-World Data Races 
+
+During a three-week continuous testing campaign using DeepSeek-V4-Pro, DCIGSE found 187 unique real-world data races after deduplication. Based on our manual analysis of their source code and triggering executions, we classify                                                    
+
+> TABLE 2. S ECURITY -IMPACT CLASSIFICATION OF THE DATA RACES .Module Harmful / Benign Memory Corruption / DoS Data Corruption Unexpected Behavior XFS 5 / 17 140Btrfs 2 / 19 020PTMX 6 / 14 060OSS DSP 11 / 2 056Bluetooth 7 / 2 520F2FS 8 / 33 161JFS 11 / 19 010 1Floppy 9 / 22 045Total 59 / 128 739 13 FILE: net/bluetooth/sco.c
+> 635. static int sco_sock_connect(void) {
+> ......
+> 647. if (sk ->sk_state != BT_OPEN &&
+> sk ->sk_state != BT_BOUND) ;
+> 648. return -EBADFD;
+> ......
+> 658. err = sco_connect(sk);
+> ......
+> 669. }
+> FILE: net/bluetooth/sco.c
+> 310. static int sco_connect(
+> struct sock *sk)
+> ......
+> 369. sk ->sk_state =
+> BT_CONNECT;
+> ......
+> 379 }
+> Thread 1 Thread 2
+> FILE: linux/net/bluetooth/sco.c
+> 80. static void sco_conn_free(
+> struct kref *ref)
+> ......
+> 87. sco_pi(conn ->sk) ->conn =
+> NULL; // use
+> ......
+> 98. }
+> FILE: include/net/sock.h
+> 1959. static inline void sock_put(
+> struct sock *sk)
+> ......
+> 1962. sk_free(sk); // free
+> ......
+> 1963. }
+> Free Use
+> normal race
+> Figure 4. A harmful data race found in the Bluetooth stack.
+
+59 races as harmful and the remaining 128 as benign. We reported all 59 harmful races to the corresponding kernel maintainers. At the time of writing, 39 have been confirmed by the maintainers, of which 15 have been fixed. 
+
+7.3. Security Impact Analysis 
+
+Table 2 summarizes the security-impact classification of the detected data races. Among the 59 harmful races, 7 can cause memory corruption ( e.g. , use-after-frees) or denial of service (DoS). 39 data races can corrupt critical kernel state or persistent data. Specifically, they change critical variables used in kernel state management, and the raced values can lead to inconsistent updates of file system state, device state, request state, or persistent metadata. 13 data races can cause unexpected behavior by affecting critical control-flow or state-machine decisions in the kernel modules. We present one representative example from each category. 
+
+Memory corruption. Figure 4 shows a harmful race in the Bluetooth SCO connect path. Here, BT_OPEN , BT_BOUND ,and BT_CONNECT are Bluetooth socket states. Thread 1 checks the SCO socket state without holding the socket lock, while Thread 2 can concurrently update the same state in 
+
+sco_connect() . The read in sco_sock_connect() 
+
+and the write in sco_connect() therefore form a data race. In this case, Thread 1 can pass the check with the state FILE: fs/f2fs/super.c                      
+
+> 2907. static bool
+> f2fs_recover_quota_begin( ... )
+> ......
+> 2919. sbi ->sb ->s_flags &=
+> ~SB_RDONLY;
+> ......
+> 2928. }
+> FILE: fs/f2fs/segment.c
+> 1919. static int issue_discard_thread(
+> void *data)
+> ......
+> 1950. if (f2fs_readonly(sbi ->sb))
+> 1951. continue;
+> ......
+> 1962. issued = __issue_discard_cmd(
+> sbi, &dpolicy);
+> ......
+> 1980. }
+> Mount thread Discard thread
+> normal
+> race Figure 5. A harmful data race found in F2FS. FILE: include/sound/pcm.h
+> 725. static inline void
+> __snd_pcm_set_state(...)
+> ...... 728. runtime ->state =
+> SNDRV_PCM_STATE_XRUN;
+> 729. runtime ->status ->state =
+> SNDRV_PCM_STATE_XRUN;
+> ......
+> 730. }
+> FILE: sound/core/oss/pcm_oss.c
+> 1223. snd_pcm_sframes_t
+> snd_pcm_oss_write3 (...) ...... 1228. if (runtime ->state ==
+> SNDRV_PCM_STATE_XRUN
+> …){
+> ...... 1236 ret = snd_pcm_oss_prepare(
+> substream);
+> ...... 1241 ret = __snd_pcm_lib_xfer(
+> substream, ...);
+> ......
+> 1252 }
+> Thread 1 Thread 2
+> normal
+> race
+> Figure 6. A harmful data race found in ALSA.
+
+value BT_OPEN or BT_BOUND , and then Thread 2 assigns 
+
+BT_CONNECT to the socket state. In the end, the two threads operate on the same socket with inconsistent connection ownership. As a result, the HCI disconnect handler for the connection installed by the earlier connect attempts may free the socket reference, while the later concurrent connect attempts in the other thread still access the socket through a stale SCO connection object whose associated socket has already been freed. This data race, therefore, triggers a use-after-free in the Bluetooth subsystem, which can corrupt kernel memory or crash the whole kernel. 
+
+Data corruption. Figure 5 shows a harmful race in F2FS. During recovery of a read-only mount, the mount thread temporarily clears a flag SB_RDONLY to update recovery metadata, while the discard thread checks the same flag to decide whether discard I/O is allowed. These two accesses can occur concurrently during recovery and result in a data race. If the mount thread clears the flag first, the discard thread will observe the temporary flag value, which is not 
+
+SB_RDONLY . In this case, the discard thread issues the dis-card or zone-reset requests before the mount thread restores the read-only flag. Such a data race makes a recovery-only state transition escape to the block device and discard ranges that still contain file-system data or metadata. As a result, it causes persistent data corruption. 
+
+Unexpected behavior. Figure 6 shows a data race in ALSA OSS PCM playback. In Thread 1, the IRQ-driven XRUN handling code updates runtime->state to XRUN . In Thread 2, the OSS write code reads runtime->state 
+
+to decide whether recovery is required before transferring samples. Such two accesses can occur concurrently and cause a data race. If Thread 2 reads a stale RUNNING value                                                                 
+
+> TABLE 3. C ONFIRMED DATA RACES UNDER THRESHOLD POLICIES .
+> Setting XFS F2FS Btrfs PTMX JFS Floppy DSP Bluetooth Total
+> Dynamic 622 11 13 654976 Random-τ37611 041739 Fixed-min 1313120112 Fixed-25% 416 10 12 251555 Fixed-50% 1964040428 Fixed-75% 0725030724 Fixed-max 2627020928
+
+from runtime->state before runtime->state is assigned XRUN in Thread 1, Thread 2 can skip the required XRUN recovery and enter the transfer path while the stream is in the XRUN state. Consequently, the write operation proceeds without recovering the stream and fails instead of successfully restoring normal playback. 
+
+7.4. Ablation Study on Dynamic Threshold Control 
+
+Experiment setup. We conduct a 24-hour ablation on all eight modules using seven otherwise identical configura-tions. Dynamic follows Algorithm 1; Fixed-min and Fixed-max keep τ at τmin and τmax ; Fixed-25%, Fixed-50%, and Fixed-75% keep τ at τmin + q(τmax − τmin ), where 
+
+q = 0 .25 , 0.5, 0.75 , respectively; and Random-τ samples τ
+
+uniformly from the same interval at each control interval. Dynamic confirms 76 data races, compared with 39 for Random-τ and 12, 55, 28, 24, and 28 for Fixed-min, Fixed-25%, Fixed-50%, Fixed-75%, and Fixed-max, respectively. It performs best on six evaluated modules and ties the best fixed setting on Floppy and Bluetooth. These results demonstrate that the effectiveness of our dynamic threshold control: by responding to queue backpressure, it mitigates scheduler undersupply at small thresholds and wasted scheduling effort on low-potential candidates at large thresholds, thereby improving data-race detection over the tested fixed and randomly sampled thresholds. 
+
+7.5. Ablation Study on Concurrent-Input Mutation 
+
+Experiment setup. This experiment evaluates whether LLM-assisted semantic mutation improves concurrent-input generation and increases data race detection effectiveness. We compare two LLMs, GPT-5.4 and DeepSeek-V4-Pro, with random mutation. The random mutation baseline in-volves no LLM and uses only our fast mutator described in Section 4, which samples syscall sequences from the same syscall-group corpus, randomly mutates each sequence with syz-mutate, and then forms syscall groups. The three configurations use the same complete DCIGSE framework and differ only in their input mutation strategy. For each kernel module, we run each configuration for 24 hours using four dedicated physical CPU cores and a 16 GB memory budget per run. In this experiment, we record the growth of MRPs collected under each configuration. 
+
+Analysis on LLM-assisted semantic mutation. Figure 7 reports the resulting MRP growth curves. Compared with 300 3K 6K                                                              
+
+> May Race Pairs  F2FS
+> 0h 4h 8h 12h 16h 20h 24h
+> Time
+> 0250 350 3K 6K JFS
+> 0h 4h 8h 12h 16h 20h 24h
+> Time
+> 0300 450 3K 6K XFS
+> 0h 4h 8h 12h 16h 20h 24h
+> Time
+> 0400 350 3K 6K Btrfs
+> 0h 4h 8h 12h 16h 20h 24h
+> Time
+> 0300 250 3K 6K
+> May Race Pairs  Floppy
+> 0h 4h 8h 12h 16h 20h 24h
+> Time
+> 0200 100 1K 2K 3K
+> PTMX
+> 0h 4h 8h 12h 16h 20h 24h
+> Time
+> 010 150 3K 6K OSS DSP
+> 0h 4h 8h 12h 16h 20h 24h
+> Time
+> 020 350 1K 2K Bluetooth
+> 0h 4h 8h 12h 16h 20h 24h
+> Time
+> 0300
+> DCIGSE Random DCIGSE GPT 5.4 DCIGSE DS V4P SegFuzz CONZZER Figure 7. Growth of MRPs produced by different DCIGSE mutation strategies and prior kernel concurrency fuzzers. TABLE 4. C ONFIRMED DATA RACES UNDER DIFFERENT INPUT -MUTATION STRATEGIES .
+> Setting XFS F2FS Btrfs PTMX JFS Floppy DSP Bluetooth Total
+> GPT-5.4 622 11 13 654976 DS-V4P 817 11 16 510 5779 Random 4798332541
+
+the no-LLM Random configuration, which uses only our fast mutator while keeping all other components unchanged, both LLM-assisted configurations generally produce more MRPs, especially on file systems. This comparison iso-lates the contribution of LLM-assisted semantic mutation: it generates syscall groups whose syscalls are more likely to access shared or related kernel state and trigger MRPs. More MRPs are useful only if they result in more con-firmed races. Table 4 shows that the GPT-5.4 and DeepSeek-V4-Pro configurations confirm 76 and 79 races, respectively, compared with 41 for random mutation. This corresponds to improvements of 85.4% and 92.7%. Both LLM-assisted configurations outperform random mutation on each eval-uated kernel module. The similar gains obtained with two different LLMs suggest that our semantic mutation can work well with different LLMs in practice. To quantify the cost of LLM-assisted mutation, we recorded GPT-5.4 API usage. Table 5 separates uncached input, cached input, and output tokens. Each entry gives USD followed by millions of tokens in parentheses. Costs use the official standard rates of $2.50, $0.25, and $15.00 per million tokens. Across the eight runs, usage totaled 14.01M tokens and $66.01. Inference used a remote API and required no local GPU hardware. 
+
+7.6. Ablation Study on Thread Scheduling 
+
+Experiment setup. This experiment evaluates the contri-butions of each design component in the thread-scheduling instance of DCIGSE. Unlike concurrent-input generation, thread scheduling does not aim to generate more May Race Pairs. Instead, it aims to efficiently schedule the thread execution of the target syscall groups, forcing the conflicting access pair specified in the MRP to occur concurrently. To isolate the effects of thread scheduling from random-ness in concurrent-input generation, all experiments in this section use a corpus of syscall groups with MRPs for each module. The corpus is generated by the DeepSeek-V4-Pro configuration described in Section 7.5. For each module, all thread scheduling configurations consume the same corpus and use the same scheduling budget, differing only in the enabled design components. For each kernel module, we run each configuration for 24 hours using two dedicated physical CPU cores and an 8 GB memory budget. We compare the full configuration with three ablated configurations. N O-HISTORY disables history-aware context recovery and executes each candidate group without replay-ing its saved execution history. N O-ASN disables ASN-based occurrence matching and uses only S TACK ONLY , re-taining access-site and stack-context constraints but applying delay to every matching dynamic occurrence. N O-BACKOFF 
+
+disables probabilistic candidate skipping and deferral based on previous scheduling outcomes. Tables 6 and 7 report confirmed races and budget uti-lization. A processed pair is either scheduled or skipped and deferred, so attempts equal processed pairs minus skips. 
+
+Analysis on history-aware context recovery. As shown in Table 6, history-aware context recovery substantially improves candidate reproducibility. The full configuration confirms 83 real data races, whereas No-history confirms only 35 real data races, indicating a reduction of 57.8%. The effectiveness degradation appears across all evaluated modules. Without recent nearby execution history, a candi-date group may fail to reconstruct the file system, device, resource-reference, or protocol state under which its target conflicting access pairs were originally observed. The data races still confirmed by No-history indicate that some syscall groups are largely self-contained, but the large reduction TABLE 5. GPT-5.4 API COST AND TOKEN USAGE UNDER DYNAMIC THRESHOLD CONTROL . P ARENTHESES DENOTE TOKEN COUNTS IN MILLIONS .                                                                             
+
+> Type XFS F2FS Btrfs PTMX JFS Floppy DSP Bluetooth
+> Uncached input $0.41 (0.16M) $1.89 (0.76M) $4.50 (1.80M) $2.63 (1.05M) $0.31 (0.12M) $1.21 (0.48M) $2.89 (1.16M) $3.28 (1.31M) Cached input $0.02 (0.07M) $0.02 (0.09M) $0.21 (0.85M) $0.18 (0.72M) $0.04 (0.14M) $0.09 (0.37M) $0.22 (0.88M) $0.21 (0.84M) Output $0.92 (0.06M) $2.58 (0.17M) $8.65 (0.58M) $8.74 (0.58M) $1.04 (0.07M) $4.11 (0.27M) $13.55 (0.90M) $8.29 (0.55M) Total $1.35 (0.29M) $4.49 (1.02M) $13.37 (3.23M) $11.55 (2.36M) $1.39 (0.34M) $5.41 (1.13M) $16.67 (2.94M) $11.78 (2.70M) TABLE 6. E FFECT OF THREAD -SCHEDULING COMPONENTS ON CONFIRMED DATA RACES .
+> Setting XFS Btrfs PTMX DSP Bluetooth F2FS JFS Floppy Total
+> Full 712 18 6618 511 83 No-history 2583581335 No-ASN 2795411 2646 No-backoff 3513 0472640
+
+shows that many candidate MRPs depend on state estab-lished by earlier executions. 
+
+Analysis on context-aware interleaving scheduling. 
+
+Context-aware interleaving scheduling substantially im-proves target-localization precision. No-ASN confirms 46 real data races, compared with 83 for the full configura-tion, indicating a reduction of 44.6%. This effectiveness degradation is not caused by fewer scheduling opportunities. No-ASN executes 4,564 targeted scheduling attempts and processes 13,318 candidate pairs, compared with 4,261 at-tempts and 12,485 processed pairs for the full configuration. Without ASN information, multiple dynamic occurrences sharing the same access site and stack context may be treated as the target occurrence. Applying delay to these additional occurrences perturbs the execution without reliably bringing the intended MRP endpoints into overlap, reducing the effectiveness of targeted interleaving exploration. 
+
+Analysis on candidate MRP prioritizing. Candidate MRP prioritizing improves the allocation of the scheduling bud-get. No-backoff confirms 40 data races, compared with 83 for the full configuration, indicating a reduction of 51.8%. The two configurations execute a similar number of schedul-ing attempts: 4,199 for No-backoff and 4,261 for the full configuration. However, the full configuration skips or defers 8,224 low-priority candidates and consequently advances over 12,485 candidate pairs, approximately 2.97 times the 4,199 pairs reached by No-backoff. Without backoff, low-potential candidates continue to consume scheduling at-tempts and prevent interleaving exploration from reaching a broader portion of the MRP corpus. Overall, the three mechanisms address different chal-lenges in thread scheduling for confirming data races. History-aware context recovery reconstructs the state re-quired to reproduce candidate accesses, ASN-aware match-ing anchors scheduling delay to the intended dynamic oc-currences, and candidate MRP prioritizing prevents low-potential candidates from repeatedly monopolizing the scheduling budget. Together, these mechanisms enable DCIGSE to confirm substantially more MRP candidates as real data races with efficient thread scheduling under a bounded scheduling budget. 
+
+7.7. Comparison with Prior Approaches 
+
+Experiment setup. We compare DCIGSE with two state-of-the-art concurrency-aware kernel fuzzers, SegFuzz [27] and CONZZER [26]. We examine two complementary out-comes from the same 24-hour end-to-end runs: the growth of MRPs during execution and the number of real data races confirmed by the end of the run. SegFuzz and CONZZER were originally evaluated on Linux v6.2 and v5.4, respec-tively [26], [27]. We ported both implementations to v6.17 with compatibility changes only, thereby preserving their original functionality. For DCIGSE, we reuse the three configurations eval-uated in Section 7.5: DCIGSE GPT -5.4, which uses GPT-5.4-assisted semantic mutation; DCIGSE DS -V4P , which uses DeepSeek-V4-Pro-assisted semantic mutation; and DCIGSE Random , which uses random syscall-group muta-tion. In all three configurations of DCIGSE, the input-generation and thread-scheduling instances run in parallel, and the dynamic time-threshold controller remains enabled. SegFuzz and CONZZER run in their original modes. All approaches run on Linux v6.17 using the same evaluation setup, i.e. , four physical CPU cores, 16 GB memory, and 24-hour testing per kernel module. We extract MRPs from the executions of SegFuzz and CONZZER using the MRP construction and accounting rules described in Section 3.1. Because these baselines do not implement DCIGSE’s dynamic threshold controller, we use τmax , the maximum threshold permitted by the con-troller, when extracting their MRPs. This permissive setting admits conflicting access pairs with larger temporal dis-tances and therefore avoids artificially limiting the number of MRPs attributed to the baselines. 
+
+MRP analysis. Figure 7 shows the growth of MRPs during runs. The DCIGSE curves are the same results analyzed in Section 7.5 and are included here for direct comparison with SegFuzz and CONZZER. The three DCIGSE config-urations generally produce more MRPs across the evaluated kernel modules, with clear advantages on the file systems. Importantly, DCIGSE Random produces more MRPs than the two baselines. Since this configuration does not use LLM-assisted mutation, this result demonstrates the ben-efit of decoupling concurrent-input generation and thread-interleaving exploration through the MRP interface, which significantly improves the fuzzing efficiency. TABLE 7. S CHEDULING -BUDGET UTILIZATION BY MODULE .                                                                                                        
+
+> Metric XFS Btrfs PTMX OSS DSP Bluetooth F2FS JFS Floppy Total
+> Full skips 297 1,549 462 706 220 2,264 463 2,263 8,224
+> Full processed 712 2,103 1,013 971 450 3,064 950 3,222 12,485
+> No-ASN skips 511 1,528 427 835 202 2,225 511 2,515 8,754
+> No-ASN processed 1,008 2,146 979 1,123 450 3,046 1,001 3,565 13,318
+> No-backoff processed 407 504 546 276 236 774 489 967 4,199
+> TABLE 8. C ONFIRMED DATA RACES ACROSS APPROACHES .
+> Module DCIGSE SegFuzz CONZZER GPT-5.4 DS-V4P Random
+> XFS 68431F2FS 22 17 763Btrfs 11 11 921PTMX 13 16 811JFS 65334Floppy 510 321OSS DSP 45210Bluetooth 97510
+> Total 76 79 41 19 11
+
+Data race detection. Table 8 reports the confirmed data races from the same end-to-end runs. The DCIGSE rows repeat Table 4 for direct per-module comparison with the baselines. DCIGSE DS -V4P confirms 79 data races versus 19 for SegFuzz and 11 for CONZZER, improvements of 4.16 ×
+
+and 7.18 ×. Even DCIGSE Random confirms 41 data races, 2.16 × and 3.73 × those of SegFuzz and CONZZER. This result shows that the improvement does not rely solely on LLM-assisted mutation: decoupling concurrent-input gener-ation and thread-interleaving exploration already provides a substantial empirical advantage over the baselines that couple these two phases. These results show that DCIGSE improves both the supply of concrete scheduling targets ( i.e. , MRPs) and their conversion into real data races. The decoupled framework provides significant improvement over existing approaches. 
+
+## 8. Related Work 
+
+8.1. Coverage-Guided Fuzzing 
+
+Coverage-guided fuzzing, like AFL, uses execution cov-erage to collect interesting inputs for further mutation [35]. Later work improves this paradigm through better seed scheduling and search strategies [36]–[38], or through more informative feedback and structure-aware mutation [8]–[11]. These techniques increase code coverage and expose diverse sequential paths. However, such feedback mainly captures sequential paths and cannot reliably indicate an input’s potential to trigger interesting concurrent executions. In contrast, MRPs capture conflicting variable-access pairs that occur within a short time interval, providing direct guidance for focusing computing resources on syscall groups that are more likely to expose data races. 
+
+8.2. Kernel and Concurrency Fuzzing 
+
+Coverage-guided fuzzing has been widely applied to ker-nel testing, where inputs are typically represented as syscall programs. Syzkaller and kAFL establish the basic coverage-guided kernel fuzzing framework [12], [39]. Subsequent systems improve kernel input generation by better modeling syscall semantics, exploring complex kernel states, and sup-porting diverse kernel interfaces and subsystems [13]–[17], [40]–[50]. These techniques substantially broaden the kernel code paths exercised by generated inputs, but they still focus solely on exploring the input space without considering thread interleavings. As a result, they may miss data races that manifest only under rare or specific interleavings. Existing kernel concurrency fuzzing additionally ex-plores the thread-interleaving space. Prior work improves this thread scheduling through search space reduction, concurrency-aware feedback, and controlled interleaving scheduling [20]–[22], [26]–[29], [51]–[54]. However, most existing approaches still couple concurrent-input generation with interleaving exploration, causing substantial testing effort to be spent scheduling inputs with little potential to trigger data races. In contrast, DCIGSE decouples these two searches: its input-generation stage collects MRPs dur-ing concurrent execution, while its interleaving-exploration stage uses the collected MRPs to concentrate interleaving exploration on promising regions of the interleaving space. 
+
+8.3. LLM-Assisted Testing 
+
+LLMs have been increasingly applied to software test-ing [55]–[57], and various fuzzing tasks such as input gen-eration, mutation, and fuzzer synthesis [58]–[64]. In kernel fuzzing, KernelGPT uses LLMs to synthesize and refine Syzkaller syscall specifications, while SyzAgent uses them to guide test-case generation and mutation during kernel fuzzing [43], [65]. Themis uses LLMs to generate RPC-based tests for statically identified distributed race candi-dates, followed by directed fuzzing of their input parame-ters [66]. KnitFuzz uses LLMs to generate context-aware C seeds for socket-state exploration [67]. In contrast, DCIGSE semantically mutates concurrent syscall groups while pre-serving and strengthening their interactions. Although prior LLM-based kernel fuzzers improve syscall specifications or context-aware input generation, they do not make semantic interactions among concurrently executed inputs an explicit mutation objective. Unlike prior LLM-based kernel fuzzers, DCIGSE explicitly targets concurrency semantics during mutation to explore the concurrent-input space more effec-tively and improve data-race detection. 
+
+## 9. Conclusion 
+
+This paper presents DCIGSE, a kernel concurrency fuzzing framework that decouples concurrent-input gen-eration and thread-interleaving exploration through May Race Pairs (MRPs). By using MRPs to guide semantic mutation during concurrent-input generation and to focus subsequent scheduling effort on promising interleavings, DCIGSE avoids spending substantial testing effort on inputs with little potential to trigger data races. Our evaluation on eight Linux kernel modules found 187 data races, including 59 harmful data races, 39 of which have been confirmed by kernel maintainers and 15 of which have been fixed. Un-der the same testing budget, DCIGSE detects substantially more data races than state-of-the-art kernel concurrency fuzzers. More broadly, DCIGSE shows that lightweight data race candidate discovery can be decoupled from expensive thread scheduling through an explicit runtime abstraction. MRP instantiates this abstraction specifically for data races, while other abstractions that are inexpensive to collect and informative enough to guide scheduling can support other concurrency bugs. For example, deallocation/use pairs that record a deallocation in one thread and an access to the same object in another thread can decouple the searches: concurrent-input generation generates inputs with greater potential for concurrency-induced UAFs, while scheduling targets the unsafe order. We believe our decoupling design offers a general and effective paradigm for concurrency fuzzing beyond the specific design of DCIGSE. 
+
+## References 
+
+[1] CVE Program, “CVE-2022-49171,” 2025, published 26 February 2025; accessed 10 June 2026. [Online]. Available: https://www.cve. org/CVERecord?id=CVE-2022-49171 [2] ——, “CVE-2022-49554,” 2025, published 26 February 2025; accessed 10 June 2026. [Online]. Available: https://www.cve.org/ CVERecord?id=CVE-2022-49554 [3] ——, “CVE-2022-50145,” 2025, published 18 June 2025; accessed 10 June 2026. [Online]. Available: https://www.cve.org/CVERecord? id=CVE-2022-50145 [4] ——, “CVE-2025-40318,” 2025, published 8 December 2025; accessed 10 June 2026. [Online]. Available: https://www.cve.org/ CVERecord?id=CVE-2025-40318 [5] ——, “CVE-2021-4202,” 2022, published 25 March 2022; accessed 10 June 2026. [Online]. Available: https://www.cve.org/CVERecord? id=CVE-2021-4202 [6] ——, “CVE-2023-0266,” 2023, published 30 January 2023; accessed 10 June 2026. [Online]. Available: https://www.cve.org/CVERecord? id=CVE-2023-0266 [7] ——, “CVE-2016-5195 (Dirty COW),” 2016, published 10 November 2016; accessed 10 June 2026. [Online]. Available: https://www.cve. org/CVERecord?id=CVE-2016-5195 [8] P. Chen and H. Chen, “Angora: Efficient fuzzing by principled search,” in Proceedings of the 39th IEEE Symposium on Security and Privacy (S&P) , 2018. [9] C. Lemieux and K. Sen, “FairFuzz: A targeted mutation strategy for increasing greybox fuzz testing coverage,” in Proceedings of the 33rd ACM/IEEE International Conference on Automated Software Engineering (ASE) , 2018. [10] V.-T. Pham, M. Böhme, A. E. Santosa, A. R. Caciulescu, and A. Roy-choudhury, “Smart greybox fuzzing,” IEEE Transactions on Software Engineering , vol. 47, no. 9, pp. 1980–1997, 2021. [11] J. Wang, B. Chen, L. Wei, and Y. Liu, “Superion: Grammar-aware greybox fuzzing,” in Proceedings of the 41st IEEE/ACM International Conference on Software Engineering (ICSE) , 2019. [12] Google syzkaller project, “syzkaller: Kernel fuzzer,” software repository; accessed 10 June 2026. [Online]. Available: https: //github.com/google/syzkaller [13] S. Pailoor, A. Aday, and S. Jana, “MoonShine: Optimizing OS fuzzer seed selection with trace distillation,” in Proceedings of the 27th USENIX Security Symposium (USENIX Security) , 2018. [14] J. Corina, A. Machiry, C. Salls, Y. Shoshitaishvili, S. Hao, C. Kruegel, and G. Vigna, “DIFUZE: Interface aware fuzzing for kernel drivers,” in Proceedings of the 24th ACM SIGSAC Conference on Computer and Communications Security (CCS) , 2017. [15] S. M. S. Talebi, H. Tavakoli, H. Zhang, Z. Zhang, A. A. Sani, and Z. Qian, “Charm: Facilitating dynamic analysis of device drivers of mobile systems,” in Proceedings of the 27th USENIX Security Symposium (USENIX Security) , 2018. [16] W. Xu, H. Moon, S. Kashyap, P.-N. Tseng, and T. Kim, “Fuzzing file systems via two-dimensional input space exploration,” in Proceedings of the 40th IEEE Symposium on Security and Privacy (S&P) , 2019. [17] S. Kim, M. Xu, S. Kashyap, J. Yoon, W. Xu, and T. Kim, “Finding semantic bugs in file systems with an extensible fuzzing framework,” in Proceedings of the 27th ACM Symposium on Operating Systems Principles (SOSP) , 2019. [18] Linux Kernel Documentation, “Kernel concurrency sanitizer (KCSAN),” accessed 10 June 2026. [Online]. Available: https://docs.kernel.org/dev-tools/kcsan.html [19] Google Kernel Sanitizers Project, “Kernel thread sanitizer (KTSAN),” accessed 10 June 2026. [Online]. Available: https://google.github.io/ kernel-sanitizers/KTSAN.html [20] D. R. Jeong, K. Kim, B. Shivakumar, B. Lee, and I. Shin, “RAZZER: Finding kernel race bugs through fuzzing,” in Proceedings of the 40th IEEE Symposium on Security and Privacy (S&P) , 2019. [21] S. Gong, D. Altınbüken, P. Fonseca, and P. Maniatis, “Snowboard: Finding kernel concurrency bugs through systematic inter-thread com-munication analysis,” in Proceedings of the 28th ACM Symposium on Operating Systems Principles (SOSP) , 2021. [22] S. Gong, D. Peng, D. Altınbüken, P. Fonseca, and P. Maniatis, “Snow-cat: Efficient kernel concurrency testing using a learned coverage predictor,” in Proceedings of the 29th ACM Symposium on Operating Systems Principles (SOSP) , 2023. [23] H. Chen, S. Guo, Y. Xue, Y. Sui, C. Zhang, Y. Li, H. Wang, and Y. Liu, “MUZZ: Thread-aware grey-box fuzzing for effective bug hunting in multithreaded programs,” in Proceedings of the 29th USENIX Security Symposium (USENIX Security) , 2020. [24] N. Vinesh and M. Sethumadhavan, “ConFuzz—a concurrency fuzzer,” in Proceedings of the 1st International Conference on Sustainable Technologies for Computational Intelligence (ICTSCI) , 2020. [25] C. Liu, D. Zou, P. Luo, B. B. Zhu, and H. Jin, “A heuristic framework to detect concurrency vulnerabilities,” in Proceedings of the 34th Annual Computer Security Applications Conference (ACSAC) , 2018. [26] Z.-M. Jiang, J.-J. Bai, K. Lu, and S.-M. Hu, “Context-sensitive and di-rectional concurrency fuzzing for data-race detection,” in Proceedings of the Network and Distributed System Security Symposium (NDSS) ,2022. [27] D. R. Jeong, B. Lee, I. Shin, and Y. Kwon, “SEGFUZZ: Segmentiz-ing thread interleaving to discover kernel concurrency bugs through fuzzing,” in Proceedings of the 44th IEEE Symposium on Security and Privacy (S&P) , 2023. [28] J. Xu, D. Wolff, X. Y. Han, J. Li, and A. Roychoudhury, “Concurrency fuzzing of the linux kernel with eBPF,” in Proceedings of the 35th USENIX Security Symposium (USENIX Security) , 2026. [29] M. Xu, S. Kashyap, H. Zhao, and T. Kim, “KRACE: Data race fuzzing for kernel file systems,” in Proceedings of the 41st IEEE Symposium on Security and Privacy (S&P) , 2020. [30] D. R. Jeong, Y. Choi, B. Lee, I. Shin, and Y. Kwon, “OZZ: Iden-tifying kernel out-of-order concurrency bugs with in-vivo memory access reordering,” in Proceedings of the 30th ACM Symposium on Operating Systems Principles (SOSP) , 2024. [31] M. Welsh and D. Culler, “Adaptive overload control for busy internet servers,” in Proceedings of the 4th USENIX Symposium on Internet Technologies and Systems (USITS) , 2003. [32] S. Lu, S. Park, E. Seo, and Y. Zhou, “Learning from mistakes: A comprehensive study on real world concurrency bug characteristics,” in Proceedings of the 13th International Conference on Architectural Support for Programming Languages and Operating Systems (ASP-LOS) , 2008. [33] Syzkaller Project Authors, “syz-mutate : Syzkaller program mutation tool,” software repository; accessed 10 June 2026. [Online]. Available: https://github.com/google/syzkaller/tree/master/ tools/syz-mutate [34] A. Danial, “CLOC: Count lines of code,” software repository; accessed 10 June 2026. [Online]. Available: https://github.com/ AlDanial/cloc [35] M. Zalewski, “American Fuzzy Lop (AFL),” software project; accessed 10 June 2026. [Online]. Available: https://lcamtuf.coredump. cx/afl/ [36] M. Böhme, V.-T. Pham, and A. Roychoudhury, “Coverage-based greybox fuzzing as markov chain,” in Proceedings of the 23rd ACM SIGSAC Conference on Computer and Communications Security (CCS) , 2016. [37] M. Böhme, V.-T. Pham, M.-D. Nguyen, and A. Roychoudhury, “Di-rected greybox fuzzing,” in Proceedings of the 24th ACM SIGSAC Conference on Computer and Communications Security (CCS) , 2017. [38] A. Fioraldi, D. Maier, H. Eißfeldt, and M. Heuse, “AFL++: Com-bining incremental steps of fuzzing research,” in Proceedings of the 14th USENIX Workshop on Offensive Technologies (WOOT) , 2020. [39] S. Schumilo, C. Aschermann, R. Gawlik, S. Schinzel, and T. Holz, “kAFL: Hardware-assisted feedback fuzzing for OS kernels,” in Pro-ceedings of the 26th USENIX Security Symposium (USENIX Security) ,2017. [40] W. Chen, Y. Wang, Z. Zhang, and Z. Qian, “SyzGen: Automated generation of syscall specification of closed-source macOS drivers,” in Proceedings of the 28th ACM SIGSAC Conference on Computer and Communications Security (CCS) , 2021. [41] Y. Hao, G. Li, X. Zou, W. Chen, S. Zhu, Z. Qian, and A. A. Sani, “SyzDescribe: Principled, automated, static generation of syscall descriptions for kernel drivers,” in Proceedings of the 44th IEEE Symposium on Security and Privacy (S&P) , 2023. [42] W. Chen, Y. Hao, Z. Zhang, X. Zou, D. Kirat, S. Mishra, D. Schales, J. Jang, and Z. Qian, “SyzGen++: Dependency inference for aug-menting kernel driver fuzzing,” in Proceedings of the 45th IEEE Symposium on Security and Privacy (S&P) , 2024. [43] C. Yang, Z. Zhao, and L. Zhang, “KernelGPT: Enhanced kernel fuzzing via large language models,” in Proceedings of the 30th ACM International Conference on Architectural Support for Programming Languages and Operating Systems (ASPLOS) , 2025. [44] B. Zhao, Z. Li, S. Qin, Z. Ma, M. Yuan, W. Zhu, Z. Tian, and C. Zhang, “StateFuzz: System call-based state-aware linux driver fuzzing,” in Proceedings of the 31st USENIX Security Symposium (USENIX Security) , 2022. [45] X. Tan, Y. Zhang, J. Lu, X. Xiong, Z. Liu, and M. Yang, “SyzDirect: Directed greybox fuzzing for linux kernel,” in Proceedings of the 30th ACM SIGSAC Conference on Computer and Communications Security (CCS) , 2023. [46] M. Fleischer, D. Das, P. Bose, W. Bai, K. Lu, M. Payer, C. Kruegel, and G. Vigna, “ACTOR: Action-guided kernel fuzzing,” in Proceed-ings of the 32nd USENIX Security Symposium (USENIX Security) ,2023. [47] H. Peng and M. Payer, “USBFuzz: A framework for fuzzing USB drivers by device emulation,” in Proceedings of the 29th USENIX Security Symposium (USENIX Security) , 2020. [48] D. Song, F. Hetzelt, D. Das, C. Spensky, Y. Na, S. Volckaert, G. Vigna, C. Kruegel, J.-P. Seifert, and M. Franz, “PeriScope: An effective probing and fuzzing framework for the hardware-OS bound-ary,” in Proceedings of the Network and Distributed System Security Symposium (NDSS) , 2019. [49] Z. Ma, B. Zhao, L. Ren, Z. Li, S. Ma, X. Luo, and C. Zhang, “PrInt-Fuzz: Fuzzing linux drivers via automated virtual device simulation,” in Proceedings of the 31st ACM SIGSOFT International Symposium on Software Testing and Analysis (ISSTA) , 2022. [50] D. Song, F. Hetzelt, J. Kim, B. B. Kang, J.-P. Seifert, and M. Franz, “Agamotto: Accelerating kernel driver fuzzing with lightweight vir-tual machine checkpoints,” in Proceedings of the 29th USENIX Se-curity Symposium (USENIX Security) , 2020. [51] M. Musuvathi, S. Qadeer, T. Ball, G. Basler, P. A. Nainar, and I. Neamtiu, “Finding and reproducing heisenbugs in concurrent pro-grams,” in Proceedings of the 8th USENIX Symposium on Operating Systems Design and Implementation (OSDI) , 2008. [52] P. Fonseca, R. Rodrigues, and B. B. Brandenburg, “SKI: Exposing kernel concurrency bugs through systematic schedule exploration,” in 
+
+Proceedings of the 11th USENIX Symposium on Operating Systems Design and Implementation (OSDI) , 2014. [53] J. Erickson, M. Musuvathi, S. Burckhardt, and K. Olynyk, “Effec-tive data-race detection for the kernel,” in Proceedings of the 9th USENIX Symposium on Operating Systems Design and Implementa-tion (OSDI) , 2010. [54] D. Wolff, Z. Shi, G. J. Duck, U. Mathur, and A. Roychoudhury, “Greybox fuzzing for concurrency testing,” in Proceedings of the 29th ACM International Conference on Architectural Support for Programming Languages and Operating Systems (ASPLOS) , 2024. [55] C. Lemieux, J. P. Inala, S. K. Lahiri, and S. Sen, “CodaMOSA: Escaping coverage plateaus in test generation with pre-trained large language models,” in Proceedings of the 45th IEEE/ACM Interna-tional Conference on Software Engineering (ICSE) , 2023. [56] Y. Chen, Z. Hu, C. Zhi, J. Han, S. Deng, and J. Yin, “ChatUniTest: A framework for LLM-based test generation,” in Proceedings of the 32nd ACM International Conference on the Foundations of Software Engineering, Companion Volume (FSE Companion) , 2024. [57] N. Alshahwan, J. Chheda, A. Finogenova, B. Gokkaya, M. Harman, I. Harper, A. Marginean, S. Sengupta, and E. Wang, “Automated unit test improvement using large language models at meta,” in Proceed-ings of the 32nd ACM International Conference on the Foundations of Software Engineering, Companion Volume (FSE Companion) , 2024. [58] R. Meng, M. Mirchev, M. Böhme, and A. Roychoudhury, “Large language model guided protocol fuzzing,” in Proceedings of the Network and Distributed System Security Symposium (NDSS) , 2024. [59] C. S. Xia, M. Paltenghi, J. L. Tian, M. Pradel, and L. Zhang, “Fuzz4All: Universal fuzzing with large language models,” in Pro-ceedings of the 46th IEEE/ACM International Conference on Software Engineering (ICSE) , 2024. [60] Y. Deng, C. S. Xia, H. Peng, C. Yang, and L. Zhang, “Large language models are zero-shot fuzzers: Fuzzing deep-learning libraries via large language models,” in Proceedings of the 32nd ACM SIGSOFT International Symposium on Software Testing and Analysis (ISSTA) ,2023. [61] H. Xu, W. Ma, T. Zhou, Y. Zhao, K. Chen, Q. Hu, Y. Liu, and H. Wang, “CKGFuzzer: LLM-based fuzz driver generation enhanced by code knowledge graph,” in Proceedings of the 47th IEEE/ACM In-ternational Conference on Software Engineering, Companion Volume (ICSE Companion) , 2025. [62] C. Chen, B. Dolan-Gavitt, and Z. Lin, “ELFuzz: Efficient input gen-eration via LLM-Driven synthesis over fuzzer space,” in Proceedings of the 34th USENIX Security Symposium (USENIX Security) , 2025. [63] K. Zhang, Z. Li, D. Wu, S. Wang, and X. Xia, “Low-cost and com-prehensive non-textual input fuzzing with LLM-Synthesized input generators,” in Proceedings of the 34th USENIX Security Symposium (USENIX Security) , 2025. [64] Z. Jia, X. Yin, S. Gan, C. Zhang, H. Liu, J. Ji, E. Song, R. Cai, J. Tan, and S. Liu, “PANGOLIN: Fuzzing multilingual IoT firmware with LLM-Driven code analysis,” in Proceedings of the 35th USENIX Security Symposium (USENIX Security) , 2026. [65] X. Li, Z. Yuan, Z. Zhang, Y. Sun, and L. Zhang, “Towards large language model guided kernel direct fuzzing,” in Proceedings of the 28th International Conference on Fundamental Approaches to Software Engineering (FASE) , 2025. [66] H. Cao, J. He, T. Dai, and G. Jin, “Themis: Detecting distributed concurrency bugs through RPC-driven race-directed test generation and fuzzing,” in Proceedings of the 23rd USENIX Symposium on Networked Systems Design and Implementation (NSDI) , 2026. [67] S. Zhang and E. Hoque, “KnitFuzz: LLM-Guided kernel fuzzing via context-sensitive socket system calls,” in Proceedings of the 16th ACM Conference on Data and Application Security and Privacy (CODASPY) , 2026.

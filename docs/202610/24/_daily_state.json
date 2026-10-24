@@ -1,0 +1,377 @@
+{
+  "date": "20261024",
+  "date_label": "",
+  "generated_at": "2026-10-24 22:50:24 UTC",
+  "recommend_exists": true,
+  "run_count": 1,
+  "papers": [
+    {
+      "paper_id": "2610.22256v1",
+      "route": "202610/24/2610.22256v1-bitsparse-compact-activation-storage-for-relu-feed-forward-networks",
+      "title": "BitSparse: Compact Activation Storage for ReLU Feed-Forward Networks",
+      "section": "deep",
+      "tags": [
+        {
+          "kind": "query",
+          "label": "gpu-ai-infra"
+        }
+      ],
+      "score": 8.0,
+      "evidence": "面向大语言模型推理的GPU端无损激活压缩",
+      "first_seen_at": "2026-10-24 22:50:24 UTC",
+      "updated_at": "2026-10-24 22:50:24 UTC"
+    },
+    {
+      "paper_id": "2610.22673v1",
+      "route": "202610/24/2610.22673v1-the-case-for-tpu-accelerated-analytical-query-processing",
+      "title": "The Case for TPU-Accelerated Analytical Query Processing",
+      "section": "deep",
+      "tags": [
+        {
+          "kind": "query",
+          "label": "gpu-ai-infra"
+        }
+      ],
+      "score": 8.0,
+      "evidence": "在TPU上全栈运行TPC-H分析查询",
+      "first_seen_at": "2026-10-24 22:50:24 UTC",
+      "updated_at": "2026-10-24 22:50:24 UTC"
+    },
+    {
+      "paper_id": "2610.22890v1",
+      "route": "202610/24/2610.22890v1-mailrail-mitigating-incast-congestion-with-user-space-node-based-flow-control",
+      "title": "MailRail: Mitigating Incast Congestion with User-Space, Node-Based Flow Control",
+      "section": "deep",
+      "tags": [
+        {
+          "kind": "query",
+          "label": "gpu-ai-infra"
+        }
+      ],
+      "score": 8.0,
+      "evidence": "面向大规模AI并行环境的用户态节点级流控机制",
+      "first_seen_at": "2026-10-24 22:50:24 UTC",
+      "updated_at": "2026-10-24 22:50:24 UTC"
+    },
+    {
+      "paper_id": "2610.22912v1",
+      "route": "202610/24/2610.22912v1-data-center-load-accommodation-under-qos-and-checkpoint-induced-frequency-security-constraints",
+      "title": "Data Center Load Accommodation under QoS and Checkpoint-Induced Frequency Security Constraints",
+      "section": "quick",
+      "tags": [
+        {
+          "kind": "query",
+          "label": "gpu-ai-infra"
+        }
+      ],
+      "score": 8.0,
+      "evidence": "AI训练检查点引发的频率安全约束下的数据中心负载接纳",
+      "first_seen_at": "2026-10-24 22:50:24 UTC",
+      "updated_at": "2026-10-24 22:50:24 UTC"
+    },
+    {
+      "paper_id": "2610.23006v1",
+      "route": "202610/24/2610.23006v1-efficient-cpu-gpu-collaborative-moe-inference-via-adaptive-expert-assignment",
+      "title": "Efficient CPU-GPU collaborative MoE inference via Adaptive Expert Assignment",
+      "section": "deep",
+      "tags": [
+        {
+          "kind": "query",
+          "label": "gpu-ai-infra"
+        }
+      ],
+      "score": 8.0,
+      "evidence": "CPU-GPU协同MoE推理解决异构硬件上AI推理的内存瓶颈问题",
+      "first_seen_at": "2026-10-24 22:50:24 UTC",
+      "updated_at": "2026-10-24 22:50:24 UTC"
+    },
+    {
+      "paper_id": "2610.23232v1",
+      "route": "202610/24/2610.23232v1-prairiefire-igniting-high-throughput-updates-in-large-scale-approximate-nearest-neighbor-search",
+      "title": "PrairieFire: Igniting High-Throughput Updates in Large-Scale Approximate Nearest Neighbor Search",
+      "section": "quick",
+      "tags": [
+        {
+          "kind": "query",
+          "label": "gpu-ai-infra"
+        }
+      ],
+      "score": 8.0,
+      "evidence": "面向十亿级向量的SSD高效近似最近邻搜索系统",
+      "first_seen_at": "2026-10-24 22:50:24 UTC",
+      "updated_at": "2026-10-24 22:50:24 UTC"
+    },
+    {
+      "paper_id": "2610.23406v1",
+      "route": "202610/24/2610.23406v1-gumpim-unitary-and-malleable-memory-for-processing-in-memory-with-guaranteed-pim-pages",
+      "title": "GUMPIM: Unitary and Malleable Memory for Processing-in-Memory with Guaranteed PIM Pages",
+      "section": "quick",
+      "tags": [
+        {
+          "kind": "query",
+          "label": "gpu-ai-infra"
+        }
+      ],
+      "score": 8.0,
+      "evidence": "融合CPU与加速器内存空间的存算一体架构",
+      "first_seen_at": "2026-10-24 22:50:24 UTC",
+      "updated_at": "2026-10-24 22:50:24 UTC"
+    },
+    {
+      "paper_id": "2610.23455v1",
+      "route": "202610/24/2610.23455v1-hydrallm-adaptive-width-slicing-for-elastic-text-and-vision-language-models",
+      "title": "HydraLLM: Adaptive Width Slicing for Elastic Text and Vision-Language Models",
+      "section": "deep",
+      "tags": [
+        {
+          "kind": "query",
+          "label": "gpu-ai-infra"
+        }
+      ],
+      "score": 8.0,
+      "evidence": "HydraLLM支持大模型在数据中心GPU与边缘设备等异构硬件上的弹性部署",
+      "first_seen_at": "2026-10-24 22:50:24 UTC",
+      "updated_at": "2026-10-24 22:50:24 UTC"
+    },
+    {
+      "paper_id": "2610.24179v1",
+      "route": "202610/24/2610.24179v1-kvcompass-a-discovery-plane-for-internet-scale-prefix-cache-sharing-in-llm-serving",
+      "title": "KVCompass: A Discovery Plane for Internet-Scale Prefix Cache Sharing in LLM Serving",
+      "section": "quick",
+      "tags": [
+        {
+          "kind": "query",
+          "label": "gpu-ai-infra"
+        }
+      ],
+      "score": 8.0,
+      "evidence": "跨地理分布GPU集群的互联网规模KV缓存发现",
+      "first_seen_at": "2026-10-24 22:50:24 UTC",
+      "updated_at": "2026-10-24 22:50:24 UTC"
+    },
+    {
+      "paper_id": "2610.24499v1",
+      "route": "202610/24/2610.24499v1-tidekv-delayed-kv-eviction-via-layer-wise-chunked-prefill-for-memory-efficient-long-context-llm-inference",
+      "title": "TideKV: Delayed KV Eviction via Layer-Wise Chunked Prefill for Memory-Efficient Long-Context LLM Inference",
+      "section": "deep",
+      "tags": [
+        {
+          "kind": "query",
+          "label": "gpu-ai-infra"
+        }
+      ],
+      "score": 8.0,
+      "evidence": "TideKV：面向长上下文LLM推理的层级延迟KV驱逐机制",
+      "first_seen_at": "2026-10-24 22:50:24 UTC",
+      "updated_at": "2026-10-24 22:50:24 UTC"
+    },
+    {
+      "paper_id": "2610.24648v1",
+      "route": "202610/24/2610.24648v1-edgekernelbench-unified-llm-driven-kernel-generation-for-edge-backends",
+      "title": "EdgeKernelBench: Unified LLM-Driven Kernel Generation for Edge Backends",
+      "section": "quick",
+      "tags": [
+        {
+          "kind": "query",
+          "label": "gpu-ai-infra"
+        }
+      ],
+      "score": 8.0,
+      "evidence": "面向异构边缘GPU后端的LLM驱动内核生成",
+      "first_seen_at": "2026-10-24 22:50:24 UTC",
+      "updated_at": "2026-10-24 22:50:24 UTC"
+    },
+    {
+      "paper_id": "2610.24830v1",
+      "route": "202610/24/2610.24830v1-hel-a-heterogeneous-extensible-layer-for-gpu-resident-runtime-orchestration",
+      "title": "HEL: A Heterogeneous Extensible Layer for GPU-Resident Runtime Orchestration",
+      "section": "quick",
+      "tags": [
+        {
+          "kind": "query",
+          "label": "gpu-ai-infra"
+        }
+      ],
+      "score": 8.0,
+      "evidence": "面向异构GPU工作负载的GPU驻留运行时编排层",
+      "first_seen_at": "2026-10-24 22:50:24 UTC",
+      "updated_at": "2026-10-24 22:50:24 UTC"
+    },
+    {
+      "paper_id": "2610.25012v1",
+      "route": "202610/24/2610.25012v1-conjugate-compilation-self-improving-agentic-co-compilation-for-speculative-decoding",
+      "title": "Conjugate Compilation: Self-Improving Agentic Co-Compilation for Speculative Decoding",
+      "section": "quick",
+      "tags": [
+        {
+          "kind": "query",
+          "label": "gpu-ai-infra"
+        }
+      ],
+      "score": 8.0,
+      "evidence": "联合编译草案与目标模型以支持推测解码的跨模型协同优化",
+      "first_seen_at": "2026-10-24 22:50:24 UTC",
+      "updated_at": "2026-10-24 22:50:24 UTC"
+    },
+    {
+      "paper_id": "2610.25033v1",
+      "route": "202610/24/2610.25033v1-planezip-lossless-bit-plane-compression-of-training-activations-offloaded-over-pcie",
+      "title": "PlaneZip: Lossless Bit-Plane Compression of Training Activations Offloaded over PCIe",
+      "section": "quick",
+      "tags": [
+        {
+          "kind": "query",
+          "label": "gpu-ai-infra"
+        }
+      ],
+      "score": 8.0,
+      "evidence": "面向大规模模型训练的软硬件系统，含内存与互连优化",
+      "first_seen_at": "2026-10-24 22:50:24 UTC",
+      "updated_at": "2026-10-24 22:50:24 UTC"
+    },
+    {
+      "paper_id": "2610.25048v1",
+      "route": "202610/24/2610.25048v1-pact-nvfp4-data-flow-lora-fine-tuning-on-consumer-gpus",
+      "title": "PACT: NVFP4 Data-Flow LoRA Fine-Tuning on Consumer GPUs",
+      "section": "quick",
+      "tags": [
+        {
+          "kind": "query",
+          "label": "gpu-ai-infra"
+        }
+      ],
+      "score": 8.0,
+      "evidence": "面向消费级GPU的NVFP4加速LoRA微调系统，优化LLM训练效率",
+      "first_seen_at": "2026-10-24 22:50:24 UTC",
+      "updated_at": "2026-10-24 22:50:24 UTC"
+    },
+    {
+      "paper_id": "2610.25528v1",
+      "route": "202610/24/2610.25528v1-heuristic-driven-resource-optimization-for-decoupled-memory-channels-on-fpgas",
+      "title": "Heuristic-Driven Resource Optimization for Decoupled Memory Channels on FPGAs",
+      "section": "quick",
+      "tags": [
+        {
+          "kind": "query",
+          "label": "gpu-ai-infra"
+        }
+      ],
+      "score": 8.0,
+      "evidence": "面向FPGA解耦内存通道的硬件感知优化",
+      "first_seen_at": "2026-10-24 22:50:24 UTC",
+      "updated_at": "2026-10-24 22:50:24 UTC"
+    },
+    {
+      "paper_id": "2610.25933v1",
+      "route": "202610/24/2610.25933v1-the-kv-surgeon-compensation-aware-offline-kv-cache-compaction",
+      "title": "The KV-Surgeon: Compensation-Aware Offline KV-Cache Compaction",
+      "section": "quick",
+      "tags": [
+        {
+          "kind": "query",
+          "label": "gpu-ai-infra"
+        }
+      ],
+      "score": 8.0,
+      "evidence": "面向分布式大模型推理的补偿感知KV缓存压缩",
+      "first_seen_at": "2026-10-24 22:50:24 UTC",
+      "updated_at": "2026-10-24 22:50:24 UTC"
+    },
+    {
+      "paper_id": "2610.26118v1",
+      "route": "202610/24/2610.26118v1-superposed-analog-memory-for-vector-storage-in-neural-networks",
+      "title": "Superposed analog memory for vector storage in neural networks",
+      "section": "quick",
+      "tags": [
+        {
+          "kind": "query",
+          "label": "gpu-ai-infra"
+        }
+      ],
+      "score": 8.0,
+      "evidence": "面向神经网络向量存储的叠加模拟内存架构",
+      "first_seen_at": "2026-10-24 22:50:24 UTC",
+      "updated_at": "2026-10-24 22:50:24 UTC"
+    },
+    {
+      "paper_id": "2610.26131v1",
+      "route": "202610/24/2610.26131v1-a-hybrid-gpu-and-processing-near-memory-architecture-with-shared-dram-for-efficient-prefill-decode-disaggregation",
+      "title": "A Hybrid GPU and Processing-Near-Memory Architecture with Shared DRAM for Efficient Prefill-Decode Disaggregation",
+      "section": "quick",
+      "tags": [
+        {
+          "kind": "query",
+          "label": "gpu-ai-infra"
+        }
+      ],
+      "score": 8.0,
+      "evidence": "面向预填充-解码分离的GPU与近存处理混合架构",
+      "first_seen_at": "2026-10-24 22:50:24 UTC",
+      "updated_at": "2026-10-24 22:50:24 UTC"
+    },
+    {
+      "paper_id": "2610.26142v1",
+      "route": "202610/24/2610.26142v1-fault-tolerant-offloading-framework-for-real-time-applications-in-mobile-edge-computing",
+      "title": "Fault-Tolerant Offloading Framework for Real-Time Applications in Mobile Edge Computing",
+      "section": "quick",
+      "tags": [
+        {
+          "kind": "query",
+          "label": "gpu-ai-infra"
+        }
+      ],
+      "score": 8.0,
+      "evidence": "面向移动边缘GPU计算的容错实时任务卸载",
+      "first_seen_at": "2026-10-24 22:50:24 UTC",
+      "updated_at": "2026-10-24 22:50:24 UTC"
+    },
+    {
+      "paper_id": "2610.26160v1",
+      "route": "202610/24/2610.26160v1-holistic-buoyancy-driven-cloud-native-resource-management",
+      "title": "Holistic Buoyancy-Driven Cloud Native Resource Management",
+      "section": "deep",
+      "tags": [
+        {
+          "kind": "query",
+          "label": "virtualizati"
+        }
+      ],
+      "score": 8.0,
+      "evidence": "面向多租户云原生环境的自适应资源管理",
+      "first_seen_at": "2026-10-24 22:50:24 UTC",
+      "updated_at": "2026-10-24 22:50:24 UTC"
+    },
+    {
+      "paper_id": "2610.29456v1",
+      "route": "202610/24/2610.29456v1-regomender-a-multi-agent-framework-for-automated-rego-policy-repair",
+      "title": "RegoMender: A Multi-agent Framework for Automated Rego Policy Repair",
+      "section": "deep",
+      "tags": [
+        {
+          "kind": "query",
+          "label": "virtualizati"
+        }
+      ],
+      "score": 8.0,
+      "evidence": "面向云原生容器编排的多智能体Rego策略修复",
+      "first_seen_at": "2026-10-24 22:50:24 UTC",
+      "updated_at": "2026-10-24 22:50:24 UTC"
+    },
+    {
+      "paper_id": "2610.30813v1",
+      "route": "202610/24/2610.30813v1-breaking-the-coupling-efficient-concurrency-fuzzing-for-linux-kernel-data-race-detection",
+      "title": "Breaking the Coupling: Efficient Concurrency Fuzzing for Linux Kernel Data Race Detection",
+      "section": "deep",
+      "tags": [
+        {
+          "kind": "query",
+          "label": "kernel"
+        }
+      ],
+      "score": 8.0,
+      "evidence": "面向Linux内核内存竞争检测的解耦式并发模糊测试",
+      "first_seen_at": "2026-10-24 22:50:24 UTC",
+      "updated_at": "2026-10-24 22:50:24 UTC"
+    }
+  ]
+}

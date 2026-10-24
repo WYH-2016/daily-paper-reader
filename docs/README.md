@@ -48,17 +48,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-10-23</span>
+      <span class="dpr-home-dashboard-kicker">2026-10-24</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 48 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 23 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>34</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>9</dd></div>
     <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>14</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-10-23 22:15:48 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-10-24 22:50:24 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -69,9 +69,9 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今日共生成 48 篇推荐（精读 34 篇，速读 14 篇）</p>
-<p>精读：《Coordination-Free Workload Regularization for Variable-Cost Distributed Training》（9.0/10）, 《Exact Makespan Bounds and the GPipe Homogeneity Bias for Heterogeneous LLM Inference Pipelines》（9.0/10）</p>
-<p>速读：《Range: Decoupling KV-Cache Reuse Granularity from Storage Work》（8.0/10）, 《Top-Down Microarchitecture Analysis Without Causal Modelling Is Dangerous!》（8.0/10）, 《PriorityFEC: Deadline-Aware Streaming FEC for KV-Cache Handoff in Edge Multi-Agent Systems》（8.0/10）</p>
+<p>今日共生成 23 篇推荐（精读 9 篇，速读 14 篇）</p>
+<p>精读：《BitSparse: Compact Activation Storage for ReLU Feed-Forward Networks》（8.0/10）, 《The Case for TPU-Accelerated Analytical Query Processing》（8.0/10）</p>
+<p>速读：《Data Center Load Accommodation under QoS and Checkpoint-Induced Frequency Security Constraints》（8.0/10）, 《PrairieFire: Igniting High-Throughput Updates in Large-Scale Approximate Nearest Neighbor Search》（8.0/10）, 《GUMPIM: Unitary and Malleable Memory for Processing-in-Memory with Guaranteed PIM Pages》（8.0/10）</p>
 <p>这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。</p>
   </div>
 </section>
@@ -81,12 +81,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">精读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">34 篇</strong>
+    <strong class="dpr-home-dashboard-count">9 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Coordination-Free Workload Regularization for Variable-Cost Distributed Training">Coordination-Free Workload Regularization for Variable-Cost Distributed Training</span></li><li><span class="dpr-home-dashboard-paper-title" title="Exact Makespan Bounds and the GPipe Homogeneity Bias for Heterogeneous LLM Inference Pipelines">Exact Makespan Bounds and the GPipe Homogeneity Bias for Heterogeneous LLM Inference Pipelines</span></li><li><span class="dpr-home-dashboard-paper-title" title="ETH: Data-Balanced Heterogeneous Pipeline Parallelism for Training Large Models">ETH: Data-Balanced Heterogeneous Pipeline Parallelism for Training Large Models</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="BitSparse: Compact Activation Storage for ReLU Feed-Forward Networks">BitSparse: Compact Activation Storage for ReLU Feed-Forward Networks</span></li><li><span class="dpr-home-dashboard-paper-title" title="The Case for TPU-Accelerated Analytical Query Processing">The Case for TPU-Accelerated Analytical Query Processing</span></li><li><span class="dpr-home-dashboard-paper-title" title="MailRail: Mitigating Incast Congestion with User-Space, Node-Based Flow Control">MailRail: Mitigating Incast Congestion with User-Space, Node-Based Flow Control</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">gpu-ai-infra <strong>34</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">gpu-ai-infra <strong>6</strong></span><span class="dpr-home-dashboard-tag">virtualizati <strong>2</strong></span><span class="dpr-home-dashboard-tag">kernel <strong>1</strong></span></div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -97,9 +97,9 @@
     <strong class="dpr-home-dashboard-count">14 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Range: Decoupling KV-Cache Reuse Granularity from Storage Work">Range: Decoupling KV-Cache Reuse Granularity from Storage Work</span></li><li><span class="dpr-home-dashboard-paper-title" title="Top-Down Microarchitecture Analysis Without Causal Modelling Is Dangerous!">Top-Down Microarchitecture Analysis Without Causal Modelling Is Dangerous!</span></li><li><span class="dpr-home-dashboard-paper-title" title="PriorityFEC: Deadline-Aware Streaming FEC for KV-Cache Handoff in Edge Multi-Agent Systems">PriorityFEC: Deadline-Aware Streaming FEC for KV-Cache Handoff in Edge Multi-Agent Systems</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Data Center Load Accommodation under QoS and Checkpoint-Induced Frequency Security Constraints">Data Center Load Accommodation under QoS and Checkpoint-Induced Frequency Security Constraints</span></li><li><span class="dpr-home-dashboard-paper-title" title="PrairieFire: Igniting High-Throughput Updates in Large-Scale Approximate Nearest Neighbor Search">PrairieFire: Igniting High-Throughput Updates in Large-Scale Approximate Nearest Neighbor Search</span></li><li><span class="dpr-home-dashboard-paper-title" title="GUMPIM: Unitary and Malleable Memory for Processing-in-Memory with Guaranteed PIM Pages">GUMPIM: Unitary and Malleable Memory for Processing-in-Memory with Guaranteed PIM Pages</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">gpu-ai-infra <strong>11</strong></span><span class="dpr-home-dashboard-tag">kernel <strong>3</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">gpu-ai-infra <strong>14</strong></span></div>
 </section>
 </div>
 
